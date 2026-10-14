@@ -1,11 +1,21 @@
 import type { Metadata, Viewport } from 'next';
-import { Cairo } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { AppProvider } from '../context/AppContext';
 
-const cairo = Cairo({
-  subsets: ['arabic', 'latin'],
-  weight: ['400', '500', '600', '700', '800'],
+// Self-hosted (no Google Fonts fetch at build time) — package: @fontsource-variable/cairo
+const cairo = localFont({
+  src: [
+    {
+      path: '../../../../node_modules/@fontsource-variable/cairo/files/cairo-arabic-wght-normal.woff2',
+      style: 'normal',
+    },
+    {
+      path: '../../../../node_modules/@fontsource-variable/cairo/files/cairo-latin-wght-normal.woff2',
+      style: 'normal',
+    },
+  ],
+  weight: '200 1000',
   variable: '--font-cairo',
   display: 'swap',
 });
