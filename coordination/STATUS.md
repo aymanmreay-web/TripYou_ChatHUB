@@ -1,1 +1,1 @@
-Date: 2026-10-14 · Phase: planning · DB schema validated on Postgres 16 · Waiting: user answers to open questions (docs/00-PLAN.md §9).
+Date: 2026-10-14 · Phase: planning & frontend foundation · DB schema validated on Postgres 16 · HUB-004 (hub-web shell + packages/ui) completed and verified by Antigravity · Waiting: HUB-001/HUB-002/HUB-003.

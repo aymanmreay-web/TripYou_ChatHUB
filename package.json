@@ -1,0 +1,13 @@
+{
+  "name": "resvbar-hub-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace=apps/hub-web run dev",
+    "build": "npm --workspace=apps/hub-web run build",
+    "start": "npm --workspace=apps/hub-web run start"
+  }
+}

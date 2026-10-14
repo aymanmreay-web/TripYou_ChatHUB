@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatwoot Embedded Mock</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+    }
+    /* Sidebar Conversations List */
+    .chat-sidebar {
+      width: 340px;
+      background: #1e293b;
+      border-left: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sidebar-header h2 { font-size: 15px; font-weight: 700; color: #f8fafc; }
+    .badge {
+      background: #10b981;
+      color: #022c22;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .conv-list { flex: 1; overflow-y: auto; }
+    .conv-item {
+      padding: 14px 16px;
+      border-bottom: 1px solid #334155/50;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .conv-item:hover, .conv-item.active { background: #0f172a; border-right: 3px solid #10b981; }
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #3b82f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: white;
+      shrink: 0;
+    }
+    .conv-meta { flex: 1; min-width: 0; }
+    .conv-top { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .conv-name { font-size: 13px; font-weight: 600; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conv-time { font-size: 11px; color: #94a3b8; }
+    .conv-preview { font-size: 12px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Main Chat Area */
+    .chat-main { flex: 1; display: flex; flex-direction: column; background: #0b0f17; }
+    .chat-header {
+      height: 64px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .user-info { display: flex; align-items: center; gap: 12px; }
+    .user-name { font-weight: 700; font-size: 14px; }
+    .user-phone { font-size: 12px; color: #94a3b8; font-family: monospace; }
+    .chat-actions { display: flex; gap: 8px; }
+    .btn {
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn:hover { background: #475569; }
+    .btn-green { background: #059669; color: white; }
+    .btn-green:hover { background: #10b981; }
+
+    /* Messages Stream */
+    .messages-pane {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    .msg-group { display: flex; flex-direction: column; max-width: 65%; }
+    .msg-group.incoming { align-self: flex-start; }
+    .msg-group.outgoing { align-self: flex-end; }
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .incoming .bubble { background: #1e293b; color: #f8fafc; border-bottom-right-radius: 4px; border: 1px solid #334155; }
+    .outgoing .bubble { background: #064e3b; color: #ecfdf5; border-bottom-left-radius: 4px; border: 1px solid #059669; }
+    .msg-time { font-size: 10px; color: #64748b; margin-top: 4px; }
+    .outgoing .msg-time { text-align: left; color: #6ee7b7; }
+    .signature-badge {
+      font-size: 11px;
+      color: #a7f3d0;
+      border-top: 1px dashed rgba(255,255,255,0.15);
+      margin-top: 6px;
+      padding-top: 4px;
+      font-weight: 500;
+    }
+
+    /* Message Composer */
+    .composer {
+      background: #1e293b;
+      border-top: 1px solid #334155;
+      padding: 14px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .composer input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: white;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+    }
+    .composer input:focus { border-color: #10b981; }
+
+    /* Customer Info Panel */
+    .chat-info {
+      width: 260px;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .info-title { font-size: 13px; font-weight: 700; color: #f8fafc; }
+    .info-row { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+    .info-label { color: #94a3b8; }
+    .info-val { color: #f1f5f9; font-weight: 500; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <div class="chat-sidebar">
+    <div class="sidebar-header">
+      <h2>محادثات واتساب</h2>
+      <span class="badge">Chatwoot Hub</span>
+    </div>
+    <div class="conv-list">
+      <div class="conv-item active">
+        <div class="avatar" style="background:#10b981;">ع.ح</div>
+        <div class="conv-meta">
+          <div class="conv-top">
+            <span class="conv-name">عبدالله الحربي</span>
+            <span class="conv-time">10:42 ص</span>
+          </div>
+          <div class="conv-preview">أرغب بتأكيد حجز الباقة VIP للشهر القادم...</div>
+        </div>
+      </div>
+      <div class="conv-item">
+        <div class="avatar" style="background:#8b5cf6;">ن.س</div>
+        <div class="conv-meta">
+          <div class="conv-top">
+            <span class="conv-name">نورة السبيعي</span>
+            <span class="conv-time">09:15 ص</span>
+          </div>
+          <div class="conv-preview">شكراً لكم، تم استلام رابط الاجتماع بنجاح</div>
+        </div>
+      </div>
+      <div class="conv-item">
+        <div class="avatar" style="background:#f59e0b;">ف.م</div>
+        <div class="conv-meta">
+          <div class="conv-top">
+            <span class="conv-name">فهد المري</span>
+            <span class="conv-time">أمس</span>
+          </div>
+          <div class="conv-preview">هل تتوفر لديكم خدمات مخصصة للشركات؟</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Main -->
+  <div class="chat-main">
+    <div class="chat-header">
+      <div class="user-info">
+        <div class="avatar" style="background:#10b981; width:36px; height:36px; font-size:12px;">ع.ح</div>
+        <div>
+          <div class="user-name">عبدالله الحربي</div>
+          <div class="user-phone">+966 50 *** 9214</div>
+        </div>
+      </div>
+      <div class="chat-actions">
+        <button class="btn btn-green">إسناد لي</button>
+        <button class="btn">إغلاق التذكرة</button>
+      </div>
+    </div>
+
+    <div class="messages-pane" id="messagesPane">
+      <div class="msg-group incoming">
+        <div class="bubble">السلام عليكم، هل يمكن تزويدنا بتفاصيل الحجز والأسعار للباقة السنوية؟</div>
+        <div class="msg-time">10:40 ص</div>
+      </div>
+      <div class="msg-group outgoing">
+        <div class="bubble">
+          أهلاً بك أستاذ عبدالله، يسعدنا خدمتك! تم إرسال جدول المزايا الكامل عبر البريد، وبإمكاننا جدولة اجتماع Meet للتفاصيل.
+          <div class="signature-badge">خط الحجوزات (الرئيسي) — مبيعات 1 — أيمن المرعي</div>
+        </div>
+        <div class="msg-time">10:41 ص · تم التسليم ✓✓</div>
+      </div>
+      <div class="msg-group incoming">
+        <div class="bubble">ممتاز جداً، أرغب بتأكيد حجز الباقة VIP للشهر القادم.</div>
+        <div class="msg-time">10:42 ص</div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <input type="text" id="composerInput" placeholder="اكتب ردك هنا (يتم تذييله تلقائياً بالتوقيع الذكي)..." />
+      <button class="btn btn-green" id="sendBtn">إرسال عبر واتساب</button>
+    </div>
+  </div>
+
+  <!-- Customer Panel -->
+  <div class="chat-info">
+    <div class="info-title">بيانات العميل</div>
+    <div class="info-row">
+      <span class="info-label">الاسم:</span>
+      <span class="info-val">عبدالله الحربي</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">رقم الهاتف:</span>
+      <span class="info-val">+966 50 *** 9214</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">الخط النشط:</span>
+      <span class="info-val">المبيعات 1 (الرئيسي)</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">مصدر القناة:</span>
+      <span class="info-val">WhatsApp (Baileys)</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">الحالة:</span>
+      <span class="info-val" style="color:#10b981;">مفتوحة / نشطة</span>
+    </div>
+  </div>
+
+  <script>
+    const sendBtn = document.getElementById('sendBtn');
+    const input = document.getElementById('composerInput');
+    const pane = document.getElementById('messagesPane');
+
+    function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      const group = document.createElement('div');
+      group.className = 'msg-group outgoing';
+      group.innerHTML = `
+        <div class="bubble">
+          ${text}
+          <div class="signature-badge">خط الحجوزات (الرئيسي) — مبيعات 1 — أيمن المرعي</div>
+        </div>
+        <div class="msg-time">الآن · تم الإرسال ✓</div>
+      `;
+      pane.appendChild(group);
+      input.value = '';
+      pane.scrollTop = pane.scrollHeight;
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+  </script>
+</body>
+</html>
