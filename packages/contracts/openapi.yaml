@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info: {title: ResvBAR Hub API, version: 0.1.0, description: "Contract-first. Hub-web (Antigravity) mocks against this; hub-api (Claude2) implements it."}
+servers: [{url: "https://hub.resvbar.com/api"}]
+security: [{bearer: []}]
+components:
+  securitySchemes: {bearer: {type: http, scheme: bearer, bearerFormat: JWT}}
+  schemas:
+    Module: {type: object, required: [key,area,title_ar,status], properties: {key: {type: string}, area: {type: string, enum: [user,admin]}, title_ar: {type: string}, status: {type: string, enum: [live,beta,coming_soon,hidden]}, sort: {type: integer}}}
+    Me: {type: object, required: [id,full_name,role,permissions], properties: {id: {type: string, format: uuid}, full_name: {type: string}, role: {type: string}, permissions: {type: array, items: {type: string}}, default_line_id: {type: string, format: uuid, nullable: true}}}
+    Line: {type: object, properties: {id: {type: string, format: uuid}, title_ar: {type: string}, phone_masked: {type: string}, kind: {type: string}, status: {type: string}}}
+    Error: {type: object, properties: {code: {type: string}, message: {type: string}}}
+paths:
+  /me: {get: {summary: Current staff + effective permissions, responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Me"}}}}}}}
+  /modules: {get: {summary: Navigation modules visible to the caller (permission + status), responses: {"200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Module"}}}}}}}}
+  /chat/session: {post: {summary: "SSO into embedded Chatwoot (returns iframe URL)", responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {url: {type: string}}}}}}}}}
+  /lines: {get: {summary: Lines the caller may see, responses: {"200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Line"}}}}}}}}
+  /admin/dashboard: {get: {summary: Admin KPIs (beta), responses: {"200": {description: ok}}}}
+  /health: {get: {security: [], summary: Liveness, responses: {"200": {description: ok}}}}

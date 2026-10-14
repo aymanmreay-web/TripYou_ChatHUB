@@ -1,0 +1,1 @@
+ADR-001 Chatwoot unchanged + Hub layer. ADR-002 Supabase Cloud free first, portable Postgres. ADR-003 resvbar.com subdomains. ADR-004 v1 chat = iframe + SSO. ADR-005 No WhatsApp Cloud API. ADR-006 Group ingest owner separate from send permission. ADR-007 Freeze Evolution minified patches at 5; use Hub Bridge later. ADR-008 Campaigns deferred (section only).

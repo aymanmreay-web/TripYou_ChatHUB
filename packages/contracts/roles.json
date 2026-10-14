@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "roles": [
+    {"key":"super_admin","title_ar":"مدير النظام الأعلى","all":true},
+    {"key":"admin","title_ar":"مدير","all_except_super_only":true},
+    {"key":"dept_manager","title_ar":"مدير قسم","perms":["inbox.view","inbox.reply","inbox.assign","inbox.view_all","groups.view","groups.send","contacts.view","lines.view","staff.view","tasks.view","tasks.create","tasks.assign","tasks.manage_all","meetings.view","meetings.create","reports.view_own","reports.view_team"]},
+    {"key":"sales_agent","title_ar":"موظف مبيعات","perms":["inbox.view","inbox.reply","groups.view","groups.send","contacts.view","tasks.view","tasks.create","meetings.view","meetings.create","reports.view_own"]},
+    {"key":"main_operator","title_ar":"مشغل الرقم الرئيسي","perms":["inbox.view","inbox.reply","inbox.assign","inbox.view_all","groups.view","groups.send","contacts.view","tasks.view","tasks.create","tasks.assign","meetings.view","meetings.create","reports.view_own"]},
+    {"key":"promo_agent","title_ar":"موظف ترويج","perms":["inbox.view","inbox.reply","contacts.view","campaigns.view","tasks.view","reports.view_own"]},
+    {"key":"support_agent","title_ar":"موظف دعم","perms":["inbox.view","inbox.reply","contacts.view","tasks.view","tasks.create","reports.view_own"]},
+    {"key":"finance","title_ar":"مالية","perms":["reports.view_all","contacts.view","tasks.view"]},
+    {"key":"viewer","title_ar":"مشاهد","perms":["inbox.view","contacts.view","tasks.view"]}
+  ]
+}
