@@ -1,1 +1,1 @@
-Main agent = this Claude session. Owns docs, db, contracts, coordination, merges. Start each session by reading coordination/STATUS.md and TASK_BOARD.md.
+Main agent = the coordinator (Claude in the official coordination chat). Owns docs, db, contracts, coordination, merges and the final push to GitHub. Start each session by reading coordination/STATUS.md, TASK_BOARD.md, DECISIONS.md, QUESTIONS.md and the HANDOFFS/ folder. The user may ask "اكتب ملخص التسليم" before closing a chat: then update the repo so it stays the single source.

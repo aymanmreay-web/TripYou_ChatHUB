@@ -1,1 +1,0 @@
-ارفع: المستودع كاملاً عدا agent-kits/antigravity. المفاتيح (Supabase service key، توكن Chatwoot) تُعطى عبر متغيرات البيئة في بيئته فقط، ولا تُرسل في المحادثة.
