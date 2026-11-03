@@ -8,21 +8,24 @@ import {
 import { AppShell } from '../../../components/layout/AppShell';
 
 interface EvolutionInstance {
-  instance: {
-    instanceName: string;
-    instanceId: string;
-    status: string;
-    serverUrl: string;
-    apikey?: string;
+  id?: string;
+  name?: string;
+  connectionStatus?: string;
+  ownerJid?: string | null;
+  profileName?: string | null;
+  profilePicUrl?: string | null;
+  instance?: {
+    instanceName?: string;
+    instanceId?: string;
+    status?: string;
     owner?: string;
     profileName?: string;
     profilePictureUrl?: string | null;
-    integration?: string;
   };
   _count?: {
-    Message: number;
-    Contact: number;
-    Chat: number;
+    Message?: number;
+    Contact?: number;
+    Chat?: number;
   };
 }
 
@@ -100,13 +103,13 @@ export default function LinesPage() {
           </div>
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
             <div className="text-xl sm:text-2xl font-bold text-emerald-400">
-              {instances.filter(i => i.instance?.status === 'open').length}
+              {instances.filter(i => (i.connectionStatus || i.instance?.status) === 'open').length}
             </div>
             <div className="text-[11px] sm:text-xs text-slate-400 mt-0.5">متصل ومستقر</div>
           </div>
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
             <div className="text-xl sm:text-2xl font-bold text-amber-400">
-              {instances.filter(i => i.instance?.status !== 'open').length}
+              {instances.filter(i => (i.connectionStatus || i.instance?.status) !== 'open').length}
             </div>
             <div className="text-[11px] sm:text-xs text-slate-400 mt-0.5">غير متصل / معلق</div>
           </div>
@@ -122,26 +125,31 @@ export default function LinesPage() {
           /* Instances Grid */
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {instances.map((inst) => {
-              const instData = inst.instance || (inst as any);
-              const status = STATUS_MAP[instData.status] || STATUS_MAP.close;
+              const rawStatus = inst.connectionStatus || inst.instance?.status || 'close';
+              const status = STATUS_MAP[rawStatus] || STATUS_MAP.close;
               const StatusIcon = status.icon;
-              const phone = instData.owner
-                ? instData.owner.replace('@s.whatsapp.net', '').replace('@g.us', '')
+              const name = inst.name || inst.instance?.instanceName || 'Unknown';
+              const id = inst.id || inst.instance?.instanceId || name;
+              const pName = inst.profileName || inst.instance?.profileName || name;
+              const pic = inst.profilePicUrl || inst.instance?.profilePictureUrl;
+              const rawOwner = inst.ownerJid || inst.instance?.owner || '';
+              const phone = rawOwner
+                ? rawOwner.replace('@s.whatsapp.net', '').replace('@g.us', '')
                 : '—';
               
               return (
                 <div
-                  key={instData.instanceId || instData.instanceName}
+                  key={id}
                   className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between"
                 >
                   <div>
                     {/* Instance Header */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        {instData.profilePictureUrl ? (
+                        {pic ? (
                           <img
-                            src={instData.profilePictureUrl}
-                            alt={instData.profileName || instData.instanceName}
+                            src={pic}
+                            alt={pName}
                             className="w-12 h-12 rounded-full border-2 border-slate-700 object-cover"
                           />
                         ) : (
@@ -151,17 +159,17 @@ export default function LinesPage() {
                         )}
                         <div>
                           <div className="font-semibold text-white text-sm">
-                            {instData.profileName || instData.instanceName}
+                            {pName}
                           </div>
                           <div className="text-xs text-slate-400 font-mono mt-0.5">
-                            {instData.instanceName}
+                            {name}
                           </div>
                         </div>
                       </div>
 
                       {/* Status Badge */}
                       <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${status.color}`}>
-                        <StatusIcon className={`w-3 h-3 ${instData.status === 'connecting' ? 'animate-spin' : ''}`} />
+                        <StatusIcon className={`w-3 h-3 ${rawStatus === 'connecting' ? 'animate-spin' : ''}`} />
                         {status.label}
                       </span>
                     </div>
@@ -193,10 +201,10 @@ export default function LinesPage() {
 
                   {/* Actions */}
                   <div className="flex gap-2 pt-2 border-t border-slate-800/60">
-                    {instData.status === 'open' ? (
-                      <button className="flex-1 py-2 px-3 rounded-xl text-xs text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-1.5 font-medium">
-                        <PowerOff className="w-3.5 h-3.5" />
-                        فصل الجلسة
+                    {rawStatus === 'open' ? (
+                      <button className="flex-1 py-2 px-3 rounded-xl text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center gap-1.5 font-medium cursor-default">
+                        <Wifi className="w-3.5 h-3.5" />
+                        الخط يعمل بنجاح
                       </button>
                     ) : (
                       <button className="flex-1 py-2 px-3 rounded-xl text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center justify-center gap-1.5 font-medium">
