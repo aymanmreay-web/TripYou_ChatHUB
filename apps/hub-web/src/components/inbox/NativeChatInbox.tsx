@@ -122,8 +122,12 @@ export function NativeChatInbox() {
               lastText =
                 msgObj.conversation ||
                 msgObj.extendedTextMessage?.text ||
+                msgObj.reactionMessage?.text ||
                 msgObj.documentMessage?.caption ||
+                (msgObj.documentMessage ? '📄 مستند' : '') ||
                 msgObj.imageMessage?.caption ||
+                (msgObj.imageMessage ? '📷 صورة' : '') ||
+                (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
                 (c.lastMessage.messageType ? `[${c.lastMessage.messageType}]` : '');
             }
 
@@ -154,9 +158,7 @@ export function NativeChatInbox() {
           });
 
           setConversations(mapped);
-          if (mapped.length > 0 && !activeConvId) {
-            setActiveConvId(mapped[0].id);
-          }
+          setActiveConvId((curr) => curr || (mapped.length > 0 ? mapped[0].id : ''));
         }
       }
     } catch (err) {
@@ -164,7 +166,7 @@ export function NativeChatInbox() {
     } finally {
       setLoadingChats(false);
     }
-  }, [user, activeConvId]);
+  }, [user]);
 
   // When selected instance changes, reload chats
   useEffect(() => {
@@ -173,7 +175,7 @@ export function NativeChatInbox() {
       setMessages([]);
       fetchChats(selectedInstanceName);
     }
-  }, [selectedInstanceName, fetchChats]);
+  }, [selectedInstanceName]);
 
   // 3. Fetch real messages when active conversation changes
   const fetchMessagesForChat = useCallback(async (chatJid: string, instanceName: string) => {
@@ -183,18 +185,33 @@ export function NativeChatInbox() {
       const res = await fetch(`/api/evolution/instances/${instanceName}/messages?chatId=${encodeURIComponent(chatJid)}&limit=50`);
       if (res.ok) {
         const rawMsgs = await res.json();
-        // Evolution returns array or { messages: [] } or { records: [] }
-        const list = Array.isArray(rawMsgs) ? rawMsgs : rawMsgs.messages || rawMsgs.records || [];
+        // Evolution returns { messages: { records: [] } } or array
+        const list: any[] = Array.isArray(rawMsgs)
+          ? rawMsgs
+          : Array.isArray(rawMsgs?.messages?.records)
+          ? rawMsgs.messages.records
+          : Array.isArray(rawMsgs?.records)
+          ? rawMsgs.records
+          : Array.isArray(rawMsgs?.messages)
+          ? rawMsgs.messages
+          : [];
         
         const mapped: ChatMessage[] = list.map((m: any) => {
           const fromMe = m.key?.fromMe ?? false;
           let text = '';
           if (m.message) {
+            const msgObj = m.message;
             text =
-              m.message.conversation ||
-              m.message.extendedTextMessage?.text ||
-              m.message.documentMessage?.caption ||
-              m.message.imageMessage?.caption ||
+              msgObj.conversation ||
+              msgObj.extendedTextMessage?.text ||
+              msgObj.reactionMessage?.text ||
+              msgObj.documentMessage?.caption ||
+              (msgObj.documentMessage ? '📄 مستند' : '') ||
+              msgObj.imageMessage?.caption ||
+              (msgObj.imageMessage ? '📷 صورة' : '') ||
+              (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
+              (msgObj.videoMessage ? '🎥 مقطع فيديو' : '') ||
+              (msgObj.pollUpdateMessage ? '📊 استطلاع تصويت' : '') ||
               (m.messageType ? `[${m.messageType}]` : '');
           }
 
@@ -209,16 +226,16 @@ export function NativeChatInbox() {
             conversation_id: chatJid,
             chat_jid: chatJid,
             direction: fromMe ? 'out' : 'in',
-            body: text || '(رسالة وسائط أو بدون نص)',
+            body: text || '(رسالة وسائط)',
             media_type: m.messageType || 'text',
             sender_name: fromMe ? 'أنا' : (m.pushName || 'العميل'),
-            status: fromMe ? (m.status === 'READ' ? 'read' : 'delivered') : undefined,
+            status: fromMe ? (m.status === 'READ' ? 'read' : 'delivered') : 'delivered',
             line_id: instanceName,
             created_at: timeStr || 'الآن',
           };
         });
 
-        // Evolution usually returns newest first or oldest first. Let's ensure chronological order:
+        // Ensure chronological order
         setMessages(mapped.reverse());
       }
     } catch (err) {
