@@ -3,8 +3,8 @@ import './globals.css';
 import { AppProvider } from '../context/AppContext';
 
 export const metadata: Metadata = {
-  title: 'YouTrip ChatHUB | منصة إدارة المحادثات',
-  description: 'منصة YouTrip ChatHUB لإدارة محادثات واتساب - © م. أيمن مريعي — By Eng. Ayman Mreay. جميع الحقوق محفوظة',
+  title: 'TripYou_ChatHUB | منصة إدارة المحادثات',
+  description: 'TripYou_ChatHUB — منصة إدارة محادثات واتساب الموحدة لشركة سياحة وسفر - © م. أيمن مريعي — By Eng. Ayman Mreay. جميع الحقوق محفوظة',
   manifest: '/manifest.json',
   icons: {
     icon: '/favicon.ico',
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0B0F17',
+  themeColor: '#080512',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -26,7 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl" className="dark">
-      <body className="bg-[#0B0F17] text-slate-100 min-h-screen antialiased">
+      <body className="bg-[#080512] text-slate-100 min-h-screen antialiased selection:bg-purple-600 selection:text-white">
         <AppProvider>
           {children}
         </AppProvider>

@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { User, Phone, Mail, Clock, Shield, Check, Search, Radio, Key } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AppShell } from '../../components/layout/AppShell';
-import { Card, Avatar, Badge, Input } from '@resvbar/ui';
+import { Card, Avatar, Badge, Input } from '@tripyou/ui';
 
 export default function ProfilePage() {
   const { user, selectedLine } = useApp();

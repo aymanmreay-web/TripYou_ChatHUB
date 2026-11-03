@@ -1,6 +1,6 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 info:
-  title: ResvBAR Hub API
+  title: TripYou ChatHUB API
   version: 0.2.0
   description: "Native WhatsApp Hub API connected directly with Evolution API. No Chatwoot dependency."
 servers:

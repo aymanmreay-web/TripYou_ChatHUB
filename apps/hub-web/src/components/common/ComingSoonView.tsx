@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Sparkles, Calendar, CheckCircle2, ShieldCheck, ArrowRight, Bell, Check, Cpu } from 'lucide-react';
 import { ModuleContract } from '../../types';
 import { MODULE_ROADMAP_DETAILS } from '../../lib/mock-data';
-import { Button, Badge, Card } from '@resvbar/ui';
+import { Button, Badge, Card } from '@tripyou/ui';
 
 interface ComingSoonViewProps {
   module: ModuleContract;
@@ -68,7 +68,7 @@ export function ComingSoonView({ module }: ComingSoonViewProps) {
           </div>
 
           <p className="text-base sm:text-lg text-slate-300 leading-relaxed mb-6">
-            {details?.description_ar || 'يجري حالياً بناء وتجهيز هذا القسم ليتكامل مع البنية التحتية لـ ResvBAR Hub وفق أعلى معايير السرعة والأمان.'}
+            {details?.description_ar || 'يجري حالياً بناء وتجهيز هذا القسم ليتكامل مع البنية التحتية لـ TripYou ChatHUB وفق أعلى معايير السرعة والأمان.'}
           </p>
 
           {/* Action Row */}

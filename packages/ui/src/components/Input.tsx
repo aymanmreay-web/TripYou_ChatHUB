@@ -12,14 +12,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       <div className="w-full relative">
         <div className="relative flex items-center">
           {icon && (
-            <div className="absolute right-3.5 text-slate-400 pointer-events-none flex items-center">
+            <div className="absolute right-3.5 text-purple-400 pointer-events-none flex items-center">
               {icon}
             </div>
           )}
           <input
             ref={ref}
             className={cn(
-              'w-full bg-slate-900/90 text-slate-100 placeholder:text-slate-500 rounded-xl border border-slate-800 px-4 py-2.5 text-sm transition-all duration-200 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50',
+              'w-full bg-[#110A22]/90 text-slate-100 placeholder:text-purple-300/40 rounded-xl border border-purple-900/40 px-4 py-2.5 text-sm transition-all duration-200 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/25 disabled:cursor-not-allowed disabled:opacity-50',
               icon && 'pr-10',
               error && 'border-rose-500/80 focus:border-rose-500 focus:ring-rose-500/20',
               className

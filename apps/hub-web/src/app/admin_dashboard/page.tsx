@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import {
@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AppShell } from '../../components/layout/AppShell';
-import { Card, Badge, Button } from '@resvbar/ui';
+import { Card, Badge, Button } from '@tripyou/ui';
 
 export default function AdminDashboardPage() {
   const { lines, user } = useApp();

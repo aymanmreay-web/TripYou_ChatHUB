@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
@@ -22,7 +22,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { MOCK_CONVERSATIONS, MOCK_MESSAGES } from '../../lib/mock-data';
 import { ConversationItem, ChatMessage } from '../../types';
-import { Button, Badge } from '@resvbar/ui';
+import { Button, Badge } from '@tripyou/ui';
 
 // Mock group membership definitions
 const GROUP_MEMBERS_MAP: Record<string, string[]> = {

@@ -1,5 +1,5 @@
-# ResvBAR Hub
-منصة إدارة ومحادثات واتساب موحدة لعدة خطوط وأرقام متصلة مباشرة بـ Evolution API لشركة ResvBAR (بدون Chatwoot نهائياً وبدون أي وسيط ثقيل).
+# TripYou_ChatHUB
+منصة إدارة ومحادثات واتساب موحدة لعدة خطوط وأرقام متصلة مباشرة بـ Evolution API لشركة TripYou (بإشراف م. أيمن مريعي — بدون Chatwoot نهائياً وبدون أي وسيط ثقيل).
 
 ابدأ من: `docs/00-PLAN.md` ثم `coordination/README.md`.
 

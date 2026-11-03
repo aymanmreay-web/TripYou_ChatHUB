@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layers, Shield, Lock, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Button, Input, Card, Badge } from '@resvbar/ui';
+import { Button, Input, Card, Badge } from '@tripyou/ui';
 import { MOCK_USERS } from '../../lib/mock-data';
 
 export default function LoginPage() {

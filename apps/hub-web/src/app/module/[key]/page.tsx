@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import { notFound } from 'next/navigation';
@@ -8,7 +8,7 @@ import { useApp } from '../../../context/AppContext';
 import { AppShell } from '../../../components/layout/AppShell';
 import { ComingSoonView } from '../../../components/common/ComingSoonView';
 import { RAW_MODULES } from '../../../lib/mock-data';
-import { Card, Button, Badge } from '@resvbar/ui';
+import { Card, Button, Badge } from '@tripyou/ui';
 
 interface ModulePageProps {
   params: {

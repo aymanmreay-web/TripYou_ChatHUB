@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,44 +6,75 @@
 
 @layer base {
   :root {
-    --background: 11 15 23;
-    --foreground: 248 250 252;
+    --background: #080512;
+    --foreground: #FBF9FE;
+    --card-bg: #110A22;
+    --card-surface: #1A0F33;
+    --card-border: rgba(168, 85, 247, 0.14);
+    --primary: #7C3AED;
+    --primary-glow: rgba(124, 58, 237, 0.3);
+  }
+
+  /* Light mode variables */
+  html.light {
+    --background: #FAF8FD;
+    --foreground: #140A26;
+    --card-bg: #FFFFFF;
+    --card-surface: #F3EDFC;
+    --card-border: rgba(124, 58, 237, 0.12);
+    --primary: #6D28D9;
+    --primary-glow: rgba(109, 40, 217, 0.15);
   }
 
   body {
-    background-color: #0B0F17;
-    color: #F8FAFC;
-    font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Alexandria', 'Cairo', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 }
 
-/* Custom Sleek Scrollbar */
+/* Tabular numbers for timers, counters and phone numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Broadcast Luxury Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0B0F17;
+  background: var(--background);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1E293B;
+  background: rgba(168, 85, 247, 0.25);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: rgba(168, 85, 247, 0.45);
 }
 
-/* Glassmorphism utility */
+/* Luxury Glassmorphism Panel with Royal Violet Glow */
 .glass-panel {
-  background: rgba(17, 24, 39, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(17, 10, 34, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+html.light .glass-panel {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  box-shadow: 0 8px 24px 0 rgba(124, 58, 237, 0.08);
 }

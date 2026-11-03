@@ -1,5 +1,5 @@
 {
-  "name": "resvbar-hub-workspace",
+  "name": "tripyou-chathub-workspace",
   "private": true,
   "workspaces": [
     "apps/*",

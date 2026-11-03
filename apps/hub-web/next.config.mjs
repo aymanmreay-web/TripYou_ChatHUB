@@ -2,7 +2,7 @@
 const nextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  transpilePackages: ['@resvbar/ui'],
+  transpilePackages: ['@tripyou/ui'],
   async headers() {
     return [
       {

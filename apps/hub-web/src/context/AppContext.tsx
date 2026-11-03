@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { StaffMe, WhatsAppLine, ModuleContract } from '../types';
@@ -30,9 +30,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Load user from localStorage if present
   useEffect(() => {
     try {
-      const savedUser = localStorage.getItem('resvbar_hub_user_key');
-      const savedLine = localStorage.getItem('resvbar_hub_line_id');
-      const savedAuth = localStorage.getItem('resvbar_hub_auth');
+      const savedUser = localStorage.getItem('tripyou_hub_user_key');
+      const savedLine = localStorage.getItem('tripyou_hub_line_id');
+      const savedAuth = localStorage.getItem('tripyou_hub_auth');
       if (savedUser && MOCK_USERS[savedUser]) {
         setUserKey(savedUser);
       }
@@ -51,7 +51,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (MOCK_USERS[key]) {
       setUserKey(key);
       try {
-        localStorage.setItem('resvbar_hub_user_key', key);
+        localStorage.setItem('tripyou_hub_user_key', key);
       } catch {
         // ignore
       }
@@ -61,7 +61,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const handleSetLineId = (id: string) => {
     setSelectedLineId(id);
     try {
-      localStorage.setItem('resvbar_hub_line_id', id);
+      localStorage.setItem('tripyou_hub_line_id', id);
     } catch {
       // ignore
     }
@@ -71,7 +71,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     handleSetUserKey(roleKey);
     setIsLoggedIn(true);
     try {
-      localStorage.setItem('resvbar_hub_auth', 'true');
+      localStorage.setItem('tripyou_hub_auth', 'true');
     } catch {
       // ignore
     }
@@ -80,7 +80,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setIsLoggedIn(false);
     try {
-      localStorage.setItem('resvbar_hub_auth', 'false');
+      localStorage.setItem('tripyou_hub_auth', 'false');
     } catch {
       // ignore
     }

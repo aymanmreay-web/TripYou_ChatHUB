@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { Menu, Bell, Smartphone, UserCheck, LogOut, Check, ChevronDown } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Button, Avatar, Badge } from '@resvbar/ui';
+import { Button, Avatar, Badge } from '@tripyou/ui';
 import { MOCK_USERS } from '../../lib/mock-data';
 
 interface HeaderProps {
@@ -18,12 +18,12 @@ export function Header({ onOpenMobile }: HeaderProps) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   return (
-    <header className="h-16 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
+    <header className="h-16 bg-[#0B0716]/85 backdrop-blur-md border-b border-purple-900/30 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
       {/* Right side (RTL start): Mobile toggle + Line Badge */}
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenMobile}
-          className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-900 transition-colors"
+          className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-[#110A22] transition-colors"
           title="القائمة الرئيسية"
         >
           <Menu className="w-5 h-5" />
@@ -37,7 +37,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
               setRoleDropdownOpen(false);
               setNotificationsOpen(false);
             }}
-            className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 transition-colors text-right"
+            className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-[#110A22]/90 border border-purple-900/30 hover:border-purple-500/50 transition-colors text-right"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <div className="hidden sm:block">
@@ -48,7 +48,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
           </button>
 
           {lineDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
+            <div className="absolute right-0 mt-2 w-72 bg-[#110A22] border border-purple-900/30 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
               <div className="text-xs font-semibold text-slate-400 px-3 py-1.5 mb-1">
                 الخطوط المرتبطة
               </div>
@@ -61,7 +61,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
                   }}
                   className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors ${
                     l.id === selectedLineId
-                      ? 'bg-emerald-500/10 text-emerald-300 font-semibold border border-emerald-500/20'
+                      ? 'bg-purple-500/15 text-purple-300 font-semibold border border-purple-500/30'
                       : 'text-slate-300 hover:bg-slate-800'
                   }`}
                 >
@@ -96,7 +96,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
           </button>
 
           {roleDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
+            <div className="absolute left-0 mt-2 w-80 bg-[#110A22] border border-purple-900/30 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
               <div className="text-xs font-semibold text-slate-400 px-3 py-1.5 mb-1">
                 تبديل الدور التجريبي (لاختبار إخفاء/إظهار الأقسام)
               </div>
@@ -135,7 +135,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
               setRoleDropdownOpen(false);
               setLineDropdownOpen(false);
             }}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition-colors relative"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#110A22] transition-colors relative"
             title="التنبيهات"
           >
             <Bell className="w-4 h-4" />
@@ -143,21 +143,21 @@ export function Header({ onOpenMobile }: HeaderProps) {
           </button>
 
           {notificationsOpen && (
-            <div className="absolute left-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+            <div className="absolute left-0 mt-2 w-80 bg-[#110A22] border border-purple-900/30 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-purple-900/30">
                 <span className="font-semibold text-xs text-white">الإشعارات والتنبيهات</span>
                 <Badge variant="live" size="sm">
                   لحظي
                 </Badge>
               </div>
               <div className="space-y-2 text-xs text-slate-300">
-                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-purple-900/30/60">
                   <div className="font-medium text-emerald-400 mb-0.5">اتصال الخط الرئيسي مستقر</div>
                   <div className="text-slate-400 text-[11px]">
                     خط الحجوزات (+966 50 *** 8811) يعمل بكفاءة كاملة.
                   </div>
                 </div>
-                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-purple-900/30/60">
                   <div className="font-medium text-amber-400 mb-0.5">تحديث صلاحيات الواجهة</div>
                   <div className="text-slate-400 text-[11px]">
                     تم تحديث شجرة التنقل بناءً على عقد <code>modules.json</code>.
@@ -169,7 +169,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
         </div>
 
         {/* Profile Link & Logout */}
-        <div className="flex items-center gap-2 border-r border-slate-800 pr-2">
+        <div className="flex items-center gap-2 border-r border-purple-900/30 pr-2">
           <Link href="/profile">
             <Avatar name={user.full_name} size="sm" status="online" />
           </Link>

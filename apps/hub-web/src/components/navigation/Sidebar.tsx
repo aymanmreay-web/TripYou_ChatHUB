@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import Link from 'next/link';
@@ -11,7 +11,7 @@ import {
   Search, ChevronLeft, ChevronRight, Layers, Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Badge, Avatar } from '@resvbar/ui';
+import { Badge, Avatar } from '@tripyou/ui';
 import { ModuleContract } from '../../types';
 
 interface SidebarProps {
@@ -84,29 +84,29 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
       {/* Sidebar container */}
       <aside
-        className={`fixed top-0 bottom-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-l border-slate-800/80 transition-all duration-300 flex flex-col ${
+        className={`fixed top-0 bottom-0 right-0 z-40 bg-[#0B0716]/95 backdrop-blur-xl border-l border-purple-900/30 transition-all duration-300 flex flex-col ${
           collapsed ? 'w-20' : 'w-72'
         } ${
           mobileOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 border-b border-slate-800/80 px-4 flex items-center justify-between shrink-0">
+        <div className="h-16 border-b border-purple-900/30 px-4 flex items-center justify-between shrink-0">
           {!collapsed ? (
             <Link href="/inbox" className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-950/50 border border-emerald-400/30">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-700 via-violet-600 to-purple-400 flex items-center justify-center shadow-lg shadow-emerald-950/50 border border-emerald-400/30">
                 <Layers className="w-5 h-5 text-slate-950 stroke-[2.5]" />
               </div>
               <div>
-                <span className="font-bold text-base text-white tracking-wide">YouTrip</span>
-                <span className="text-emerald-400 font-semibold text-xs mr-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                <span className="font-bold text-base text-white tracking-wide">TripYou</span>
+                <span className="text-purple-300 font-semibold text-xs mr-1 px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30">
                   ChatHUB
                 </span>
               </div>
             </Link>
           ) : (
             <div className="mx-auto">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-950/50 border border-emerald-400/30">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-700 via-violet-600 to-purple-400 flex items-center justify-center shadow-lg shadow-emerald-950/50 border border-emerald-400/30">
                 <Layers className="w-5 h-5 text-slate-950 stroke-[2.5]" />
               </div>
             </div>
@@ -124,7 +124,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
         {/* Search Bar (When Expanded) */}
         {!collapsed && (
-          <div className="p-3 border-b border-slate-800/60">
+          <div className="p-3 border-b border-purple-900/20">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" />
               <input
@@ -132,7 +132,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                 placeholder="بحث في الأقسام..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-900/90 text-xs text-slate-200 placeholder:text-slate-500 rounded-xl pr-8 pl-3 py-2 border border-slate-800 outline-none focus:border-emerald-500 transition-colors"
+                className="w-full bg-slate-900/90 text-xs text-slate-200 placeholder:text-slate-500 rounded-xl pr-8 pl-3 py-2 border border-slate-800 outline-none focus:border-purple-500 transition-colors"
               />
             </div>
           </div>
@@ -159,14 +159,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                     onClick={onCloseMobile}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group relative ${
                       active
-                        ? 'bg-gradient-to-l from-emerald-500/15 via-emerald-500/10 to-transparent text-emerald-400 font-semibold border-r-2 border-emerald-400'
+                        ? 'bg-gradient-to-l from-purple-500/20 via-purple-500/10 to-transparent text-purple-300 font-semibold border-r-2 border-purple-400'
                         : 'text-slate-300 hover:text-white hover:bg-slate-900/60'
                     }`}
                     title={collapsed ? m.title_ar : undefined}
                   >
                     <Icon
                       className={`w-4 h-4 shrink-0 transition-colors ${
-                        active ? 'text-emerald-400' : 'text-slate-400 group-hover:text-slate-200'
+                        active ? 'text-purple-300' : 'text-slate-400 group-hover:text-slate-200'
                       }`}
                     />
 
@@ -196,7 +196,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
           {/* Admin Modules Section */}
           {filteredAdminModules.length > 0 && (
-            <div className="pt-2 border-t border-slate-800/60">
+            <div className="pt-2 border-t border-purple-900/20">
               {!collapsed && (
                 <div className="text-[11px] font-semibold text-slate-400 px-3 mb-2 uppercase tracking-wider flex items-center justify-between">
                   <span>إدارة النظام</span>
@@ -217,14 +217,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                       onClick={onCloseMobile}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group relative ${
                         active
-                          ? 'bg-gradient-to-l from-emerald-500/15 via-emerald-500/10 to-transparent text-emerald-400 font-semibold border-r-2 border-emerald-400'
+                          ? 'bg-gradient-to-l from-purple-500/20 via-purple-500/10 to-transparent text-purple-300 font-semibold border-r-2 border-purple-400'
                           : 'text-slate-300 hover:text-white hover:bg-slate-900/60'
                       }`}
                       title={collapsed ? m.title_ar : undefined}
                     >
                       <Icon
                         className={`w-4 h-4 shrink-0 transition-colors ${
-                          active ? 'text-emerald-400' : 'text-slate-400 group-hover:text-slate-200'
+                          active ? 'text-purple-300' : 'text-slate-400 group-hover:text-slate-200'
                         }`}
                       />
 
@@ -252,7 +252,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
         </div>
 
         {/* User Footer Pill */}
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950/80 shrink-0">
+        <div className="p-3 border-t border-purple-900/30 bg-[#07040E]/90 shrink-0">
           <Link
             href="/profile"
             className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-900 transition-colors"
@@ -268,7 +268,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
         </div>
 
         {/* Copyright Footer */}
-        <div className="px-3 py-2 border-t border-slate-800/40">
+        <div className="px-3 py-2 border-t border-purple-900/20">
           <p className="text-[10px] text-slate-600 text-center leading-tight">
             © م. أيمن مريعي — By Eng. Ayman Mreay<br />
             جميع الحقوق محفوظة

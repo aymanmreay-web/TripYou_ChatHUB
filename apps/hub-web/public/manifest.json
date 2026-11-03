@@ -1,14 +1,14 @@
 {
-  "name": "ResvBAR Hub | منصة إدارة المحادثات والعمليات",
-  "short_name": "ResvBAR Hub",
-  "description": "منصة واحدة متقدمة لفريق ResvBAR لإدارة المحادثات، الخطوط، وجهات الاتصال والمهام",
+  "name": "TripYou ChatHUB | منصة إدارة المحادثات والعمليات",
+  "short_name": "TripYou_ChatHUB",
+  "description": "منصة واحدة متقدمة لفريق TripYou لإدارة المحادثات، الخطوط، وجهات الاتصال والمهام",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "dir": "rtl",
   "lang": "ar",
-  "background_color": "#0B0F17",
-  "theme_color": "#10B981",
+  "background_color": "#0B0716",
+  "theme_color": "#7C3AED",
   "icons": [
     {
       "src": "/icon-192.png",

@@ -19,8 +19,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@resvbar/ui": ["../../packages/ui/src/index.ts"],
-      "@resvbar/ui/*": ["../../packages/ui/src/*"]
+      "@tripyou/ui": ["../../packages/ui/src/index.ts"],
+      "@tripyou/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

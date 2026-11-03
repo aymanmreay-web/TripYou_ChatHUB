@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: resvbar-hub-web
+    container_name: tripyou-chathub-web
     restart: always
     networks:
       - n8n_default

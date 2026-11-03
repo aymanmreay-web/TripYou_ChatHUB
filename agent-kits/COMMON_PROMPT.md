@@ -1,7 +1,7 @@
-الجزء المشترك — يُلصق أولاً لكل وكيل، ثم يُلصق بعده الجزء الخاص به (agent-kits/<الوكيل>/KICKOFF_PROMPT.md).
+﻿الجزء المشترك — يُلصق أولاً لكل وكيل، ثم يُلصق بعده الجزء الخاص به (agent-kits/<الوكيل>/KICKOFF_PROMPT.md).
 
 ```
-أنت وكيل في مشروع ResvBAR Hub. نطاق عملك مجلد المشروع المنسوخ من GitHub فقط، ولا تنفّذ clone جديداً.
+أنت وكيل في مشروع TripYou_ChatHUB. نطاق عملك مجلد المشروع المنسوخ من GitHub فقط، ولا تنفّذ clone جديداً.
 اقرأ بالترتيب: README.md ثم coordination/README.md ثم coordination/AGENTS.md ثم coordination/TASK_BOARD.md ثم docs/00-PLAN.md ثم packages/contracts/* ثم coordination/inbox/<اسمك>.md.
 قواعد صارمة:
 - لا تعمل على main أبداً. أنشئ فرعاً باسم agent/<اسمك>/<رقم المهمة> وارفع عليه فقط.
