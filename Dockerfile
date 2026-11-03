@@ -7,7 +7,7 @@ COPY package*.json ./
 COPY apps/hub-web/package*.json ./apps/hub-web/
 COPY packages/ui/package*.json ./packages/ui/
 COPY packages/contracts/ ./packages/contracts/
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 FROM base AS builder
 WORKDIR /app
