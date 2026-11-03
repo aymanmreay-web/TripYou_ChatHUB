@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  hub-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resvbar-hub-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - BASE_DOMAIN=69.62.122.89.sslip.io
+      - EVOLUTION_URL=https://evo.69.62.122.89.sslip.io
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hub.rule=Host(`hub.69.62.122.89.sslip.io`)"
+      - "traefik.http.routers.hub.entrypoints=websecure"
+      - "traefik.http.routers.hub.tls=true"
+      - "traefik.http.routers.hub.tls.certresolver=letsencrypt"
+      - "traefik.http.services.hub.loadbalancer.server.port=3000"

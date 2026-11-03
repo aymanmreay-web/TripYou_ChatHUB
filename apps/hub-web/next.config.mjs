@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   reactStrictMode: true,
   transpilePackages: ['@resvbar/ui'],
-  // Headers for PWA and embedded iframes
   async headers() {
     return [
       {
