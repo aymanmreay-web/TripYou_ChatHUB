@@ -98,9 +98,9 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                 <Layers className="w-5 h-5 text-slate-950 stroke-[2.5]" />
               </div>
               <div>
-                <span className="font-bold text-base text-white tracking-wide">ResvBAR</span>
+                <span className="font-bold text-base text-white tracking-wide">YouTrip</span>
                 <span className="text-emerald-400 font-semibold text-xs mr-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                  Hub
+                  ChatHUB
                 </span>
               </div>
             </Link>
@@ -265,6 +265,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
               </div>
             )}
           </Link>
+        </div>
+
+        {/* Copyright Footer */}
+        <div className="px-3 py-2 border-t border-slate-800/40">
+          <p className="text-[10px] text-slate-600 text-center leading-tight">
+            © م. أيمن مريعي — By Eng. Ayman Mreay<br />
+            جميع الحقوق محفوظة
+          </p>
         </div>
       </aside>
     </>

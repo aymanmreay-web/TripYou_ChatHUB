@@ -7,23 +7,27 @@ import {
   Paperclip,
   CheckCheck,
   Check,
-  Radio,
   Phone,
   MoreVertical,
   Users,
   User,
   Sparkles,
   ArrowRight,
-  Filter,
-  RefreshCw,
-  Clock,
+  ShieldAlert,
   ShieldCheck,
-  Smile
+  ArrowLeftRight,
+  UserPlus,
+  Info
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { MOCK_CONVERSATIONS, MOCK_MESSAGES } from '../../lib/mock-data';
 import { ConversationItem, ChatMessage } from '../../types';
-import { Button, Badge, Input } from '@resvbar/ui';
+import { Button, Badge } from '@resvbar/ui';
+
+// Mock group membership definitions
+const GROUP_MEMBERS_MAP: Record<string, string[]> = {
+  'conv-02': ['line-01', 'line-03'], // Only Master and Sells_1 are in Mecca VIP Hotels group
+};
 
 export function NativeChatInbox() {
   const { user, selectedLine, lines, setSelectedLineId } = useApp();
@@ -37,6 +41,7 @@ export function NativeChatInbox() {
   const [sendLineId, setSendLineId] = useState<string>(selectedLine?.id || 'line-01');
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
   const [showMobileChat, setShowMobileChat] = useState<boolean>(false);
+  const [joinRequestSent, setJoinRequestSent] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +56,19 @@ export function NativeChatInbox() {
   const currentSendLine = useMemo(() => {
     return lines.find((l) => l.id === sendLineId) || selectedLine;
   }, [lines, sendLineId, selectedLine]);
+
+  // Group membership validation
+  const isLineInActiveGroup = useMemo(() => {
+    if (!activeConversation?.is_group) return true;
+    const allowedLines = GROUP_MEMBERS_MAP[activeConversation.id] || ['line-01'];
+    return allowedLines.includes(sendLineId);
+  }, [activeConversation, sendLineId]);
+
+  const validAlternativeLine = useMemo(() => {
+    if (!activeConversation?.is_group) return null;
+    const allowedLines = GROUP_MEMBERS_MAP[activeConversation.id] || ['line-01'];
+    return lines.find((l) => allowedLines.includes(l.id)) || null;
+  }, [activeConversation, lines]);
 
   // Auto-scroll down when messages change
   useEffect(() => {
@@ -75,6 +93,7 @@ export function NativeChatInbox() {
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);
     setShowMobileChat(true);
+    setJoinRequestSent(false);
 
     // mark as read
     setConversations((prev) =>
@@ -86,6 +105,11 @@ export function NativeChatInbox() {
     if (e) e.preventDefault();
     const trimmed = inputText.trim();
     if (!trimmed) return;
+
+    if (!isLineInActiveGroup) {
+      alert(`خطك الحالي (${currentSendLine.title_ar}) ليس عضواً في هذه المجموعة! يرجى التبديل لخط معتمد أو طلب الانضمام.`);
+      return;
+    }
 
     const signature = includeSignature
       ? `*${user.full_name}* — ${currentSendLine.title_ar}`
@@ -99,26 +123,24 @@ export function NativeChatInbox() {
       body: trimmed,
       media_type: 'text',
       sender_name: user.full_name,
-      signature,
+      signature: signature,
       status: 'sent',
       line_id: currentSendLine.id,
-      created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
+      created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Append to messages
     setMessagesMap((prev) => ({
       ...prev,
-      [activeConvId]: [...(prev[activeConvId] || []), newMsg]
+      [activeConvId]: [...(prev[activeConvId] || []), newMsg],
     }));
 
-    // Update conversation last message
     setConversations((prev) =>
       prev.map((c) =>
         c.id === activeConvId
           ? {
               ...c,
               last_message_text: trimmed,
-              last_message_at: 'الآن'
+              last_message_at: 'الآن',
             }
           : c
       )
@@ -129,57 +151,6 @@ export function NativeChatInbox() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] rounded-2xl overflow-hidden border border-slate-800/80 bg-slate-950 shadow-2xl">
-      {/* Top Main Toolbar */}
-      <div className="bg-slate-900/95 border-b border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        {/* Connection status with Evolution API */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              <Radio className="w-4 h-4 animate-pulse" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm text-white">منصة واتساب المباشرة (Evolution API)</span>
-                <Badge variant="live" size="sm">
-                  مباشر ومستقر
-                </Badge>
-              </div>
-              <div className="text-xs text-slate-400 font-mono flex items-center gap-2 mt-0.5">
-                <span>الخط الافتراضي: {selectedLine.title_ar}</span>
-                <span>•</span>
-                <span className="text-emerald-400">زمن الاستجابة: 24ms</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Global Line Switcher */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60 text-xs">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="text-slate-300">بدون وسيط • مباشر مع السيرفر</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 mr-2">
-            <span>الخط النشط:</span>
-            <select
-              value={selectedLine.id}
-              onChange={(e) => {
-                setSelectedLineId(e.target.value);
-                setSendLineId(e.target.value);
-              }}
-              className="bg-slate-800 text-xs text-slate-200 border border-slate-700 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500"
-            >
-              {lines.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.title_ar} ({l.phone_masked})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
       {/* Main Chat Workspace */}
       <div className="flex flex-1 overflow-hidden relative">
         {/* Right Pane: Conversations List */}
@@ -249,47 +220,42 @@ export function NativeChatInbox() {
                   <button
                     key={conv.id}
                     onClick={() => handleSelectConversation(conv.id)}
-                    className={`w-full text-right p-3.5 flex items-start gap-3 transition-colors ${
+                    className={`w-full p-3 text-right flex items-start gap-3 transition-colors ${
                       isSelected
-                        ? 'bg-emerald-500/10 border-r-2 border-emerald-500'
-                        : 'hover:bg-slate-800/40'
+                        ? 'bg-slate-800/90 border-r-4 border-emerald-400'
+                        : 'hover:bg-slate-850/50'
                     }`}
                   >
-                    {/* Avatar */}
-                    <div className="relative shrink-0">
-                      <div
-                        className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm ${
-                          conv.is_group
-                            ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
-                            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        }`}
-                      >
-                        {conv.is_group ? <Users className="w-5 h-5" /> : conv.avatar_letter}
-                      </div>
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 ${
+                        conv.is_group
+                          ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      }`}
+                    >
+                      {conv.is_group ? <Users className="w-5 h-5" /> : conv.avatar_letter}
                     </div>
 
-                    {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="font-semibold text-sm text-slate-200 truncate">
+                        <span className="font-medium text-xs text-white truncate">
                           {conv.title}
                         </span>
-                        <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                        <span className="text-[10px] text-slate-500 shrink-0 font-mono">
                           {conv.last_message_at}
                         </span>
                       </div>
 
-                      <p className="text-xs text-slate-400 truncate mb-1.5">
+                      <p className="text-[11px] text-slate-400 truncate mb-1 leading-snug">
                         {conv.last_message_text}
                       </p>
 
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/50">
+                        <span className="text-[10px] text-slate-500 font-mono truncate">
                           {conv.line_title}
                         </span>
-
                         {conv.unread_count > 0 && (
-                          <span className="bg-emerald-500 text-slate-950 font-bold text-[10px] px-1.5 py-0.5 rounded-full min-w-5 text-center">
+                          <span className="w-4 h-4 rounded-full bg-emerald-500 text-slate-950 font-bold text-[10px] flex items-center justify-center shrink-0">
                             {conv.unread_count}
                           </span>
                         )}
@@ -311,7 +277,7 @@ export function NativeChatInbox() {
           {activeConversation ? (
             <>
               {/* Chat Header */}
-              <div className="bg-slate-900/80 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-3 shrink-0">
+              <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-3 flex items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-3">
                   {/* Mobile Back Button */}
                   <button
@@ -377,6 +343,37 @@ export function NativeChatInbox() {
                 </div>
               </div>
 
+              {/* Group Membership Warning Banner */}
+              {activeConversation.is_group && !isLineInActiveGroup && (
+                <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-300">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      خطك المحدد (<strong>{currentSendLine.title_ar}</strong>) ليس عضواً في هذه المجموعة. لا يمكن الإرسال منه.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {validAlternativeLine && (
+                      <button
+                        onClick={() => setSendLineId(validAlternativeLine.id)}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 flex items-center gap-1 font-medium"
+                      >
+                        <ArrowLeftRight className="w-3 h-3" />
+                        التبديل إلى {validAlternativeLine.title_ar}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setJoinRequestSent(true)}
+                      disabled={joinRequestSent}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1"
+                    >
+                      <UserPlus className="w-3 h-3 text-purple-400" />
+                      {joinRequestSent ? 'تم إرسال الطلب للمشرف' : 'طلب انضمام للمشرف'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Messages Feed */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-950/60">
                 {activeMessages.map((msg) => {
@@ -439,14 +436,14 @@ export function NativeChatInbox() {
 
               {/* Chat Input Bar */}
               <div className="bg-slate-900/95 border-t border-slate-800 p-3 shrink-0 space-y-2">
-                {/* Send Controls: Line Selector + Signature Switch */}
+                {/* Send Controls: Compact Line Selector + Signature Switch */}
                 <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-400">
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-300 font-medium">الإرسال عبر:</span>
+                    <span className="text-slate-400 text-[11px]">خط الإرسال:</span>
                     <select
                       value={sendLineId}
                       onChange={(e) => setSendLineId(e.target.value)}
-                      className="bg-slate-800 text-xs text-slate-200 border border-slate-700 rounded-lg px-2 py-1 outline-none focus:border-emerald-500"
+                      className="bg-slate-800 text-xs text-slate-200 border border-slate-700 rounded-lg px-2.5 py-1 outline-none focus:border-emerald-500 font-medium"
                     >
                       {lines.map((l) => (
                         <option key={l.id} value={l.id}>
@@ -463,7 +460,7 @@ export function NativeChatInbox() {
                       onChange={(e) => setIncludeSignature(e.target.checked)}
                       className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
                     />
-                    <span className="text-slate-300">
+                    <span className="text-slate-300 text-[11px]">
                       تضمين التوقيع الذكي ({user.full_name})
                     </span>
                   </label>
@@ -471,30 +468,33 @@ export function NativeChatInbox() {
 
                 {/* Textbox & Send Button */}
                 <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-10 w-10 p-0 text-slate-400 hover:text-white"
-                      title="إرفاق ملف أو صورة"
-                    >
-                      <Paperclip className="w-5 h-5" />
-                    </Button>
-                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-10 w-10 p-0 text-slate-400 hover:text-white"
+                    title="إرفاق ملف أو صورة"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </Button>
 
                   <input
                     type="text"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    placeholder={`اكتب رسالتك عبر [${currentSendLine.title_ar}]... (اضغط Enter للإرسال)`}
-                    className="flex-1 bg-slate-950 text-sm text-slate-100 px-4 py-2.5 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none placeholder:text-slate-500"
+                    placeholder={
+                      !isLineInActiveGroup
+                        ? 'لا يمكنك الإرسال: خطك غير منضم للمجموعة (قم بالتبديل أولاً)'
+                        : `اكتب رسالتك... (اضغط Enter للإرسال)`
+                    }
+                    disabled={!isLineInActiveGroup}
+                    className="flex-1 bg-slate-950 text-sm text-slate-100 px-4 py-2.5 rounded-xl border border-slate-800 focus:border-emerald-500 outline-none placeholder:text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
 
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={!inputText.trim()}
+                    disabled={!inputText.trim() || !isLineInActiveGroup}
                     className="h-10 px-4 rounded-xl flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-40"
                   >
                     <span>إرسال</span>
@@ -514,4 +514,3 @@ export function NativeChatInbox() {
     </div>
   );
 }
-

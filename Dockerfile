@@ -33,3 +33,4 @@ USER nextjs
 EXPOSE 3000
 
 CMD ["node", "apps/hub-web/server.js"]
+

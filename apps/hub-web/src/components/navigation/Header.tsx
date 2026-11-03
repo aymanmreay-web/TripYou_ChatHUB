@@ -50,7 +50,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
           {lineDropdownOpen && (
             <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
               <div className="text-xs font-semibold text-slate-400 px-3 py-1.5 mb-1">
-                الخطوط المرتبطة (Baileys)
+                الخطوط المرتبطة
               </div>
               {lines.map((l) => (
                 <button

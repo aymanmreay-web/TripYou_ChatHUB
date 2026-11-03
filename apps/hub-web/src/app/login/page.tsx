@@ -47,10 +47,10 @@ export default function LoginPage() {
             <Layers className="w-8 h-8 text-slate-950 stroke-[2.5]" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
-            منصة ResvBAR Hub
+            منصة YouTrip ChatHUB
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            بوابة إدارة العمليات والمحادثات الموحدة لفريق العمل
+            بوابة إدارة محادثات واتساب الموحدة — YouTrip ChatHUB
           </p>
         </div>
 
@@ -135,7 +135,7 @@ export default function LoginPage() {
         {/* Security Footer Notice */}
         <div className="mt-6 text-center text-xs text-slate-500 flex items-center justify-center gap-1.5">
           <Shield className="w-3.5 h-3.5 text-emerald-500/60" />
-          <span>جلسات مشفرة ومحمية بسياسات الأمان المتقدمة لشركة ResvBAR</span>
+          <span>© م. أيمن مريعي — By Eng. Ayman Mreay. جميع الحقوق محفوظة</span>
         </div>
       </div>
     </div>

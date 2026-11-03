@@ -34,11 +34,11 @@ export const RAW_MODULES: ModuleContract[] = [
 export const MOCK_USERS: Record<string, StaffMe> = {
   super_admin: {
     id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
-    full_name: 'أيمن المرعي',
+    full_name: 'م. أيمن مريعي',
     role: 'super_admin',
     role_title_ar: 'مسؤول النظام الأعلى (Super Admin)',
-    email_masked: 'a***@resvbar.com',
-    phone_masked: '+966 50 *** 1001',
+    email_masked: 'AymanMreay@gmail.com',
+    phone_masked: '+963 962 128 616',
     default_line_id: 'line-01',
     working_hours: '09:00 ص - 06:00 م',
     permissions: [
@@ -62,7 +62,7 @@ export const MOCK_USERS: Record<string, StaffMe> = {
     full_name: 'سارة خالد',
     role: 'sales_lead',
     role_title_ar: 'مدير المبيعات (Sales Lead)',
-    email_masked: 's***@resvbar.com',
+    email_masked: 's***@youtrip.com',
     phone_masked: '+966 55 *** 2002',
     default_line_id: 'line-02',
     working_hours: '08:30 ص - 04:30 م',
@@ -82,7 +82,7 @@ export const MOCK_USERS: Record<string, StaffMe> = {
     full_name: 'محمد الدوسري',
     role: 'support_agent',
     role_title_ar: 'ممثل خدمة العملاء (Support Agent)',
-    email_masked: 'm***@resvbar.com',
+    email_masked: 'm***@youtrip.com',
     phone_masked: '+966 54 *** 3003',
     default_line_id: 'line-03',
     working_hours: '01:00 م - 09:00 م',
@@ -101,7 +101,7 @@ export const MOCK_USERS: Record<string, StaffMe> = {
     full_name: 'فهد العتيبي',
     role: 'trainee',
     role_title_ar: 'متدرب (Trainee)',
-    email_masked: 'f***@resvbar.com',
+    email_masked: 'f***@youtrip.com',
     phone_masked: '+966 56 *** 4004',
     default_line_id: 'line-03',
     working_hours: '10:00 ص - 03:00 م',
@@ -243,10 +243,10 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       conversation_id: 'conv-01',
       chat_jid: '966501234567@s.whatsapp.net',
       direction: 'out',
-      body: 'وعليكم السلام ورحمة الله وبركاته يا أستاذ عبدالله، أهلاً بك في ResvBAR. يسعدنا تقديم الاستشارة وتزويدك بكافة التفاصيل وعروض الأسعار.',
+      body: 'وعليكم السلام ورحمة الله وبركاته يا أستاذ عبدالله، أهلاً بك في YouTrip. يسعدنا تقديم الاستشارة وتزويدك بكافة التفاصيل وعروض الأسعار.',
       media_type: 'text',
-      sender_name: 'أيمن المرعي',
-      signature: '*أيمن المرعي* — واتساب المبيعات 1',
+      sender_name: 'م. أيمن مريعي',
+      signature: '*م. أيمن مريعي* — واتساب المبيعات 1',
       status: 'read',
       line_id: 'line-02',
       created_at: '10:16 ص'
@@ -284,8 +284,8 @@ export const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
       direction: 'out',
       body: 'أهلاً مهندس ناصر، التفتيش مجدول يوم الأربعاء القادم الساعة 10 صباحاً بإذن الله.',
       media_type: 'text',
-      sender_name: 'أيمن المرعي',
-      signature: '*أيمن المرعي* — الاستقبال',
+      sender_name: 'م. أيمن مريعي',
+      signature: '*م. أيمن مريعي* — الاستقبال',
       status: 'read',
       line_id: 'line-01',
       created_at: '11:42 ص'
@@ -364,7 +364,7 @@ export const MODULE_ROADMAP_DETAILS: Record<string, RoadmapInfo> = {
     description_ar: 'مزوّد الخطوط الذكي (Line Provisioner) لربط وإدارة خطوط واتساب عبر Evolution API مباشرة.',
     features_ar: [
       'ربط خط جديد بمسح رمز QR مباشرة من Evolution API بدون أي تعقيد',
-      'مراقبة لحظية لحالة اتصال الخط والبطارية وجودة الجلسة (Baileys)',
+      'مراقبة لحظية لحالة اتصال الخط والبطارية وجودة الجلسة',
       'إعادة تشغيل الجلسات المتعثرة بنقرة زر واحدة',
       'تخصيص أسماء وألوان وشارات تمييز لكل رقم'
     ]

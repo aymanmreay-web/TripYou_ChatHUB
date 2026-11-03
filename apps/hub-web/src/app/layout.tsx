@@ -3,8 +3,8 @@ import './globals.css';
 import { AppProvider } from '../context/AppContext';
 
 export const metadata: Metadata = {
-  title: 'ResvBAR Hub | منصة إدارة المحادثات والعمليات',
-  description: 'منصة إدارة محادثات واتساب موحدة ومباشرة عبر Evolution API لشركة ResvBAR',
+  title: 'YouTrip ChatHUB | منصة إدارة المحادثات',
+  description: 'منصة YouTrip ChatHUB لإدارة محادثات واتساب - © م. أيمن مريعي — By Eng. Ayman Mreay. جميع الحقوق محفوظة',
   manifest: '/manifest.json',
   icons: {
     icon: '/favicon.ico',
