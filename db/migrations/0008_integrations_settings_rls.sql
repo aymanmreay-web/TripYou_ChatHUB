@@ -1,6 +1,6 @@
 -- 0008 integrations, settings, modules, API keys, RLS
 create table hub.integrations(
-  key text primary key,            -- chatwoot, evolution, google, smtp ...
+  key text primary key,            -- evolution, google, smtp, smtp ...
   enabled boolean not null default false,
   config jsonb not null default '{}'::jsonb,   -- NEVER store secrets here; secrets live in env/vault
   updated_at timestamptz not null default now()
@@ -59,3 +59,6 @@ create policy tasks_write on hub.tasks for all using (hub.has_permission('tasks.
 create policy notif_own on hub.notifications for all using (staff_id = hub.current_staff_id()) with check (staff_id = hub.current_staff_id());
 create policy audit_read on hub.audit_log for select using (hub.has_permission('audit.view'));
 create policy modules_read on hub.feature_modules for select using (hub.current_staff_id() is not null);
+
+alter table hub.conversations enable row level security;
+alter table hub.messages enable row level security;

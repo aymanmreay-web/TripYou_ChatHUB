@@ -33,10 +33,39 @@ export interface WhatsAppLine {
   battery_level?: number;
 }
 
-export interface ChatSessionResponse {
-  url: string;
-  token?: string;
-  expires_at?: string;
+export type MessageDirection = 'in' | 'out';
+export type MessageStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+export type MediaType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker';
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  chat_jid: string;
+  direction: MessageDirection;
+  body: string;
+  media_type: MediaType;
+  media_url?: string;
+  sender_name: string;
+  signature?: string;
+  status: MessageStatus;
+  line_id: string;
+  created_at: string;
+}
+
+export interface ConversationItem {
+  id: string;
+  chat_jid: string;
+  title: string;
+  phone_or_jid: string;
+  avatar_letter: string;
+  is_group: boolean;
+  line_id: string;
+  line_title: string;
+  last_message_text: string;
+  last_message_at: string;
+  unread_count: number;
+  tags?: string[];
+  status: 'open' | 'pending' | 'resolved';
 }
 
 export interface RoadmapInfo {

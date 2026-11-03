@@ -47,7 +47,7 @@ create table hub.metrics_daily(
 );
 create unique index metrics_daily_uq on hub.metrics_daily(day, metric, coalesce(staff_id,'00000000-0000-0000-0000-000000000000'::uuid), coalesce(line_id,'00000000-0000-0000-0000-000000000000'::uuid));
 create table hub.conversation_facts(
-  chatwoot_conversation_id bigint primary key,
+  conversation_id uuid primary key references hub.conversations(id),
   line_id uuid references hub.lines(id),
   assignee_id uuid references hub.staff(id),
   opened_at timestamptz,

@@ -6,7 +6,6 @@ create table hub.contacts(
   notes text,
   tags text[] not null default '{}',
   source text,
-  chatwoot_contact_id bigint,
   merged_into uuid references hub.contacts(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -26,7 +25,7 @@ create table hub.contact_names(
   id uuid primary key default gen_random_uuid(),
   contact_id uuid not null references hub.contacts(id) on delete cascade,
   name text not null,
-  source text not null, -- import|whatsapp_pushname|manual|chatwoot
+  source text not null, -- import|whatsapp_pushname|manual|evolution
   created_at timestamptz not null default now()
 );
 
@@ -63,6 +62,6 @@ create index on hub.import_rows(batch_id);
 
 create table hub.contact_sync_state(
   contact_id uuid primary key references hub.contacts(id) on delete cascade,
-  chatwoot_synced_at timestamptz,
+  evolution_synced_at timestamptz,
   last_error text
 );

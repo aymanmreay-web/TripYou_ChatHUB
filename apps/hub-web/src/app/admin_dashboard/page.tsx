@@ -176,7 +176,7 @@ export default function AdminDashboardPage() {
               </div>
 
               <div className="pt-2 text-xs text-slate-500 leading-relaxed">
-                يتم إدارة وتوزيع الحمل بين حاويات Baileys و Chatwoot تلقائياً لمنع أي ضغط على السيرفر.
+                يتم إدارة وتوزيع الحمل بين جلسات وحاويات Evolution API تلقائياً وبشكل مباشر لمنع أي ضغط على السيرفر.
               </div>
             </Card>
           </div>

@@ -1,18 +1,191 @@
 openapi: 3.0.3
-info: {title: ResvBAR Hub API, version: 0.1.0, description: "Contract-first. Hub-web (Antigravity) mocks against this; hub-api (Claude2) implements it."}
-servers: [{url: "https://hub.resvbar.com/api"}]
-security: [{bearer: []}]
+info:
+  title: ResvBAR Hub API
+  version: 0.2.0
+  description: "Native WhatsApp Hub API connected directly with Evolution API. No Chatwoot dependency."
+servers:
+  - url: "https://hub.69.62.122.89.sslip.io/api"
+security:
+  - bearer: []
 components:
-  securitySchemes: {bearer: {type: http, scheme: bearer, bearerFormat: JWT}}
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
-    Module: {type: object, required: [key,area,title_ar,status], properties: {key: {type: string}, area: {type: string, enum: [user,admin]}, title_ar: {type: string}, status: {type: string, enum: [live,beta,coming_soon,hidden]}, sort: {type: integer}}}
-    Me: {type: object, required: [id,full_name,role,permissions], properties: {id: {type: string, format: uuid}, full_name: {type: string}, role: {type: string}, permissions: {type: array, items: {type: string}}, default_line_id: {type: string, format: uuid, nullable: true}}}
-    Line: {type: object, properties: {id: {type: string, format: uuid}, title_ar: {type: string}, phone_masked: {type: string}, kind: {type: string}, status: {type: string}}}
-    Error: {type: object, properties: {code: {type: string}, message: {type: string}}}
+    Module:
+      type: object
+      required: [key, area, title_ar, status]
+      properties:
+        key: {type: string}
+        area: {type: string, enum: [user, admin]}
+        title_ar: {type: string}
+        status: {type: string, enum: [live, beta, coming_soon, hidden]}
+        sort: {type: integer}
+    Me:
+      type: object
+      required: [id, full_name, role, permissions]
+      properties:
+        id: {type: string, format: uuid}
+        full_name: {type: string}
+        role: {type: string}
+        permissions: {type: array, items: {type: string}}
+        default_line_id: {type: string, format: uuid, nullable: true}
+    Line:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        title_ar: {type: string}
+        phone_masked: {type: string}
+        kind: {type: string}
+        status: {type: string}
+    Conversation:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        chat_jid: {type: string}
+        title: {type: string}
+        line_id: {type: string, format: uuid}
+        line_title: {type: string}
+        is_group: {type: boolean}
+        last_message_text: {type: string}
+        last_message_at: {type: string, format: date-time}
+        unread_count: {type: integer}
+        status: {type: string, enum: [open, pending, resolved]}
+    Message:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        conversation_id: {type: string, format: uuid}
+        chat_jid: {type: string}
+        wa_message_id: {type: string}
+        direction: {type: string, enum: [in, out]}
+        body: {type: string}
+        media_type: {type: string}
+        media_url: {type: string}
+        sender_name: {type: string}
+        signature: {type: string}
+        status: {type: string, enum: [queued, sending, sent, delivered, read, failed]}
+        created_at: {type: string, format: date-time}
+    Error:
+      type: object
+      properties:
+        code: {type: string}
+        message: {type: string}
 paths:
-  /me: {get: {summary: Current staff + effective permissions, responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Me"}}}}}}}
-  /modules: {get: {summary: Navigation modules visible to the caller (permission + status), responses: {"200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Module"}}}}}}}}
-  /chat/session: {post: {summary: "SSO into embedded Chatwoot (returns iframe URL)", responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {url: {type: string}}}}}}}}}
-  /lines: {get: {summary: Lines the caller may see, responses: {"200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Line"}}}}}}}}
-  /admin/dashboard: {get: {summary: Admin KPIs (beta), responses: {"200": {description: ok}}}}
-  /health: {get: {security: [], summary: Liveness, responses: {"200": {description: ok}}}}
+  /me:
+    get:
+      summary: Current staff + effective permissions
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+  /modules:
+    get:
+      summary: Navigation modules visible to caller
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Module"
+  /lines:
+    get:
+      summary: WhatsApp lines the caller has permission to view/use
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Line"
+  /conversations:
+    get:
+      summary: List WhatsApp conversations
+      parameters:
+        - name: line_id
+          in: query
+          schema: {type: string}
+        - name: status
+          in: query
+          schema: {type: string}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+  /conversations/{id}/messages:
+    get:
+      summary: Messages inside a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      summary: Send message directly through Evolution API
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: {type: string}
+                line_id: {type: string, format: uuid}
+                with_signature: {type: boolean, default: true}
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+  /webhooks/evolution:
+    post:
+      security: []
+      summary: Evolution API Webhook Receiver
+      responses:
+        "200":
+          description: Event processed
+  /admin/dashboard:
+    get:
+      summary: Admin KPIs
+      responses:
+        "200":
+          description: ok
+  /health:
+    get:
+      security: []
+      summary: Liveness
+      responses:
+        "200":
+          description: ok

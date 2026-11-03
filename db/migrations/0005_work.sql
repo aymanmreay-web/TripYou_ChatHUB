@@ -8,7 +8,7 @@ create table hub.tasks(
   assignee_id uuid references hub.staff(id),
   creator_id uuid references hub.staff(id),
   due_at timestamptz,
-  chatwoot_conversation_id bigint,
+  conversation_id uuid references hub.conversations(id),
   contact_id uuid references hub.contacts(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -29,7 +29,7 @@ create table hub.meetings(
   google_event_id text,
   organizer_id uuid references hub.staff(id),
   contact_id uuid references hub.contacts(id),
-  chatwoot_conversation_id bigint,
+  conversation_id uuid references hub.conversations(id),
   created_at timestamptz not null default now()
 );
 create table hub.meeting_deliveries(

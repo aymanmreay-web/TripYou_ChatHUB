@@ -112,7 +112,7 @@ export function ComingSoonView({ module }: ComingSoonViewProps) {
 
           <ul className="space-y-3">
             {(details?.features_ar || [
-              'تكامل لحظي مع واجهات برمجة تطبيقات Chatwoot و Evolution API',
+              'تكامل لحظي مع واجهات برمجة تطبيقات Evolution API وسيرفر واتساب المباشر',
               'دعم كامل للصلاحيات المقيدة وربط الخطوط بالموظفين',
               'واجهات عربية متجاوبة وسريعة بنظام التصميم الموحد',
               'تسجيل كافة العمليات في سجل التدقيق الأمني'

@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '../context/AppContext';
 import { AppShell } from '../components/layout/AppShell';
-import { ChatwootIframe } from '../components/inbox/ChatwootIframe';
+import { NativeChatInbox } from '../components/inbox/NativeChatInbox';
 
 export default function HomePage() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function HomePage() {
 
   return (
     <AppShell>
-      <ChatwootIframe />
+      <NativeChatInbox />
     </AppShell>
   );
 }

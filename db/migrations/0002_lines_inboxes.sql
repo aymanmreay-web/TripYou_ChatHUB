@@ -3,8 +3,7 @@ create table hub.line_templates(
   id uuid primary key default gen_random_uuid(),
   key text unique not null,
   title text not null,
-  evolution_settings jsonb not null default '{}'::jsonb,
-  chatwoot_settings jsonb not null default '{}'::jsonb
+  evolution_settings jsonb not null default '{}'::jsonb
 );
 
 create table hub.lines(
@@ -29,7 +28,6 @@ create table hub.inboxes(
   id uuid primary key default gen_random_uuid(),
   line_id uuid references hub.lines(id) on delete set null,
   channel text not null default 'whatsapp' check (channel in ('whatsapp','facebook','instagram','telegram','livechat','email','linkedin','tiktok','snapchat')),
-  chatwoot_inbox_id bigint unique,
   title_ar text not null,
   webhook_mode text not null default 'direct' check (webhook_mode in ('direct','hub')),
   created_at timestamptz not null default now()

@@ -55,7 +55,6 @@ create table hub.staff(
   department_id uuid references hub.departments(id),
   role_id uuid not null references hub.roles(id),
   schedule_id uuid references hub.work_schedules(id),
-  chatwoot_user_id bigint unique,
   default_line_id uuid, -- FK added in 0002
   status text not null default 'active' check (status in ('active','suspended','offboarded')),
   target_first_response_sec int,
