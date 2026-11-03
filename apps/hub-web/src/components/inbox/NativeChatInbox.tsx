@@ -149,6 +149,7 @@ export function NativeChatInbox() {
               last_message_at: timeStr || 'سابقاً',
               assigned_staff_name: user?.full_name || 'م. أيمن مريعي',
               tags: isGroup ? ['مجموعة'] : cleanPhone.startsWith('966') ? ['السعودية'] : [],
+              status: 'open',
             };
           });
 
