@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import Link from 'next/link';
@@ -8,7 +8,8 @@ import {
   Bell, UserCircle, LayoutDashboard, PhoneCall, Inbox,
   Users2, UserCheck, Shield, PenTool, Contact, Share2,
   FileSpreadsheet, History, Settings, Activity, Megaphone,
-  Search, ChevronLeft, ChevronRight, Layers, Sparkles
+  Search, ChevronLeft, ChevronRight, Layers, Sparkles,
+  Tags
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Badge, Avatar } from '@tripyou/ui';
@@ -33,6 +34,7 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   admin_dashboard: LayoutDashboard,
   lines: PhoneCall,
   inboxes: Inbox,
+  labels: Tags,
   groups_admin: Users2,
   staff: UserCheck,
   roles: Shield,

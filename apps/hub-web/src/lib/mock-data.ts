@@ -15,6 +15,7 @@ export const RAW_MODULES: ModuleContract[] = [
   { key: 'admin_dashboard', area: 'admin', title_ar: 'لوحة الإدارة', status: 'beta', required_permission: 'settings.manage', sort: 110 },
   { key: 'lines', area: 'admin', title_ar: 'الخطوط', status: 'coming_soon', required_permission: 'lines.view', sort: 120 },
   { key: 'inboxes', area: 'admin', title_ar: 'الصناديق', status: 'coming_soon', required_permission: 'inboxes.manage', sort: 130 },
+  { key: 'labels', area: 'admin', title_ar: 'الوسوم والحالات', status: 'live', required_permission: 'inboxes.manage', sort: 135 },
   { key: 'groups_admin', area: 'admin', title_ar: 'المجموعات', status: 'coming_soon', required_permission: 'groups.manage', sort: 140 },
   { key: 'staff', area: 'admin', title_ar: 'الموظفون', status: 'coming_soon', required_permission: 'staff.view', sort: 150 },
   { key: 'roles', area: 'admin', title_ar: 'الأدوار والصلاحيات', status: 'coming_soon', required_permission: 'roles.manage', sort: 160 },

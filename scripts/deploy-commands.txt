@@ -20,3 +20,4 @@ docker logs tripyou-chathub-web --tail=30
 # ============ 6. (اختياري) إيقاف Chatwoot لتحرير RAM ============
 # docker stop chatwoot-rails-1 chatwoot-sidekiq-1 chatwoot-postgres-1 chatwoot-redis-1
 # docker rm chatwoot-rails-1 chatwoot-sidekiq-1 chatwoot-postgres-1 chatwoot-redis-1
+

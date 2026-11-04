@@ -35,3 +35,4 @@ docker logs tripyou-chathub-web --tail=30
 echo ""
 echo "✅ اكتملت عملية النشر!"
 echo "🌐 تحقق من: https://hub.69.62.122.89.sslip.io"
+
