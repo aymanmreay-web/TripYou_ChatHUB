@@ -1,7 +1,7 @@
 # 🔐 الدليل الشامل لبيانات الاعتماد والروابط والمفاتيح (Master Credentials & Access Vault)
 > **مشروع:** TripYou_ChatHUB  
 > **إشراف:** م. أيمن مريعي — Eng. Ayman Mreay  
-> **تاريخ التوثيق:** 2026-11-04  
+> **تاريخ التحديث:** 2026-11-04  
 > **سرّي ومحمي — لمالك النظام وفريق العمل المعتمد فقط**
 
 ---
@@ -63,25 +63,17 @@ NEXT_PUBLIC_APP_URL=https://hub.69.62.122.89.sslip.io
 
 ---
 
-## 5. قواعد بيانات سوبابيز (Supabase Cloud Database Config)
-عند فتح مشروعك المجاني في Supabase، ستقوم بنسخ القيم التالية ووضعها في ملف البيئة `.env.local` على جهازك وعلى السيرفر:
-
-```env
-# رابط مشروع سوبابيز
-NEXT_PUBLIC_SUPABASE_URL=https://[PROJECT_ID].supabase.co
-
-# المفتاح العام الآمن للمتصفح (Anon Public Key)
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-# المفتاح السري للسيرفر والخلفية (Service Role Key - سرّي جداً)
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-# سلسلة الاتصال المباشرة لقاعدة بيانات PostgreSQL
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT_ID].supabase.co:5432/postgres
-
-# أو عبر معالج التجميع Connection Pooler (الموصى به لـ Next.js serverless):
-# DATABASE_URL=postgresql://postgres.[PROJECT_ID]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true
-```
+## 5. قاعدة بيانات سوبابيز الحية (Supabase Live Cloud Database)
+| البيان | القيمة الفعلية المعتمدة |
+|---|---|
+| **اسم المشروع (Project Name)** | `TripYou_ChatHUB` |
+| **معرّف المشروع (Project ID / Ref)** | `aypnxljvudjtasofiuhp` |
+| **رابط المشروع العام (Supabase URL)** | `https://aypnxljvudjtasofiuhp.supabase.co` |
+| **المفتاح العام (Publishable / Anon Key)** | `sb_publishable_Koc-CGSP-_RZQqSkTBiClA_Vgbm0n86` |
+| **المفتاح السري (Secret / Service Role Key)** | `sb_secret_ni5qHxMwbkRk_bJdu1Ds_Q_SjeO3WJN` |
+| **كلمة مرور قاعدة البيانات (DB Password)** | `gkaYY9j+2M%Z&BD` |
+| **سلسلة اتصال PostgreSQL المباشرة** | `postgresql://postgres:gkaYY9j%2B2M%25Z%26BD@db.aypnxljvudjtasofiuhp.supabase.co:5432/postgres` |
+| **أمر الربط عبر Supabase CLI** | `supabase link --project-ref aypnxljvudjtasofiuhp` |
 
 ---
 
