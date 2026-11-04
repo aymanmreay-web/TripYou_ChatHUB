@@ -34,6 +34,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
 import { Button } from '@tripyou/ui';
+import { supabase } from '../../lib/supabase';
 
 interface EvolutionInstanceSummary {
   id: string;
@@ -341,20 +342,87 @@ export function NativeChatInbox() {
     );
   };
 
-  // --- دورة الإسناد: تحديث حالة المحادثة ---
+  // --- Supabase: حفظ حالة المحادثة (upsert) ---
+  const upsertConversationState = useCallback(async (
+    chatJid: string,
+    lineId: string,
+    updates: { status?: ConversationStatus; assigned_staff_name?: string; assigned_staff_id?: string }
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .upsert(
+          {
+            chat_jid: chatJid,
+            line_id: lineId,
+            updated_at: new Date().toISOString(),
+            ...updates,
+          },
+          { onConflict: 'chat_jid,line_id', ignoreDuplicates: false }
+        );
+      if (error) {
+        // لا نوقف العمل — نسجل فقط في الكونسول
+        console.warn('[Supabase] upsert conversation state warning:', error.message);
+      }
+    } catch (err) {
+      console.warn('[Supabase] upsert error (non-critical):', err);
+    }
+  }, []);
+
+  // --- Supabase Realtime: مزامنة تغييرات الحالة بين الموظفين ---
+  useEffect(() => {
+    const channel = supabase
+      .channel('conversations-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations' },
+        (payload) => {
+          const updated = payload.new as any;
+          if (!updated?.chat_jid) return;
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.chat_jid === updated.chat_jid) {
+                return {
+                  ...c,
+                  status: updated.status ?? c.status,
+                  assigned_staff_name: updated.assigned_staff_name ?? c.assigned_staff_name,
+                  assigned_staff_id: updated.assigned_staff_id ?? c.assigned_staff_id,
+                };
+              }
+              return c;
+            })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // --- دورة الإسناد: تحديث حالة المحادثة (محلي + Supabase) ---
   const handleUpdateStatus = (newStatus: ConversationStatus) => {
     if (!activeConversation) return;
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, status: newStatus } : c))
     );
+    // حفظ في Supabase بشكل غير متزامن (لا ينتظر)
+    upsertConversationState(activeConversation.chat_jid, selectedInstanceName, { status: newStatus });
   };
 
-  // --- دورة الإسناد: إسناد المحادثة لموظف ---
+  // --- دورة الإسناد: إسناد المحادثة لموظف (محلي + Supabase) ---
   const handleAssignStaff = (staffName: string) => {
     if (!activeConversation) return;
+    const staffMember = AVAILABLE_STAFF.find((s) => s.name === staffName);
     setConversations((prev) =>
-      prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_staff_name: staffName } : c))
+      prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_staff_name: staffName, assigned_staff_id: staffMember?.id } : c))
     );
+    // حفظ في Supabase بشكل غير متزامن (لا ينتظر)
+    upsertConversationState(activeConversation.chat_jid, selectedInstanceName, {
+      assigned_staff_name: staffName,
+      assigned_staff_id: staffMember?.id,
+    });
   };
 
   // --- حارس المخاطر: إعادة ضبط قاطع الدائرة ---

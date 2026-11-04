@@ -3,87 +3,152 @@
 > **تاريخ التحديث:** 2026-11-04  
 > **حالة السيرفر:** حي ويعمل (Hostinger VPS `69.62.122.89`)  
 > **المستودع الرسمي:** [aymanmreay-web/TripYou_ChatHUB](https://github.com/aymanmreay-web/TripYou_ChatHUB)  
-> **ملف بيانات الاعتماد والمفاتيح:** [`CREDENTIALS_AND_ACCESS.md`](file:///d:/LastResvBAR/resvbar-hub/CREDENTIALS_AND_ACCESS.md)  
-> **ملف تهيئة سوبابيز الشامل:** [`db/supabase_master_setup.sql`](file:///d:/LastResvBAR/resvbar-hub/db/supabase_master_setup.sql)
+> **ملف بيانات الاعتماد والمفاتيح:** [`CREDENTIALS_AND_ACCESS.md`](../CREDENTIALS_AND_ACCESS.md)  
+> **ملف تهيئة سوبابيز الشامل:** [`db/supabase_master_setup.sql`](../db/supabase_master_setup.sql)
 
 ---
 
-## 1. ملخص الإنجاز الحالي والقرارات المعتمدة
-1. **الفصل المعماري الآمن (Architectural Decoupling):**
-   - **محرك واتساب (Evolution API + Baileys):** يظل مستقلاً ومباشراً على السيرفر ولا يتم نقل داتابيز واتساب (221MB) مطلقاً لتفادي أي ثقل أو تلف.
-   - **قاعدة بيانات المنطق والإسناد (Supabase Cloud PostgreSQL):** مخصصة لتخزين الموظفين، الأدوار، الصلاحيات، حالات المحادثات، قواطع الدائرة، عدادات الاستجابة SLA، وحارس المخاطر، بدون استهلاك أي ميجابايت إضافي من رام السيرفر.
-2. **تفعيل حارس المخاطر (Risk Guard Engine) في الواجهة الأصلية:**
-   - **ساعات الهدوء (Quiet Hours):** مراقبة توقيت مكة المكرمة (01:00 ص - 07:00 ص)، عرض شريط حماية مع نافذة تأكيد قبل أي إرسال يدوي استثنائي لمنع الشكاوى وحظر الأرقام.
-   - **قاطع الدائرة (Circuit Breaker):** مراقبة الأخطاء المتتالية للإرسال، وتعليق الإرسال التلقائي بعد 3 أخطاء متتالية لحماية خط واتساب مع توفير زر لإعادة الضبط اليدوي.
-   - **تسخين الأرقام (Warm-up Cap):** شارة مراقبة الحد اليومي الآمن للأرقام الجديدة.
-   - **قفل خط الإرسال (Sending Line Lock):** قفل المحادثة على الخط المخصص لمنع تشتيت العميل بين عدة أرقام.
-3. **تفعيل دورة الإسناد والعدّادات (Assignment Cycle & SLA Timers):**
-   - **الحالات الخمس المعتمدة:** 🔵 مفتوحة (`open`)، 🟠 قيد المعالجة (`in_progress`)، 🟢 تم الحل (`resolved`)، 🟡 مؤجلة (`snoozed`)، 🔴 مصعدة للإدارة (`escalated`).
-   - **إسناد الموظفين:** قائمة إسناد فورية (م. أيمن مريعي، سارة خالد، محمد الدوسري، أو عام).
-   - **عداد الاستجابة (SLA Response Timer):**
-     - أقل من 5 دقائق: طبيعي (أخضر).
-     - 5 إلى 10 دقائق: تنبيه المشرف (أصفر).
-     - أكثر من 10 دقائق: خطر وتجاوز SLA يستدعي التصعيد الفوري (أحمر نابض).
-   - **تبويبات الفلترة المتقدمة:** الكل، المسندة لي، غير مقروء، المجموعات، المصعدة للإدارة.
+## ✅ المرحلة الأولى: مكتملة 100%
+
+### 1. الفصل المعماري الآمن (Architectural Decoupling)
+| الطبقة | الحل | الحالة |
+|---|---|---|
+| **واتساب (المحادثات الحية)** | Evolution API على السيرفر مباشرةً | ✅ يعمل |
+| **منطق الموظفين والإسناد** | Supabase Cloud PostgreSQL | ✅ منشأ ومفحوص |
+| **قاعدة واتساب (221MB)** | لا يتم لمسها أو نقلها مطلقاً | ✅ محمية |
+
+### 2. حارس المخاطر (Risk Guard Engine) — مطبق في `NativeChatInbox.tsx`
+| الميزة | التفصيل | الحالة |
+|---|---|---|
+| **ساعات الهدوء** | 01:00-07:00 KSA — نافذة تأكيد منبثقة | ✅ مفعّل |
+| **قاطع الدائرة** | 3 أخطاء متتالية → إيقاف + شريط إنذار أحمر + زر إعادة ضبط | ✅ مفعّل |
+| **قفل خط الإرسال** | قفل بعد أول إرسال ناجح منعاً للتشتت | ✅ مفعّل |
+| **شارة تسخين الأرقام** | 50 رسالة/يوم للأرقام الجديدة | ✅ مفعّل |
+
+### 3. دورة الإسناد والعدادات (Assignment Cycle & SLA Timers)
+| الميزة | التفصيل | الحالة |
+|---|---|---|
+| **الحالات الخمس** | open / in_progress / resolved / snoozed / escalated | ✅ مفعّل |
+| **إسناد الموظفين** | قائمة منسدلة: م. أيمن، سارة، محمد، عام | ✅ مفعّل |
+| **عداد SLA** | أخضر <5د / أصفر 5-10د / أحمر نابض 10د+ | ✅ مفعّل |
+| **تبويبات الفلترة** | الكل / لي / غير مقروء / مصعدة / مجموعات | ✅ مفعّل |
+| **الأزرار السريعة** | "تم الحل" / "تصعيد" / "إعادة الفتح" | ✅ مفعّل |
+
+### 4. Supabase Realtime Integration — **جديد ✨**
+| الميزة | التفصيل | الحالة |
+|---|---|---|
+| **حفظ الحالات في Supabase** | `upsertConversationState()` عند كل تغيير حالة أو إسناد | ✅ مطبق |
+| **مزامنة Realtime** | `postgres_changes` → `conversations` → تحديث UI فوري | ✅ مطبق |
+| **موثوقية**: | الحفظ غير متزامن — لا يوقف UI عند خطأ شبكي | ✅ مطبق |
+| **Import Supabase Client** | `supabase` client مستورد من `lib/supabase.ts` | ✅ |
+
+### 5. قاعدة بيانات Supabase — منشأة ومفحوصة 100%
+- **الملف الموحد:** `db/supabase_master_setup.sql`
+- **المنطقة:** `eu-west-1` (Ireland)
+- **14 جدولاً:** departments, permissions, roles, role_permissions, work_schedules, lines, line_circuit_breakers, staff, contacts, groups, conversations, messages, risk_events, audit_logs
+- **Views على public schema** للتوافق مع Supabase Table Editor
+- **Realtime مفعّل** على: `public.conversations`, `public.messages`, `public.lines`
+- **بيانات مزروعة:** 4 أقسام، 4 أدوار، خط Master، حساب م. أيمن مريعي
+- **فحص REST API ✅** — يرجع بيانات الموظف الصحيحة
+
+### 6. البنية التقنية الشاملة
+```
+apps/hub-web/src/
+├── components/inbox/NativeChatInbox.tsx  ← الواجهة الرئيسية (حارس + إسناد + Realtime)
+├── lib/supabase.ts                        ← Supabase client (anon + admin)
+└── types/index.ts                         ← ConversationStatus + ConversationItem
+```
 
 ---
 
-## 2. تقييم السيرفر الحقيقي أونلاين (Live Server Assessment)
-السيرفر `69.62.122.89` (VPS ID: `1507912`):
+## 🔄 المرحلة الثانية: النشر على السيرفر (جارٍ)
 
-| الخدمة / الحاوية | الحالة | استهلاك الذاكرة (RAM) | المنفذ | ملاحظات معمارية |
-|---|---|---|---|---|
-| **tripyou-chathub-web** | **Up (يعمل)** | **48 MB فقط (0.58%)** | 3000 (داخلي) | منصتنا الجديدة المستقلة فائقة الخفة |
-| **evolution-api (2.3.7-e)** | Up | ~350 MB | 127.0.0.1:8085 | محرك واتساب الحي المباشر |
-| **n8n + Traefik** | Up | ~250 MB | 80, 443 | موجه الدومينات والشهادات SSL |
-| **chatwoot-rails-1** | Up | 442 MB (5.31%) | 127.0.0.1:3001 | جاري إيقافه لتحرير الرام |
-| **chatwoot-sidekiq-1** | Up | 545 MB (6.55%) | - | جاري إيقافه لتحرير الرام |
-| **chatwoot-postgres-1** | Up | 104 MB (1.25%) | 127.0.0.1:5432 | جاري إيقافه لتحرير الرام |
-| **chatwoot-redis-1** | Up | 15 MB (0.19%) | 127.0.0.1:6379 | جاري إيقافه لتحرير الرام |
+### الوضع الحالي
+| العنصر | الحالة |
+|---|---|
+| **GitHub main branch** | محدث حتى `c7e9c7e` + ما بعده (Realtime) |
+| **السيرفر** | يشغّل الإصدار `95588d6` (قديم) |
+| **VPN** | UrbanVPN يمنع SSH المباشر |
 
----
+### طريقة النشر (عبر Hostinger hPanel Terminal)
+1. افتح https://hpanel.hostinger.com → VPS `1507912` → **Terminal**
+2. نفّذ:
+```bash
+cd /opt/tripyou-chathub
+git pull origin main
+docker-compose -f docker-compose.hub.yml build --no-cache
+docker-compose -f docker-compose.hub.yml up -d
+docker logs tripyou-chathub-web --tail=50
+```
+3. تحقق من: https://hub.69.62.122.89.sslip.io
 
-## 3. إعداد وتهيئة قاعدة بيانات سوبابيز (Supabase Guide)
-تم إنشاء الملف التنفيذي الموحد:
-[`db/supabase_master_setup.sql`](file:///d:/LastResvBAR/resvbar-hub/db/supabase_master_setup.sql)
+> **ملاحظة مهمة:** `docker-compose.hub.yml` يمرر متغيرات Supabase كـ `environment` للحاوية — لا حاجة لنسخ `.env.local` داخل Docker image.
 
-ويتضمن:
-1. المخطط `hub` بكافة جداوله:
-   - `hub.departments`
-   - `hub.roles`
-   - `hub.permissions`
-   - `hub.staff`
-   - `hub.lines`
-   - `hub.line_circuit_breakers`
-   - `hub.contacts`
-   - `hub.conversations` (دورة الإسناد والحالات الخمس، قفل الخط، وتنبيهات SLA)
-   - `hub.messages`
-   - `hub.risk_events`
-   - `hub.audit_logs`
-2. تطبيق أمان الصفوف (RLS) وسياسات القراءة والكتابة.
-3. زراعة البيانات الأولية (Seed Data) تشمل حساب المشرف الأعلى م. أيمن مريعي، وخط Master الرئيسي.
-
-راجع الدليل التفصيلي في:
-[`docs/SUPABASE_SETUP_GUIDE.md`](file:///d:/LastResvBAR/resvbar-hub/docs/SUPABASE_SETUP_GUIDE.md)
+### بعد النشر: إيقاف Chatwoot لتوفير الرام
+```bash
+docker stop chatwoot-rails-1 chatwoot-sidekiq-1 chatwoot-postgres-1 chatwoot-redis-1
+docker rm chatwoot-rails-1 chatwoot-sidekiq-1 chatwoot-postgres-1 chatwoot-redis-1
+```
+> يوفر **~1.1 GB RAM** إضافي للسيرفر
 
 ---
 
-## 4. جدول تتبع القواعد الذهبية من `TripYouIN`
+## 📋 الخطوات القادمة (بعد النشر)
 
-| الميزة / القاعدة الذهبية | المصدر (`docs`) | الحالة في `TripYou_ChatHUB` | آلية التنفيذ |
-|---|---|---|---|
-| **الهوية البصرية وتصميم beIN** | `DESIGN.md`, `ui-kit.md` | **تم الإنجاز (Done)** | ألوان البنفسجي الملكي والأسود، خطوط Alexandria و Cairo |
-| **اسم المشروع وهوية Git** | `SPEC.md §0` | **تم الإنجاز (Done)** | تعديل اسم المستودع وحزم npm والـ PWA إلى `TripYou_ChatHUB` |
-| **حارس المخاطر (Risk Guard Engine)** | `SPEC.md §9`, `risk-table.md` | **مفعّل في الواجهة** | ساعات الهدوء 1-7ص، قاطع الدائرة بعد 3 أخطاء، تأكيد الإرسال الاستثنائي |
-| **آلة دورة الإسناد والعدّادات** | `SPEC.md §4` | **مفعّل في الواجهة** | الحالات الـ 5، إسناد الموظفين، عداد SLA (أقل من 5د، 5-10د، أكثر من 10د مع زر تصعيد) |
-| **قفل خط الإرسال وتفويض الأرقام** | `SPEC.md §5` | **مفعّل في الواجهة** | قفل تلقائي على الخط المرسل مع منع تشتت الرسائل |
-| **سجل بيانات الاعتماد والمفاتيح** | طلب المالك | **تم الإنجاز (Done)** | إنشاء `CREDENTIALS_AND_ACCESS.md` يضم كافة الروابط، المنافذ، التوكينات، واليوزرات |
-| **جهات الاتصال ثلاثية الأبعاد** | `SPEC.md §8` | **المخطط جاهز في SQL** | فرد/منشأة/مجموعة × الدور × الموقع الشجري داخل ملف `supabase_master_setup.sql` |
-| **التوقيع الذكي الآلي** | `SPEC.md §6` | **مطبق ومتحكم به** | زر تفعيل/تعطيل التوقيع الذكي بالاسم والرقم في شريط الإرسال |
+| الأولوية | المهمة | الوصف |
+|---|---|---|
+| 🔴 عالية | **نشر GitHub→VPS** | `git pull + docker build + up` عبر hPanel Terminal |
+| 🔴 عالية | **تشغيل SQL على Supabase** | لصق `supabase_master_setup.sql` في SQL Editor → Run |
+| 🟠 متوسطة | **إيقاف Chatwoot** | توفير ~1.1GB RAM بعد التأكد من عمل Hub |
+| 🟡 عادية | **صفحة إدارة الموظفين** | CRUD على `staff` table عبر `/module/staff` |
+| 🟡 عادية | **تحديث حالات المحادثات من Supabase** | جلب الحالات المحفوظة عند تحميل chats |
+| 🟢 مستقبلية | **الإشعارات الفورية (Push Notifications)** | عبر Supabase Realtime + Service Worker |
+| 🟢 مستقبلية | **بوابة اشتراك العملاء** | صفحة تسجيل دخول بالوكالة أو اختصار القسم |
 
 ---
 
-## 5. الخطوات القادمة
-1. إدخال مفاتيح سوبابيز من قبلك بعد تشغيل الملف `supabase_master_setup.sql`.
-2. ربط الـ Realtime في الواجهة لمزامنة التغييرات وحالات الإسناد بين جميع الموظفين في الوقت الفعلي.
-3. إيقاف حاويات Chatwoot القديمة نهائياً على خادم السيرفر لتحرير 2.5GB+ من الرام.
+## 🔧 تاريخ المشكلات والحلول
+
+| الخطأ | السبب | الحل |
+|---|---|---|
+| `PGRST106: Invalid schema: hub` | Supabase يعرض public وgraphql_public فقط | أُنشئت views على public schema |
+| `getaddrinfo ENOTFOUND db.aypnxljvudjtasofiuhp.supabase.co` | الجهاز لا يدعم IPv6 | التحويل لـ Connection Pooler (IPv4) |
+| `SSH Connection timed out` إلى `69.62.122.89` | UrbanVPN يوجه كل الترافيك | استخدام Hostinger hPanel Terminal |
+| `Infinite re-render loop` في Inbox | useEffect dependency loop | إصلاح dependencies وتحويل لـ useCallback |
+| `MODULE_NOT_FOUND: pg` | تشغيل script من مكان خاطئ | تشغيل من داخل `apps/hub-web/` |
+
+---
+
+## 🏗️ المعمارية التقنية الكاملة
+
+```mermaid
+graph TD
+    UI["🖥️ Next.js Hub UI\nhub.69.62.122.89.sslip.io"] 
+    EVO["⚙️ Evolution API\nevo.69.62.122.89.sslip.io"]
+    SB["☁️ Supabase\naypnxljvudjtasofiuhp.supabase.co"]
+    WA["📱 واتساب Business"]
+    VPS["🖥️ Hostinger VPS\n69.62.122.89"]
+
+    UI -- "جلب/إرسال رسائل (REST)" --> EVO
+    EVO -- "واتساب Protocol" --> WA
+    UI -- "حالات الإسناد (upsert)" --> SB
+    SB -- "Realtime postgres_changes" --> UI
+    EVO -- "Docker on" --> VPS
+    UI -- "Docker on" --> VPS
+```
+
+**القاعدة الذهبية:** واتساب (221MB) ← يبقى على السيرفر مع Evolution — لا يُلمس أبداً.
+
+---
+
+## 🔑 المفاتيح والروابط السريعة
+
+| الخدمة | الرابط |
+|---|---|
+| Hub URL | https://hub.69.62.122.89.sslip.io |
+| Evolution API | https://evo.69.62.122.89.sslip.io |
+| Supabase Dashboard | https://supabase.com/dashboard/project/aypnxljvudjtasofiuhp |
+| GitHub | https://github.com/aymanmreay-web/TripYou_ChatHUB |
+| hPanel VPS | https://hpanel.hostinger.com |
+
+> **الملف الكامل للمفاتيح والباسووردات:** [`CREDENTIALS_AND_ACCESS.md`](../CREDENTIALS_AND_ACCESS.md)

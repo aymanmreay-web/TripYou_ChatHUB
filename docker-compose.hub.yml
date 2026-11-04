@@ -15,6 +15,10 @@ services:
       - BASE_DOMAIN=69.62.122.89.sslip.io
       - EVOLUTION_URL=https://evo.69.62.122.89.sslip.io
       - EVOLUTION_API_KEY=bc6075e9f95967407faae5d0fa9ac875a8d88a94782172db
+      - NEXT_PUBLIC_SUPABASE_URL=https://aypnxljvudjtasofiuhp.supabase.co
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_Koc-CGSP-_RZQqSkTBiClA_Vgbm0n86
+      - SUPABASE_SERVICE_ROLE_KEY=sb_secret_ni5qHxMwbkRk_bJdu1Ds_Q_SjeO3WJN
+      - DATABASE_URL=postgresql://postgres.aypnxljvudjtasofiuhp:gkaYY9j%2B2M%25Z%26BD@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=n8n_default"
