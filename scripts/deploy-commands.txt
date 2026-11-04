@@ -1,0 +1,22 @@
+# سكريبت نشر السيرفر — TripYou_ChatHUB
+# انسخ هذا الملف كاملاً والصقه في Hostinger hPanel → VPS 1507912 → Terminal
+
+# ============ 1. الانتقال للمجلد ============
+cd /opt/tripyou-chathub
+
+# ============ 2. جلب آخر كود ============
+git pull origin main
+
+# ============ 3. بناء صورة Docker ============
+docker-compose -f docker-compose.hub.yml build --no-cache
+
+# ============ 4. إعادة تشغيل الحاوية ============
+docker-compose -f docker-compose.hub.yml up -d
+
+# ============ 5. فحص السجلات ============
+sleep 5
+docker logs tripyou-chathub-web --tail=30
+
+# ============ 6. (اختياري) إيقاف Chatwoot لتحرير RAM ============
+# docker stop chatwoot-rails-1 chatwoot-sidekiq-1 chatwoot-postgres-1 chatwoot-redis-1
+# docker rm chatwoot-rails-1 chatwoot-sidekiq-1 chatwoot-postgres-1 chatwoot-redis-1
