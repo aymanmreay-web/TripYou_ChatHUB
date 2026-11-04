@@ -19,10 +19,20 @@ import {
   RefreshCw,
   Loader2,
   Wifi,
-  WifiOff
+  WifiOff,
+  Clock,
+  AlertTriangle,
+  AlertCircle,
+  Zap,
+  ZapOff,
+  CheckCircle2,
+  Lock,
+  Unlock,
+  Moon,
+  ArrowUpRight
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { ConversationItem, ChatMessage } from '../../types';
+import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
 import { Button } from '@tripyou/ui';
 
 interface EvolutionInstanceSummary {
@@ -38,6 +48,13 @@ interface EvolutionInstanceSummary {
     Chat?: number;
   };
 }
+
+const AVAILABLE_STAFF = [
+  { id: 'ayman', name: 'م. أيمن مريعي', role: 'مسؤول النظام الأعلى' },
+  { id: 'sara', name: 'سارة خالد', role: 'مدير المبيعات' },
+  { id: 'dosari', name: 'محمد الدوسري', role: 'خدمة العملاء' },
+  { id: 'unassigned', name: 'غير مسند (عام)', role: 'صندوق عام' },
+];
 
 export function NativeChatInbox() {
   const { user } = useApp();
@@ -58,13 +75,28 @@ export function NativeChatInbox() {
 
   // UI & Input Controls
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'groups'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'mine' | 'unread' | 'groups' | 'escalated'>('all');
   const [inputText, setInputText] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
   const [showMobileChat, setShowMobileChat] = useState<boolean>(false);
 
+  // --- حارس المخاطر (Risk Guard Engine State) ---
+  const [consecutiveErrors, setConsecutiveErrors] = useState<number>(0);
+  const [isBreakerTripped, setIsBreakerTripped] = useState<boolean>(false);
+  const [quietConfirmOpen, setQuietConfirmOpen] = useState<boolean>(false);
+  const [pendingSendText, setPendingSendText] = useState<string>('');
+  const [lockedLinesMap, setLockedLinesMap] = useState<Record<string, string>>({});
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // حساب ساعات الهدوء بتوقيت مكة المكرمة (+3)
+  const isQuietHoursActive = useMemo(() => {
+    const now = new Date();
+    // UTC + 3 hours for KSA
+    const ksaHour = (now.getUTCHours() + 3) % 24;
+    return ksaHour >= 1 && ksaHour < 7;
+  }, []);
 
   // 1. Fetch connected instances from Evolution API
   const fetchInstances = useCallback(async () => {
@@ -75,7 +107,6 @@ export function NativeChatInbox() {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           setInstances(data);
-          // If current selected not in list or not connected, pick the first open one or first available
           const openInst = data.find((i: any) => i.connectionStatus === 'open');
           if (openInst) {
             setSelectedInstanceName(openInst.name);
@@ -104,18 +135,17 @@ export function NativeChatInbox() {
       if (res.ok) {
         const rawChats = await res.json();
         if (Array.isArray(rawChats)) {
+          const nowTs = Date.now();
           const mapped: ConversationItem[] = rawChats.map((c: any) => {
             const jid = c.remoteJid || c.id || '';
             const isGroup = jid.includes('@g.us');
             const cleanPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '');
             
-            // Format phone or title
             let title = c.pushName || '';
             if (!title) {
               title = isGroup ? 'مجموعة واتساب' : cleanPhone ? `+${cleanPhone}` : 'محادثة جديدة';
             }
 
-            // Extract last message text
             let lastText = '';
             if (c.lastMessage?.message) {
               const msgObj = c.lastMessage.message;
@@ -131,10 +161,11 @@ export function NativeChatInbox() {
                 (c.lastMessage.messageType ? `[${c.lastMessage.messageType}]` : '');
             }
 
-            // Format timestamp
             let timeStr = '';
+            let rawTimestamp = nowTs;
             if (c.updatedAt) {
               const date = new Date(c.updatedAt);
+              rawTimestamp = date.getTime();
               timeStr = date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
             }
 
@@ -154,6 +185,8 @@ export function NativeChatInbox() {
               assigned_staff_name: user?.full_name || 'م. أيمن مريعي',
               tags: isGroup ? ['مجموعة'] : cleanPhone.startsWith('966') ? ['السعودية'] : [],
               status: 'open',
+              last_customer_message_timestamp: rawTimestamp,
+              locked_line_id: instanceName,
             };
           });
 
@@ -185,7 +218,6 @@ export function NativeChatInbox() {
       const res = await fetch(`/api/evolution/instances/${instanceName}/messages?chatId=${encodeURIComponent(chatJid)}&limit=50`);
       if (res.ok) {
         const rawMsgs = await res.json();
-        // Evolution returns { messages: { records: [] } } or array
         const list: any[] = Array.isArray(rawMsgs)
           ? rawMsgs
           : Array.isArray(rawMsgs?.messages?.records)
@@ -235,7 +267,6 @@ export function NativeChatInbox() {
           };
         });
 
-        // Ensure chronological order
         setMessages(mapped.reverse());
       }
     } catch (err) {
@@ -266,7 +297,25 @@ export function NativeChatInbox() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Filter conversations
+  // --- حساب عداد الاستجابة (SLA Response Timer) ---
+  const slaStatus = useMemo(() => {
+    if (!activeConversation) return { text: 'جاهز', level: 'normal', minutes: 0 };
+    const ts = activeConversation.last_customer_message_timestamp || Date.now();
+    const diffMinutes = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+
+    if (activeConversation.status === 'resolved') {
+      return { text: 'تم الحل وإغلاق التذكرة', level: 'resolved', minutes: diffMinutes };
+    }
+    if (diffMinutes >= 10) {
+      return { text: `تجاوز مهلة الرد (${diffMinutes} دقيقة) — يلزم التصعيد!`, level: 'critical', minutes: diffMinutes };
+    }
+    if (diffMinutes >= 5) {
+      return { text: `تنبيه المشرف: انتظار (${diffMinutes} دقيقة)`, level: 'warning', minutes: diffMinutes };
+    }
+    return { text: `انتظار العميل: (${diffMinutes} د)`, level: 'normal', minutes: diffMinutes };
+  }, [activeConversation]);
+
+  // Filter conversations based on search and tabs
   const filteredConversations = useMemo(() => {
     return conversations.filter((c) => {
       const matchSearch =
@@ -275,27 +324,54 @@ export function NativeChatInbox() {
         c.last_message_text.toLowerCase().includes(searchQuery.toLowerCase());
 
       if (!matchSearch) return false;
+      if (filterTab === 'mine') return c.assigned_staff_name === user?.full_name;
       if (filterTab === 'unread') return c.unread_count > 0;
       if (filterTab === 'groups') return c.is_group;
+      if (filterTab === 'escalated') return c.status === 'escalated';
       return true;
     });
-  }, [conversations, searchQuery, filterTab]);
+  }, [conversations, searchQuery, filterTab, user]);
 
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);
     setShowMobileChat(true);
 
-    // mark as read in local state
     setConversations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unread_count: 0 } : c))
     );
   };
 
-  // Real Send Message via Evolution API
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = inputText.trim();
-    if (!trimmed || !activeConversation || isSending) return;
+  // --- دورة الإسناد: تحديث حالة المحادثة ---
+  const handleUpdateStatus = (newStatus: ConversationStatus) => {
+    if (!activeConversation) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === activeConversation.id ? { ...c, status: newStatus } : c))
+    );
+  };
+
+  // --- دورة الإسناد: إسناد المحادثة لموظف ---
+  const handleAssignStaff = (staffName: string) => {
+    if (!activeConversation) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_staff_name: staffName } : c))
+    );
+  };
+
+  // --- حارس المخاطر: إعادة ضبط قاطع الدائرة ---
+  const handleResetCircuitBreaker = () => {
+    setConsecutiveErrors(0);
+    setIsBreakerTripped(false);
+  };
+
+  // تنفيذ الإرسال الفعلي بعد تدقيق حارس المخاطر
+  const executeSendMessage = async (textToSend: string) => {
+    if (!activeConversation || isSending) return;
+
+    // تدقيق قاطع الدائرة
+    if (isBreakerTripped) {
+      alert('قاطع الدائرة مفعل! تم تعليق الإرسال التلقائي لحماية الخط من الحظر. يرجى إعادة الضبط يدوياً بعد التأكد من صحة الرقم والاتصال.');
+      return;
+    }
 
     setIsSending(true);
 
@@ -303,7 +379,7 @@ export function NativeChatInbox() {
       ? `\n\n*${user.full_name}* — ${currentInstance?.profileName || selectedInstanceName}`
       : '';
 
-    const fullMessage = `${trimmed}${signature}`;
+    const fullMessage = `${textToSend}${signature}`;
 
     try {
       const res = await fetch(`/api/evolution/instances/${selectedInstanceName}/messages`, {
@@ -316,13 +392,16 @@ export function NativeChatInbox() {
       });
 
       if (res.ok) {
-        // Optimistic append
+        // نجاح الإرسال: تصفير أخطاء قاطع الدائرة وقفل خط الإرسال
+        setConsecutiveErrors(0);
+        setLockedLinesMap((prev) => ({ ...prev, [activeConversation.chat_jid]: selectedInstanceName }));
+
         const newMsg: ChatMessage = {
           id: `msg-${Date.now()}`,
           conversation_id: activeConversation.id,
           chat_jid: activeConversation.chat_jid,
           direction: 'out',
-          body: trimmed,
+          body: textToSend,
           signature: signature.trim() || undefined,
           media_type: 'text',
           sender_name: user.full_name,
@@ -333,14 +412,15 @@ export function NativeChatInbox() {
 
         setMessages((prev) => [...prev, newMsg]);
 
-        // Update conversation last message in sidebar
+        // تحديث حالة المحادثة
         setConversations((prev) =>
           prev.map((c) =>
             c.id === activeConversation.id
               ? {
                   ...c,
-                  last_message_text: trimmed,
+                  last_message_text: textToSend,
                   last_message_at: 'الآن',
+                  status: c.status === 'open' ? 'in_progress' : c.status,
                 }
               : c
           )
@@ -349,17 +429,85 @@ export function NativeChatInbox() {
         setInputText('');
       } else {
         const errData = await res.json();
-        alert(`فشل الإرسال عبر خادم واتساب: ${errData.error || res.statusText}`);
+        const newErrCount = consecutiveErrors + 1;
+        setConsecutiveErrors(newErrCount);
+
+        if (newErrCount >= 3) {
+          setIsBreakerTripped(true);
+          alert(`⚡ تحذير قاطع الدائرة (Circuit Breaker): تم إيقاف الإرسال بعد 3 أخطاء متتالية لحماية خط واتساب من الحظر!`);
+        } else {
+          alert(`فشل الإرسال عبر واتساب (محاولة ${newErrCount}/3): ${errData.error || res.statusText}`);
+        }
       }
     } catch (err: any) {
+      const newErrCount = consecutiveErrors + 1;
+      setConsecutiveErrors(newErrCount);
+      if (newErrCount >= 3) {
+        setIsBreakerTripped(true);
+      }
       alert(`خطأ في الاتصال أثناء الإرسال: ${err.message}`);
     } finally {
       setIsSending(false);
+      setQuietConfirmOpen(false);
+      setPendingSendText('');
     }
   };
 
+  // فحص حارس المخاطر قبل الإرسال (ساعات الهدوء وقاطع الدائرة)
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = inputText.trim();
+    if (!trimmed || !activeConversation || isSending) return;
+
+    if (isBreakerTripped) {
+      alert('قاطع الدائرة مفعل حالياً! اضغط على زر إعادة ضبط القاطع في الأعلى بعد مراجعة اتصال الخط.');
+      return;
+    }
+
+    // فحص ساعات الهدوء
+    if (isQuietHoursActive) {
+      setPendingSendText(trimmed);
+      setQuietConfirmOpen(true);
+      return;
+    }
+
+    executeSendMessage(trimmed);
+  };
+
   return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] rounded-2xl overflow-hidden border border-purple-900/40 bg-[#080512] shadow-2xl">
+    <div className="flex flex-col h-[calc(100vh-5rem)] rounded-2xl overflow-hidden border border-purple-900/40 bg-[#080512] shadow-2xl relative">
+      
+      {/* --- حارس المخاطر: شريط تنبيه ساعات الهدوء وقاطع الدائرة --- */}
+      {isQuietHoursActive && (
+        <div className="bg-amber-950/70 border-b border-amber-600/40 px-4 py-1.5 flex items-center justify-between text-xs text-amber-200">
+          <div className="flex items-center gap-2">
+            <Moon className="w-4 h-4 text-amber-400 animate-pulse" />
+            <span className="font-semibold">وضع ساعات الهدوء نشط (01:00 ص - 07:00 ص بتوقيت مكة)</span>
+            <span className="text-[11px] text-amber-300/80 hidden sm:inline">— حارس المخاطر يراقب الرسائل لحماية الأرقام من شكاوى الإزعاج والحظر.</span>
+          </div>
+          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
+            Quiet Hours Guard Active
+          </span>
+        </div>
+      )}
+
+      {isBreakerTripped && (
+        <div className="bg-rose-950/90 border-b border-rose-600/50 px-4 py-2 flex items-center justify-between text-xs text-rose-200">
+          <div className="flex items-center gap-2">
+            <ZapOff className="w-4 h-4 text-rose-400 animate-bounce" />
+            <span className="font-bold">قاطع الدائرة مفعل (Circuit Breaker Tripped)!</span>
+            <span className="text-[11px] text-rose-300">تم تعليق الإرسال التلقائي بعد 3 أخطاء متتالية لحماية خط واتساب.</span>
+          </div>
+          <button
+            onClick={handleResetCircuitBreaker}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>إعادة ضبط القاطع</span>
+          </button>
+        </div>
+      )}
+
       {/* Top Bar: Connected Line / Instance Selector & Quick Status */}
       <div className="bg-[#0B0716] border-b border-purple-900/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3">
@@ -387,6 +535,12 @@ export function NativeChatInbox() {
               {currentInstance.connectionStatus === 'open' ? 'متصل ومستقر' : 'جاري الاتصال'}
             </span>
           )}
+
+          {/* شارة تسخين الأرقام وحارس المخاطر */}
+          <span className="hidden lg:flex items-center gap-1 text-[10px] text-purple-400 bg-purple-950/50 border border-purple-800/40 px-2 py-0.5 rounded-full">
+            <ShieldAlert className="w-3 h-3 text-purple-400" />
+            <span>حارس المخاطر: تسخين آمن (50 رسالة/يوم)</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -426,33 +580,53 @@ export function NativeChatInbox() {
               />
             </div>
 
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 text-xs">
+            {/* Filter Tabs - مع تبويبات دورة الإسناد */}
+            <div className="flex items-center gap-1 text-[11px] overflow-x-auto pb-1 scrollbar-none">
               <button
                 onClick={() => setFilterTab('all')}
-                className={`px-3 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
                   filterTab === 'all'
-                    ? 'bg-purple-600/30 text-purple-300 font-medium border border-purple-500/50'
+                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
                 الكل ({conversations.length})
               </button>
               <button
+                onClick={() => setFilterTab('mine')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
+                  filterTab === 'mine'
+                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
+                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                }`}
+              >
+                المسندة لي
+              </button>
+              <button
                 onClick={() => setFilterTab('unread')}
-                className={`px-3 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
                   filterTab === 'unread'
-                    ? 'bg-purple-600/30 text-purple-300 font-medium border border-purple-500/50'
+                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
                 غير مقروء ({conversations.filter((c) => c.unread_count > 0).length})
               </button>
               <button
+                onClick={() => setFilterTab('escalated')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
+                  filterTab === 'escalated'
+                    ? 'bg-rose-600/30 text-rose-300 font-semibold border border-rose-500/50'
+                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                }`}
+              >
+                المصعدة ({conversations.filter((c) => c.status === 'escalated').length})
+              </button>
+              <button
                 onClick={() => setFilterTab('groups')}
-                className={`px-3 py-1 rounded-lg transition-all ${
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
                   filterTab === 'groups'
-                    ? 'bg-purple-600/30 text-purple-300 font-medium border border-purple-500/50'
+                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
@@ -505,14 +679,30 @@ export function NativeChatInbox() {
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-slate-300 truncate mb-1 leading-snug">
+                      <p className="text-[11px] text-slate-300 truncate mb-1.5 leading-snug">
                         {conv.last_message_text}
                       </p>
 
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] text-purple-400/80 font-mono truncate">
-                          {conv.phone_or_jid}
-                        </span>
+                        {/* حالة المحادثة في القائمة */}
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                            conv.status === 'resolved'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : conv.status === 'escalated'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse'
+                              : conv.status === 'in_progress'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                          }`}>
+                            {conv.status === 'resolved' ? 'تم الحل' : conv.status === 'escalated' ? 'مصعدة' : conv.status === 'in_progress' ? 'قيد المعالجة' : 'مفتوحة'}
+                          </span>
+
+                          <span className="text-[10px] text-slate-400 truncate max-w-[100px]">
+                            {conv.assigned_staff_name || 'عام'}
+                          </span>
+                        </div>
+
                         {conv.unread_count > 0 && (
                           <span className="w-4 h-4 rounded-full bg-purple-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
                             {conv.unread_count}
@@ -535,8 +725,8 @@ export function NativeChatInbox() {
         >
           {activeConversation ? (
             <>
-              {/* Chat Header */}
-              <div className="bg-[#0B0716] border-b border-purple-900/30 px-4 py-3 flex items-center justify-between gap-3 shrink-0">
+              {/* Chat Header with Assignment Cycle & SLA Timers */}
+              <div className="bg-[#0B0716] border-b border-purple-900/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setShowMobileChat(false)}
@@ -569,32 +759,98 @@ export function NativeChatInbox() {
                           مجموعة
                         </span>
                       )}
+
+                      {/* شارة قفل الخط */}
+                      <span className="flex items-center gap-1 text-[10px] text-slate-300 bg-[#160E30] px-2 py-0.5 rounded-md border border-purple-800/40 font-mono">
+                        <Lock className="w-2.5 h-2.5 text-purple-400" />
+                        <span>الخط: {lockedLinesMap[activeConversation.chat_jid] || selectedInstanceName}</span>
+                      </span>
                     </div>
+
                     <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
                       <span className="font-mono text-purple-300/80">{activeConversation.phone_or_jid}</span>
                       <span>•</span>
-                      <span className="text-slate-400">
-                        مستقبل عبر: {selectedInstanceName}
+                      
+                      {/* عداد الاستجابة الذكي SLA Timer */}
+                      <span className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.2 rounded-full border ${
+                        slaStatus.level === 'critical'
+                          ? 'text-rose-400 bg-rose-500/10 border-rose-500/30 animate-pulse'
+                          : slaStatus.level === 'warning'
+                          ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                          : slaStatus.level === 'resolved'
+                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                          : 'text-purple-300 bg-purple-500/10 border-purple-500/30'
+                      }`}>
+                        <Clock className="w-3 h-3" />
+                        <span>{slaStatus.text}</span>
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 text-slate-400 hover:text-white"
+                {/* عناصر تحكم دورة الإسناد السريعة */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* قائمة تغيير الموظف المسند */}
+                  <div className="flex items-center gap-1.5 text-xs bg-[#120B24] border border-purple-800/50 rounded-xl px-2 py-1">
+                    <UserPlus className="w-3.5 h-3.5 text-purple-400" />
+                    <select
+                      value={activeConversation.assigned_staff_name || ''}
+                      onChange={(e) => handleAssignStaff(e.target.value)}
+                      className="bg-transparent text-white text-xs outline-none cursor-pointer"
+                    >
+                      {AVAILABLE_STAFF.map((s) => (
+                        <option key={s.id} value={s.name} className="bg-[#120B24] text-white">
+                          {s.name} ({s.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* قائمة تغيير حالة المحادثة */}
+                  <select
+                    value={activeConversation.status}
+                    onChange={(e) => handleUpdateStatus(e.target.value as ConversationStatus)}
+                    className="bg-[#120B24] text-xs text-white border border-purple-800/50 rounded-xl px-3 py-1.5 outline-none font-medium cursor-pointer"
                   >
-                    <Phone className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 text-slate-400 hover:text-white"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
+                    <option value="open">🔵 مفتوحة (Open)</option>
+                    <option value="in_progress">🟠 قيد المعالجة (In Progress)</option>
+                    <option value="resolved">🟢 تم الحل (Resolved)</option>
+                    <option value="snoozed">🟡 مؤجلة (Snoozed)</option>
+                    <option value="escalated">🔴 تصعيد للإدارة (Escalated)</option>
+                  </select>
+
+                  {/* زر سريع "تم الحل" */}
+                  {activeConversation.status !== 'resolved' ? (
+                    <button
+                      onClick={() => handleUpdateStatus('resolved')}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs transition-colors"
+                      title="تعليم المحادثة كـ تم الحل بنجاح"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>تم الحل</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleUpdateStatus('open')}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs transition-colors"
+                      title="إعادة فتح المحادثة"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>إعادة الفتح</span>
+                    </button>
+                  )}
+
+                  {/* زر تصعيد للإشراف */}
+                  {activeConversation.status !== 'escalated' && (
+                    <button
+                      onClick={() => handleUpdateStatus('escalated')}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs transition-colors"
+                      title="تصعيد المحادثة إلى الإشراف والإدارة فوراً"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                      <span>تصعيد</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -624,17 +880,14 @@ export function NativeChatInbox() {
                               : 'bg-[#150F28] text-slate-100 rounded-bl-none border border-purple-900/40'
                           }`}
                         >
-                          {/* Sender name for group inbound */}
                           {!isOut && activeConversation.is_group && (
                             <div className="text-[11px] font-bold text-purple-300 mb-1">
                               {msg.sender_name}
                             </div>
                           )}
 
-                          {/* Body */}
                           <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
 
-                          {/* Signature (if present) */}
                           {msg.signature && (
                             <div className="mt-2 pt-1.5 border-t border-purple-500/30 text-[11px] text-purple-200 flex items-center gap-1 font-mono">
                               <Sparkles className="w-3 h-3 text-purple-300" />
@@ -642,7 +895,6 @@ export function NativeChatInbox() {
                             </div>
                           )}
 
-                          {/* Meta (Time & Status) */}
                           <div
                             className={`flex items-center justify-end gap-1.5 text-[10px] mt-1.5 ${
                               isOut ? 'text-purple-200/80' : 'text-slate-400'
@@ -667,12 +919,11 @@ export function NativeChatInbox() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Chat Input Bar */}
+              {/* Chat Input Bar with Risk Guard Checks */}
               <div className="bg-[#0B0716] border-t border-purple-900/30 p-3 shrink-0 space-y-2">
-                {/* Signature Switch & Line Tag */}
                 <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-400">
                   <div className="flex items-center gap-2">
-                    <span className="text-purple-300 text-[11px] font-medium">الإرسال من خط:</span>
+                    <span className="text-purple-300 text-[11px] font-medium">خط الإرسال المخصص:</span>
                     <span className="text-white text-xs bg-[#160E30] px-2.5 py-0.5 rounded-lg border border-purple-800/40 font-mono">
                       {currentInstance?.profileName || selectedInstanceName} ({currentInstance?.ownerJid ? `+${currentInstance.ownerJid.replace('@s.whatsapp.net', '')}` : selectedInstanceName})
                     </span>
@@ -691,14 +942,13 @@ export function NativeChatInbox() {
                   </label>
                 </div>
 
-                {/* Textbox & Send Button */}
                 <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="h-10 w-10 p-0 text-slate-400 hover:text-white"
-                    title="إرفاق ملف أو صورة"
+                    title="إرفاق ملف أو مستند"
                   >
                     <Paperclip className="w-5 h-5" />
                   </Button>
@@ -708,14 +958,14 @@ export function NativeChatInbox() {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     placeholder="اكتب رسالتك إلى العميل... (اضغط Enter للإرسال المباشر عبر واتساب)"
-                    disabled={isSending}
+                    disabled={isSending || isBreakerTripped}
                     className="flex-1 bg-[#120B24] text-sm text-slate-100 px-4 py-2.5 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none placeholder:text-slate-500 disabled:opacity-50"
                   />
 
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={!inputText.trim() || isSending}
+                    disabled={!inputText.trim() || isSending || isBreakerTripped}
                     className="h-10 px-4 rounded-xl flex items-center gap-2 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-medium disabled:opacity-40"
                   >
                     {isSending ? (
@@ -738,6 +988,50 @@ export function NativeChatInbox() {
           )}
         </div>
       </div>
+
+      {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء --- */}
+      {quietConfirmOpen && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#120B24] border border-amber-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Moon className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-amber-300">تحذير حارس المخاطر: ساعات الهدوء نشطة!</h3>
+                <p className="text-xs text-slate-300">توقيت مكة المكرمة الآن بين 01:00 ص و 07:00 ص</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-amber-950/30 p-3 rounded-xl border border-amber-900/40">
+              أنت على وشك إرسال رسالة إلى العميل في وقت متأخر. قد يتسبب ذلك في إزعاج العميل أو تلقي بلاغات سبام قد تؤدي لحظر رقمك على واتساب.
+            </p>
+
+            <div className="p-3 bg-[#080512] rounded-xl border border-purple-900/40 text-xs text-purple-200 font-mono">
+              &quot;{pendingSendText}&quot;
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setQuietConfirmOpen(false);
+                  setPendingSendText('');
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+              >
+                إلغاء والانتظار حتى الصباح
+              </button>
+              <button
+                onClick={() => executeSendMessage(pendingSendText)}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-colors shadow-lg shadow-amber-950/50"
+              >
+                تأكيد الإرسال الاستثنائي الآن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

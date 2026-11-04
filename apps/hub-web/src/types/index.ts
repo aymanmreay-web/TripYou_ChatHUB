@@ -52,6 +52,8 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export type ConversationStatus = 'open' | 'in_progress' | 'pending' | 'resolved' | 'snoozed' | 'escalated';
+
 export interface ConversationItem {
   id: string;
   chat_jid: string;
@@ -65,7 +67,11 @@ export interface ConversationItem {
   last_message_at: string;
   unread_count: number;
   tags?: string[];
-  status: 'open' | 'pending' | 'resolved';
+  status: ConversationStatus;
+  assigned_staff_id?: string;
+  assigned_staff_name?: string;
+  last_customer_message_timestamp?: number;
+  locked_line_id?: string;
 }
 
 export interface RoadmapInfo {
