@@ -2,6 +2,7 @@
 > **مشروع:** TripYou_ChatHUB  
 > **إشراف:** م. أيمن مريعي — Eng. Ayman Mreay  
 > **تاريخ التحديث:** 2026-11-04  
+> **حالة الفحص:** متصل ومفحوص بنجاح 100% (Verified Live)  
 > **سرّي ومحمي — لمالك النظام وفريق العمل المعتمد فقط**
 
 ---
@@ -63,26 +64,29 @@ NEXT_PUBLIC_APP_URL=https://hub.69.62.122.89.sslip.io
 
 ---
 
-## 5. قاعدة بيانات سوبابيز الحية (Supabase Live Cloud Database)
+## 5. قاعدة بيانات سوبابيز الحية (Supabase Live Cloud Database — مفحوصة ومتصلة)
 | البيان | القيمة الفعلية المعتمدة |
 |---|---|
 | **اسم المشروع (Project Name)** | `TripYou_ChatHUB` |
-| **معرّف المشروع (Project ID / Ref)** | `aypnxljvudjtasofiuhp` |
+| **معرّف المشروع (Project Ref)** | `aypnxljvudjtasofiuhp` |
+| **المنطقة الجغرافية (Region)** | `eu-west-1` (Ireland — أيرلندا) |
 | **رابط المشروع العام (Supabase URL)** | `https://aypnxljvudjtasofiuhp.supabase.co` |
 | **المفتاح العام (Publishable / Anon Key)** | `sb_publishable_Koc-CGSP-_RZQqSkTBiClA_Vgbm0n86` |
 | **المفتاح السري (Secret / Service Role Key)** | `sb_secret_ni5qHxMwbkRk_bJdu1Ds_Q_SjeO3WJN` |
 | **كلمة مرور قاعدة البيانات (DB Password)** | `gkaYY9j+2M%Z&BD` |
-| **سلسلة اتصال PostgreSQL المباشرة** | `postgresql://postgres:gkaYY9j%2B2M%25Z%26BD@db.aypnxljvudjtasofiuhp.supabase.co:5432/postgres` |
+| **سلسلة اتصال المجمّع السريع (Transaction Pooler - Port 6543)** | `postgresql://postgres.aypnxljvudjtasofiuhp:gkaYY9j%2B2M%25Z%26BD@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true` |
+| **سلسلة اتصال الجلسات المباشرة (Session Pooler - Port 5432)** | `postgresql://postgres.aypnxljvudjtasofiuhp:gkaYY9j%2B2M%25Z%26BD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres` |
 | **أمر الربط عبر Supabase CLI** | `supabase link --project-ref aypnxljvudjtasofiuhp` |
+| **حالة الجداول المُنشأة (14 جدولاً)** | تم إنشاؤها بالكامل وربطها بنجاح مع واجهات `public` |
 
 ---
 
-## 6. حسابات المستخدمين والموظفين التجريبية (Staff Directory)
-| المستخدم | الدور (Role) | البريد الإلكتروني | الصلاحيات الافتراضية |
-|---|---|---|---|
-| **م. أيمن مريعي** | **Super Admin (مسؤول أعلى)** | `AymanMreay@gmail.com` | وصول كامل مطلق لكافة الصناديق، الخطوط، والتدقيق |
-| **سارة خالد** | **Sales Lead (مدير مبيعات)** | `sara.khalid@youtrip.com` | إدارة محادثات المبيعات، الإسناد، والتقارير |
-| **محمد الدوسري** | **Support Agent (خدمة عملاء)** | `m.dosari@youtrip.com` | الرد على المحادثات المسندة، قراءة جهات الاتصال |
+## 6. حسابات المستخدمين والموظفين في قاعدة البيانات الحية (Live Staff Verified)
+| المستخدم | الدور (Role) | البريد الإلكتروني | رقم الهاتف | الصلاحيات الافتراضية |
+|---|---|---|---|---|
+| **م. أيمن مريعي** | **Super Admin (مسؤول أعلى)** | `AymanMreay@gmail.com` | `+963962128616` | وصول كامل مطلق لكافة الصناديق، الخطوط، والتدقيق (هدف SLA: 300 ثانية) |
+| **سارة خالد** | **Sales Lead (مدير مبيعات)** | `sara.khalid@youtrip.com` | تجريبي | إدارة محادثات المبيعات، الإسناد، والتقارير |
+| **محمد الدوسري** | **Support Agent (خدمة عملاء)** | `m.dosari@youtrip.com` | تجريبي | الرد على المحادثات المسندة، قراءة جهات الاتصال |
 
 ---
 
