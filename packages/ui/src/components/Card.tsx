@@ -8,10 +8,10 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = 'default', children, ...props }, ref) => {
     const variants = {
-      default: 'bg-[#110A22]/90 border border-purple-900/30 shadow-xl shadow-black/50',
-      glass: 'bg-[#110A22]/70 backdrop-blur-xl border border-purple-500/20 shadow-2xl shadow-black/60',
-      subtle: 'bg-[#090514]/60 border border-purple-950/40',
-      interactive: 'bg-[#110A22]/80 border border-purple-900/30 hover:border-purple-500/60 hover:bg-[#1A0F33] transition-all duration-300 hover:shadow-purple-950/40 hover:shadow-2xl cursor-pointer',
+      default: 'bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-xl shadow-black/30',
+      glass: 'bg-[var(--card-bg)]/80 backdrop-blur-xl border border-[var(--border-subtle)] shadow-2xl shadow-black/30',
+      subtle: 'bg-[var(--card-elevated)] border border-[var(--border-subtle)]',
+      interactive: 'bg-[var(--card-bg)] border border-[var(--border-subtle)] hover:border-[var(--border-glow)] hover:bg-[var(--card-elevated)] transition-all duration-300 cursor-pointer',
     };
 
     return (

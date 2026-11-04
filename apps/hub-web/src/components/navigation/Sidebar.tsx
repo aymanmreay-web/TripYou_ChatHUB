@@ -12,7 +12,6 @@ import {
   Tags
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Badge, Avatar } from '@tripyou/ui';
 import { ModuleContract } from '../../types';
 
 interface SidebarProps {
@@ -79,79 +78,77 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
       {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
           onClick={onCloseMobile}
         />
       )}
 
-      {/* Sidebar container */}
+      {/* Sidebar container with Glassmorphism */}
       <aside
-        className={`fixed top-0 bottom-0 right-0 z-40 bg-[#0B0716]/95 backdrop-blur-xl border-l border-purple-900/30 transition-all duration-300 flex flex-col ${
+        className={`fixed top-0 bottom-0 right-0 z-40 bg-[var(--card-bg)]/95 backdrop-blur-xl border-l border-[var(--border-subtle)] transition-all duration-300 flex flex-col ${
           collapsed ? 'w-20' : 'w-72'
         } ${
           mobileOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 border-b border-purple-900/30 px-4 flex items-center justify-between shrink-0">
+        <div className="h-16 border-b border-[var(--border-subtle)] px-4 flex items-center justify-between shrink-0">
           {!collapsed ? (
             <Link href="/inbox" className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-700 via-violet-600 to-purple-400 flex items-center justify-center shadow-lg shadow-emerald-950/50 border border-emerald-400/30">
-                <Layers className="w-5 h-5 text-slate-950 stroke-[2.5]" />
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-md text-white font-black text-lg">
+                TY
               </div>
-              <div>
-                <span className="font-bold text-base text-white tracking-wide">TripYou</span>
-                <span className="text-purple-300 font-semibold text-xs mr-1 px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30">
-                  ChatHUB
-                </span>
+              <div className="flex flex-col">
+                <span className="font-extrabold text-sm tracking-tight text-[var(--text-main)]">TripYou_ChatHUB</span>
+                <span className="text-[10px] text-[var(--text-muted)] font-medium">إدارة المحادثات 2026</span>
               </div>
             </Link>
           ) : (
-            <div className="mx-auto">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-700 via-violet-600 to-purple-400 flex items-center justify-center shadow-lg shadow-emerald-950/50 border border-emerald-400/30">
-                <Layers className="w-5 h-5 text-slate-950 stroke-[2.5]" />
+            <Link href="/inbox" className="mx-auto">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-black text-base shadow-md">
+                TY
               </div>
-            </div>
+            </Link>
           )}
 
-          {/* Desktop Collapse Toggle */}
           <button
             onClick={onToggleCollapse}
-            className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-850 transition-colors"
-            title={collapsed ? 'توسيع القائمة' : 'تصغير القائمة'}
+            className="hidden lg:flex p-1.5 rounded-xl hover:bg-[var(--card-elevated)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
+            title={collapsed ? 'توسيع القائمة' : 'طي القائمة'}
           >
             {collapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Search Bar (When Expanded) */}
+        {/* Quick Search */}
         {!collapsed && (
-          <div className="p-3 border-b border-purple-900/20">
+          <div className="p-3 border-b border-[var(--border-subtle)]">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" />
+              <Search className="w-4 h-4 text-[var(--text-muted)] absolute right-3 top-2.5" />
               <input
                 type="text"
-                placeholder="بحث في الأقسام..."
+                placeholder="بحث في الأقسام والصلاحيات..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-900/90 text-xs text-slate-200 placeholder:text-slate-500 rounded-xl pr-8 pl-3 py-2 border border-slate-800 outline-none focus:border-purple-500 transition-colors"
+                className="w-full bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-2xl pr-9 pl-3 py-1.5 text-xs text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none focus:border-purple-500 transition-colors"
               />
             </div>
           </div>
         )}
 
-        {/* Modules Nav List */}
-        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-5 scrollbar-thin scrollbar-thumb-slate-800">
-          {/* User Modules Section */}
+        {/* Navigation Sections */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-6">
+          
+          {/* User Workspace Section */}
           <div>
             {!collapsed && (
-              <div className="text-[11px] font-semibold text-slate-400 px-3 mb-2 uppercase tracking-wider">
-                مساحة العمل
+              <div className="px-3 pb-2 text-[10px] font-bold text-[var(--text-muted)] tracking-wider uppercase">
+                مساحة الموظف
               </div>
             )}
-            <div className="space-y-1">
+            <nav className="space-y-1">
               {filteredUserModules.map((m) => {
-                const Icon = MODULE_ICONS[m.key] || Sparkles;
+                const IconComponent = MODULE_ICONS[m.key] || MessageSquare;
                 const active = isModuleActive(m);
 
                 return (
@@ -159,32 +156,25 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                     key={m.key}
                     href={getModuleHref(m)}
                     onClick={onCloseMobile}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group relative ${
+                    className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                       active
-                        ? 'bg-gradient-to-l from-purple-500/20 via-purple-500/10 to-transparent text-purple-300 font-semibold border-r-2 border-purple-400'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-900/60'
-                    }`}
+                        ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold'
+                        : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                    } ${collapsed ? 'justify-center px-2' : ''}`}
                     title={collapsed ? m.title_ar : undefined}
                   >
-                    <Icon
-                      className={`w-4 h-4 shrink-0 transition-colors ${
-                        active ? 'text-purple-300' : 'text-slate-400 group-hover:text-slate-200'
-                      }`}
-                    />
+                    <div className="flex items-center gap-3">
+                      <IconComponent className={`w-4 h-4 shrink-0 ${active ? 'text-purple-400' : 'text-[var(--text-muted)]'}`} />
+                      {!collapsed && <span>{m.title_ar}</span>}
+                    </div>
 
                     {!collapsed && (
-                      <div className="flex-1 flex items-center justify-between min-w-0">
-                        <span className="truncate">{m.title_ar}</span>
+                      <div>
                         {m.status === 'live' && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                        )}
-                        {m.status === 'beta' && (
-                          <Badge variant="beta" size="sm">
-                            تجريبي
-                          </Badge>
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
                         )}
                         {m.status === 'coming_soon' && (
-                          <span className="text-[10px] text-purple-400 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.2 rounded font-normal shrink-0">
+                          <span className="badge-glass px-2 py-0.5 rounded-lg text-[9px] text-[var(--text-muted)]">
                             قريباً
                           </span>
                         )}
@@ -193,23 +183,20 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                   </Link>
                 );
               })}
-            </div>
+            </nav>
           </div>
 
-          {/* Admin Modules Section */}
+          {/* Admin Section (Based on RBAC permissions) */}
           {filteredAdminModules.length > 0 && (
-            <div className="pt-2 border-t border-purple-900/20">
+            <div>
               {!collapsed && (
-                <div className="text-[11px] font-semibold text-slate-400 px-3 mb-2 uppercase tracking-wider flex items-center justify-between">
-                  <span>إدارة النظام</span>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {filteredAdminModules.length}
-                  </span>
+                <div className="px-3 pb-2 text-[10px] font-bold text-[var(--text-muted)] tracking-wider uppercase">
+                  لوحة الإدارة والإشراف
                 </div>
               )}
-              <div className="space-y-1">
+              <nav className="space-y-1">
                 {filteredAdminModules.map((m) => {
-                  const Icon = MODULE_ICONS[m.key] || Settings;
+                  const IconComponent = MODULE_ICONS[m.key] || LayoutDashboard;
                   const active = isModuleActive(m);
 
                   return (
@@ -217,29 +204,30 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                       key={m.key}
                       href={getModuleHref(m)}
                       onClick={onCloseMobile}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group relative ${
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                         active
-                          ? 'bg-gradient-to-l from-purple-500/20 via-purple-500/10 to-transparent text-purple-300 font-semibold border-r-2 border-purple-400'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-900/60'
-                      }`}
+                          ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold'
+                          : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                      } ${collapsed ? 'justify-center px-2' : ''}`}
                       title={collapsed ? m.title_ar : undefined}
                     >
-                      <Icon
-                        className={`w-4 h-4 shrink-0 transition-colors ${
-                          active ? 'text-purple-300' : 'text-slate-400 group-hover:text-slate-200'
-                        }`}
-                      />
+                      <div className="flex items-center gap-3">
+                        <IconComponent className={`w-4 h-4 shrink-0 ${active ? 'text-purple-400' : 'text-[var(--text-muted)]'}`} />
+                        {!collapsed && <span>{m.title_ar}</span>}
+                      </div>
 
                       {!collapsed && (
-                        <div className="flex-1 flex items-center justify-between min-w-0">
-                          <span className="truncate">{m.title_ar}</span>
+                        <div>
                           {m.status === 'beta' && (
-                            <Badge variant="beta" size="sm">
+                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
                               تجريبي
-                            </Badge>
+                            </span>
+                          )}
+                          {m.status === 'live' && (
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
                           )}
                           {m.status === 'coming_soon' && (
-                            <span className="text-[10px] text-purple-400 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.2 rounded font-normal shrink-0">
+                            <span className="badge-glass px-2 py-0.5 rounded-lg text-[9px] text-[var(--text-muted)]">
                               قريباً
                             </span>
                           )}
@@ -248,34 +236,29 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                     </Link>
                   );
                 })}
+              </nav>
+            </div>
+          )}
+
+        </div>
+
+        {/* Footer info: Connected Line with Emerald status */}
+        <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--card-elevated)]/40">
+          {!collapsed ? (
+            <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-semibold text-[var(--text-main)]">{selectedLine.title_ar}</span>
               </div>
+              <span className="text-[10px] text-emerald-400 font-mono">نشط</span>
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" title="الخط متصل" />
             </div>
           )}
         </div>
 
-        {/* User Footer Pill */}
-        <div className="p-3 border-t border-purple-900/30 bg-[#07040E]/90 shrink-0">
-          <Link
-            href="/profile"
-            className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-900 transition-colors"
-          >
-            <Avatar name={user.full_name} size="sm" status="online" />
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold text-white truncate">{user.full_name}</div>
-                <div className="text-[11px] text-slate-400 truncate">{user.role_title_ar}</div>
-              </div>
-            )}
-          </Link>
-        </div>
-
-        {/* Copyright Footer */}
-        <div className="px-3 py-2 border-t border-purple-900/20">
-          <p className="text-[10px] text-slate-600 text-center leading-tight">
-            © م. أيمن مريعي — By Eng. Ayman Mreay<br />
-            جميع الحقوق محفوظة
-          </p>
-        </div>
       </aside>
     </>
   );

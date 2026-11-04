@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark theme-purple">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>TripYou_ChatHUB — منصة إدارة المحادثات المستقبلية 2026</title>
+
+  <!-- منع الوميض اللوني اللحظي FOUC Prevention Script في بداية الـ Head -->
+  <script>
+    (function () {
+      try {
+        const savedTheme = localStorage.getItem('tripyou_theme') || 'theme-purple';
+        const savedMode = localStorage.getItem('tripyou_mode') || 'dark';
+        const root = document.documentElement;
+        
+        // إزالة أي كلاسات قديمة وتطبيق الإعدادات المخزنة بدقة قبل تحميل الـ DOM
+        root.classList.remove('theme-purple', 'theme-blue', 'dark', 'light');
+        root.classList.add(savedTheme, savedMode);
+      } catch (e) {
+        console.error('Error initializing theme from storage', e);
+      }
+    })();
+  </script>
+
+  <!-- الخطوط العربية العالمية المعتمدة: Alexandria & Cairo -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- تكوين Tailwind وتضمين المتغيرات اللغوية Semantic Tokens المتقدمة -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Alexandria', 'Cairo', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            cairo: ['Cairo', 'sans-serif']
+          },
+          colors: {
+            brand: {
+              50: 'var(--brand-50)',
+              100: 'var(--brand-100)',
+              200: 'var(--brand-200)',
+              300: 'var(--brand-300)',
+              400: 'var(--brand-400)',
+              500: 'var(--brand-500)',
+              600: 'var(--brand-600)',
+              700: 'var(--brand-700)',
+              800: 'var(--brand-800)',
+              900: 'var(--brand-900)',
+              950: 'var(--brand-950)',
+            },
+            surface: {
+              bg: 'var(--bg-main)',
+              card: 'var(--card-bg)',
+              elevated: 'var(--card-elevated)',
+              border: 'var(--border-subtle)',
+              borderHover: 'var(--border-glow)'
+            }
+          },
+          boxShadow: {
+            'glow-sm': '0 0 15px -3px var(--glow-color)',
+            'glow-md': '0 0 25px -2px var(--glow-color)',
+            'ios-glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+          },
+          borderRadius: {
+            'ios': '1.25rem',
+            'ios-lg': '1.75rem',
+            'ios-xl': '2rem'
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* ==========================================================================
+       1. مصفوفة الألوان والمتغيرات اللغوية (Semantic Tokens) - Material Design 3
+       ودرجات التدرج اللوني الدقيقة (50 إلى 950) المحسوبة وفق معايير WCAG و Realtime Colors
+       ========================================================================== */
+
+    /* السمة البنفسجية الملكية المشعة (Royal Purple & Neon Violet) - الوضع الداكن */
+    html.theme-purple.dark {
+      --bg-main: #07040E;
+      --card-bg: #0F091F;
+      --card-elevated: #180F31;
+      --border-subtle: rgba(168, 85, 247, 0.16);
+      --border-glow: rgba(168, 85, 247, 0.45);
+      --glow-color: rgba(168, 85, 247, 0.35);
+
+      --text-main: #FAF5FF;
+      --text-muted: #A8A29E;
+      --text-secondary: #C084FC;
+
+      /* درجات البنفسجي Coolors Shades (50 -> 950) */
+      --brand-50: #FAF5FF;
+      --brand-100: #F3E8FF;
+      --brand-200: #E9D5FF;
+      --brand-300: #D8B4FE;
+      --brand-400: #C084FC;
+      --brand-500: #A855F7;
+      --brand-600: #9333EA;
+      --brand-700: #7E22CE;
+      --brand-800: #6B21A8;
+      --brand-900: #581C87;
+      --brand-950: #2E0B55;
+
+      /* فقاعات المحادثة المستوحاة من أحدث اتجاهات Dribbble */
+      --bubble-user-bg: linear-gradient(135deg, #7C3AED 0%, #9333EA 60%, #A855F7 100%);
+      --bubble-user-text: #FFFFFF;
+      --bubble-peer-bg: rgba(24, 15, 49, 0.85);
+      --bubble-peer-border: rgba(168, 85, 247, 0.2);
+      --bubble-peer-text: #F3E8FF;
+    }
+
+    /* السمة البنفسجية الملكية - الوضع الفاتح (Context-Aware Contrast) */
+    html.theme-purple.light {
+      --bg-main: #FBF8FF;
+      --card-bg: #FFFFFF;
+      --card-elevated: #F6F0FD;
+      --border-subtle: rgba(147, 51, 234, 0.12);
+      --border-glow: rgba(147, 51, 234, 0.35);
+      --glow-color: rgba(147, 51, 234, 0.15);
+
+      --text-main: #1E1233;
+      --text-muted: #6B7280;
+      --text-secondary: #7E22CE;
+
+      --brand-50: #FAF5FF;
+      --brand-100: #F3E8FF;
+      --brand-200: #E9D5FF;
+      --brand-300: #D8B4FE;
+      --brand-400: #C084FC;
+      --brand-500: #A855F7;
+      --brand-600: #7C3AED;
+      --brand-700: #6D28D9;
+      --brand-800: #5B21B6;
+      --brand-900: #4C1D95;
+      --brand-950: #2E0B55;
+
+      --bubble-user-bg: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+      --bubble-user-text: #FFFFFF;
+      --bubble-peer-bg: #F4EEFC;
+      --bubble-peer-border: rgba(124, 58, 237, 0.15);
+      --bubble-peer-text: #1E1233;
+    }
+
+    /* السمة الزرقاء العميقة (Prussian Blue & Electric Ocean) - الوضع الداكن */
+    html.theme-blue.dark {
+      --bg-main: #030814;
+      --card-bg: #071329;
+      --card-elevated: #0C1E3E;
+      --border-subtle: rgba(56, 189, 248, 0.16);
+      --border-glow: rgba(56, 189, 248, 0.45);
+      --glow-color: rgba(56, 189, 248, 0.35);
+
+      --text-main: #F0F9FF;
+      --text-muted: #94A3B8;
+      --text-secondary: #38BDF8;
+
+      /* درجات الأزرق Ocean & Electric (50 -> 950) */
+      --brand-50: #F0F9FF;
+      --brand-100: #E0F2FE;
+      --brand-200: #BAE6FD;
+      --brand-300: #7DD3FC;
+      --brand-400: #38BDF8;
+      --brand-500: #0EA5E9;
+      --brand-600: #0284C7;
+      --brand-700: #0369A1;
+      --brand-800: #075985;
+      --brand-900: #0C4A6E;
+      --brand-950: #042137;
+
+      --bubble-user-bg: linear-gradient(135deg, #0284C7 0%, #0EA5E9 60%, #38BDF8 100%);
+      --bubble-user-text: #FFFFFF;
+      --bubble-peer-bg: rgba(12, 30, 62, 0.85);
+      --bubble-peer-border: rgba(56, 189, 248, 0.22);
+      --bubble-peer-text: #E0F2FE;
+    }
+
+    /* السمة الزرقاء العميقة - الوضع الفاتح (Clean Sapphire & Pure Sky) */
+    html.theme-blue.light {
+      --bg-main: #F4F8FC;
+      --card-bg: #FFFFFF;
+      --card-elevated: #EBF3FA;
+      --border-subtle: rgba(14, 165, 233, 0.14);
+      --border-glow: rgba(14, 165, 233, 0.35);
+      --glow-color: rgba(14, 165, 233, 0.15);
+
+      --text-main: #0B192C;
+      --text-muted: #64748B;
+      --text-secondary: #0284C7;
+
+      --brand-50: #F0F9FF;
+      --brand-100: #E0F2FE;
+      --brand-200: #BAE6FD;
+      --brand-300: #7DD3FC;
+      --brand-400: #38BDF8;
+      --brand-500: #0EA5E9;
+      --brand-600: #0284C7;
+      --brand-700: #0369A1;
+      --brand-800: #075985;
+      --brand-900: #0C4A6E;
+      --brand-950: #082F49;
+
+      --bubble-user-bg: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+      --bubble-user-text: #FFFFFF;
+      --bubble-peer-bg: #EEF6FD;
+      --bubble-peer-border: rgba(14, 165, 233, 0.18);
+      --bubble-peer-text: #0B192C;
+    }
+
+    /* أنماط عامة للتحكم في الانسيابية والأداء */
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                  color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* شريط التمرير الفاخر الدقيق (Luxury Minimalist Scrollbar) */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-glow);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--brand-500);
+    }
+
+    /* تأثير الزجاج المتطور (Ultra Glassmorphism & iOS Frosted Effect) */
+    .glass-effect {
+      background: rgba(15, 9, 31, 0.78);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+    html.theme-blue.dark .glass-effect {
+      background: rgba(7, 19, 41, 0.82);
+    }
+    html.light .glass-effect {
+      background: rgba(255, 255, 255, 0.86);
+    }
+
+    /* تأثير شارة "قريباً" الزجاجية المطفأة المحددة في الشروط */
+    .badge-glass {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    html.light .badge-glass {
+      background: rgba(0, 0, 0, 0.05);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    /* الحواف والفقاعات المنحنية بنمط iOS الفخم */
+    .bubble-user {
+      background: var(--bubble-user-bg);
+      color: var(--bubble-user-text);
+      border-radius: 1.35rem 1.35rem 0.3rem 1.35rem;
+      box-shadow: 0 4px 15px -3px var(--glow-color);
+    }
+    .bubble-peer {
+      background: var(--bubble-peer-bg);
+      color: var(--bubble-peer-text);
+      border: 1px solid var(--bubble-peer-border);
+      border-radius: 1.35rem 1.35rem 1.35rem 0.3rem;
+    }
+
+    /* حماية من الانهيار الأفقي وضمان حدود العرض */
+    .overflow-touch {
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+    }
+  </style>
+</head>
+
+<body class="h-screen w-screen overflow-hidden flex flex-col font-sans select-none antialiased">
+
+  <!-- ==========================================================================
+       1. شريط التحكم العلوي المثبت (Fixed Top Header) - متكيف للجوال والكمبيوتر
+       ========================================================================== -->
+  <header class="h-16 w-full shrink-0 border-b border-[var(--border-subtle)] glass-effect z-40 px-3 sm:px-6 flex items-center justify-between transition-colors duration-200">
+    
+    <!-- يمين: هوية المنصة وزر فتح القائمة للجوال -->
+    <div class="flex items-center gap-3">
+      <!-- زر تبديل القائمة الجانبية (شاشات الجوال والشاشات المتوسطة) -->
+      <button id="sidebarToggleBtn" aria-label="تبديل القائمة" class="md:hidden w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] active:scale-95 transition-transform">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      <!-- شعار TripYou_ChatHUB المضيء -->
+      <div class="flex items-center gap-2.5 cursor-pointer select-none" onclick="app.switchView('inbox')">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-400 flex items-center justify-center shadow-glow-sm text-white font-black text-xl tracking-wider">
+          TY
+        </div>
+        <div class="hidden sm:flex flex-col">
+          <div class="flex items-center gap-1.5">
+            <span class="font-extrabold text-base tracking-tight text-[var(--text-main)]">TripYou</span>
+            <span class="font-light text-xs px-1.5 py-0.5 rounded-md bg-brand-500/20 text-brand-400 border border-brand-500/30">ChatHUB</span>
+          </div>
+          <span class="text-[10px] text-[var(--text-muted)] font-medium -mt-0.5">منظومة المراسلة الفورية 2026</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- وسط: محدد خط واتساب النشط (مع شارة الزمرد النبضية الصارمة) -->
+    <div class="relative">
+      <button id="activeLineSelectorBtn" class="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-glow)] transition-all">
+        <!-- شارة الزمرد النشطة المستقلة عن السمة مع أنيميشن نبضي دائم (bg-emerald-500 animate-pulse) -->
+        <div class="relative flex items-center justify-center w-3 h-3">
+          <span class="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 animate-pulse"></span>
+        </div>
+
+        <div class="flex flex-col text-right">
+          <div class="flex items-center gap-1.5">
+            <span id="currentLineTitle" class="text-xs sm:text-sm font-bold text-[var(--text-main)]">الرقم الرئيسي (الاستقبال)</span>
+            <svg class="w-3.5 h-3.5 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+          <span id="currentLinePhone" class="hidden sm:inline text-[10px] text-[var(--text-muted)] tabular-nums">+966 50 *** 1000</span>
+        </div>
+      </button>
+
+      <!-- قائمة خطوط واتساب المنسدلة -->
+      <div id="linesDropdown" class="hidden absolute left-0 right-0 sm:right-auto sm:w-72 mt-2 py-2 rounded-2xl glass-effect border border-[var(--border-subtle)] shadow-ios-glass z-50 transition-all">
+        <div class="px-3 py-1.5 border-b border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-muted)]">
+          خطوط واتساب المتصلة (Evolution API)
+        </div>
+        <div id="linesListContainer" class="p-1 space-y-1 max-h-60 overflow-y-auto">
+          <!-- تُحقن عناصر الخطوط برمجياً -->
+        </div>
+      </div>
+    </div>
+
+    <!-- يسار: محرك تغيير السمات الفوري والوضع الداكن/الفاتح وملف المستخدم -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      
+      <!-- محدد السمة اللونية (بنفسجي / أزرق) -->
+      <div class="flex items-center bg-[var(--card-elevated)] p-1 rounded-2xl border border-[var(--border-subtle)]">
+        <!-- زر البنفسجي الملكي -->
+        <button id="themePurpleBtn" title="السمة البنفسجية الملكية (Royal Purple)" class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all">
+          <span class="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-gradient-to-tr from-purple-600 to-fuchsia-400 shadow-sm"></span>
+        </button>
+        <!-- زر الأزرق العميق -->
+        <button id="themeBlueBtn" title="السمة الزرقاء العميقة (Prussian Blue)" class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all">
+          <span class="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-gradient-to-tr from-sky-500 to-blue-700 shadow-sm"></span>
+        </button>
+      </div>
+
+      <!-- زر تبديل الوضع (داكن / فاتح) -->
+      <button id="modeToggleBtn" title="تبديل الوضع (داكن / فاتح)" class="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-glow)] flex items-center justify-center text-[var(--text-main)] active:scale-95 transition-all">
+        <!-- أيقونة الشمس (تظهر في الداكن) -->
+        <svg id="sunIcon" class="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+        <!-- أيقونة القمر (تظهر في الفاتح) -->
+        <svg id="moonIcon" class="hidden w-4 h-4 sm:w-5 sm:h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+        </svg>
+      </button>
+
+      <!-- قائمة الموظف السريعة (تبديل الأدوار وتجربة الصلاحيات) -->
+      <div class="relative">
+        <button id="userProfileBtn" class="flex items-center gap-2 p-1 pl-2 sm:pl-3 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-glow)] transition-all">
+          <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm">
+            أ
+          </div>
+          <span id="headerUserName" class="hidden md:inline text-xs font-semibold text-[var(--text-main)]">م. أيمن مريعي</span>
+        </button>
+
+        <!-- قائمة تبديل الصلاحيات والمستخدمين -->
+        <div id="userDropdown" class="hidden absolute left-0 mt-2 w-64 py-2 rounded-2xl glass-effect border border-[var(--border-subtle)] shadow-ios-glass z-50">
+          <div class="px-4 py-2 border-b border-[var(--border-subtle)]">
+            <p id="dropdownFullName" class="text-sm font-bold text-[var(--text-main)]">م. أيمن مريعي</p>
+            <p id="dropdownRoleTitle" class="text-[11px] text-brand-400">مسؤول النظام الأعلى (Super Admin)</p>
+          </div>
+          <div class="p-2 space-y-1">
+            <span class="block px-2 py-1 text-[10px] text-[var(--text-muted)] font-medium">تجربة المنظومة بهوية أخرى:</span>
+            <button onclick="app.setUserRole('super_admin')" class="w-full text-right px-3 py-1.5 rounded-xl text-xs text-[var(--text-main)] hover:bg-brand-500/20 flex items-center justify-between">
+              <span>مسؤول أعلى (Super Admin)</span>
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            </button>
+            <button onclick="app.setUserRole('sales_lead')" class="w-full text-right px-3 py-1.5 rounded-xl text-xs text-[var(--text-main)] hover:bg-brand-500/20 flex items-center justify-between">
+              <span>مدير المبيعات (Sales Lead)</span>
+              <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+            </button>
+            <button onclick="app.setUserRole('support_agent')" class="w-full text-right px-3 py-1.5 rounded-xl text-xs text-[var(--text-main)] hover:bg-brand-500/20 flex items-center justify-between">
+              <span>خدمة العملاء (Support Agent)</span>
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            </button>
+            <button onclick="app.setUserRole('trainee')" class="w-full text-right px-3 py-1.5 rounded-xl text-xs text-[var(--text-main)] hover:bg-brand-500/20 flex items-center justify-between">
+              <span>متدرب (Trainee)</span>
+              <span class="w-2 h-2 rounded-full bg-stone-400"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       2. الحاوية الرئيسية للتطبيق (Main Work Area - Desktop & Mobile Viewports)
+       ========================================================================== -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- القائمة الجانبية (Desktop Sidebar & Mobile Drawer) -->
+    <aside id="appSidebar" class="fixed md:static inset-y-0 right-0 z-30 w-72 md:w-64 lg:w-72 bg-[var(--card-bg)] border-l border-[var(--border-subtle)] flex flex-col justify-between transition-transform duration-300 transform translate-x-full md:translate-x-0 h-full overflow-hidden">
+      
+      <!-- ترويسة القائمة للجوال (زر الإغلاق) -->
+      <div class="p-4 flex items-center justify-between md:hidden border-b border-[var(--border-subtle)]">
+        <span class="text-sm font-bold text-[var(--text-main)]">القائمة الرئيسية</span>
+        <button id="sidebarCloseBtn" class="w-8 h-8 rounded-xl bg-[var(--card-elevated)] flex items-center justify-center text-[var(--text-muted)]">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- قائمة الموديلات والوحدات (Scrollable Modules) -->
+      <div class="flex-1 overflow-y-auto overflow-touch p-3 space-y-6">
+        
+        <!-- قسم مساحة الموظف (User Workspace) -->
+        <div>
+          <div class="px-3 pb-2 text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+            مساحة العمل
+          </div>
+          <nav class="space-y-1">
+            
+            <!-- زر المحادثات (Live) -->
+            <button onclick="app.switchView('inbox')" data-view="inbox" class="nav-item active w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all bg-brand-500/15 text-brand-400 border border-brand-500/30">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <span>المحادثات</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-[10px] bg-brand-500 text-white font-bold tabular-nums">4</span>
+            </button>
+
+            <!-- جهات الاتصال (Coming Soon - شارة زجاجية مطفأة Glassmorphism) -->
+            <button onclick="app.switchView('contacts')" data-view="contacts" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] transition-all">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span>جهات الاتصال</span>
+              </div>
+              <span class="badge-glass px-2 py-0.5 rounded-lg text-[10px] text-[var(--text-muted)]">قريباً</span>
+            </button>
+
+            <!-- المهام (Coming Soon) -->
+            <button onclick="app.switchView('tasks')" data-view="tasks" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] transition-all">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                <span>المهام الذكية</span>
+              </div>
+              <span class="badge-glass px-2 py-0.5 rounded-lg text-[10px] text-[var(--text-muted)]">قريباً</span>
+            </button>
+
+            <!-- الحملات (Coming Soon) -->
+            <button onclick="app.switchView('campaigns')" data-view="campaigns" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] transition-all">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                </svg>
+                <span>الحملات الإعلانية</span>
+              </div>
+              <span class="badge-glass px-2 py-0.5 rounded-lg text-[10px] text-[var(--text-muted)]">قريباً</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- قسم لوحة الإدارة والإشراف (Admin Area - تظهر حسب الصلاحيات) -->
+        <div id="adminModulesSection">
+          <div class="px-3 pb-2 text-[11px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+            الإدارة والتحكم
+          </div>
+          <nav class="space-y-1">
+            <!-- لوحة الإدارة (Beta) -->
+            <button onclick="app.switchView('admin_dashboard')" data-view="admin_dashboard" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] transition-all">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+                <span>لوحة المؤشرات</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-lg text-[10px] bg-brand-500/20 text-brand-400 font-bold">تجريبي</span>
+            </button>
+
+            <!-- الوسوم والحالات (Live) -->
+            <button onclick="app.switchView('labels')" data-view="labels" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] transition-all">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                <span>الوسوم والتصنيفات</span>
+              </div>
+            </button>
+
+            <!-- الموظفون (Coming Soon) -->
+            <button onclick="app.switchView('staff')" data-view="staff" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] transition-all">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <span>فريق العمل</span>
+              </div>
+              <span class="badge-glass px-2 py-0.5 rounded-lg text-[10px] text-[var(--text-muted)]">قريباً</span>
+            </button>
+          </nav>
+        </div>
+
+      </div>
+
+      <!-- أسفل القائمة: بطاقة الإصدار وحالة الاتصال المباشر -->
+      <div class="p-4 border-t border-[var(--border-subtle)] bg-[var(--card-elevated)]/50">
+        <div class="flex items-center justify-between text-xs text-[var(--text-muted)] mb-1">
+          <span>حالة المحرك</span>
+          <span class="text-emerald-400 font-semibold flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            Evolution Direct
+          </span>
+        </div>
+        <div class="text-[11px] text-[var(--text-muted)] flex justify-between">
+          <span>النسخة v2.4.0</span>
+          <span>SaaS 2026 Ready</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- طبقة التعتيم الخلفية لشاشات الجوال عند فتح القائمة -->
+    <div id="sidebarBackdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 hidden md:hidden transition-opacity"></div>
+
+    <!-- ==========================================================================
+         3. مساحة العمل النشطة (Dynamic Content View)
+         ========================================================================== -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden bg-[var(--bg-main)] relative pb-16 md:pb-0">
+
+      <!-- ==============================================
+           أ. واجهة المحادثات الرئيسية (Inbox View)
+           ============================================== -->
+      <div id="view-inbox" class="h-full flex flex-col md:flex-row overflow-hidden w-full">
+        
+        <!-- قائمة المحادثات (Conversations List Pane) -->
+        <div id="conversationsPane" class="w-full md:w-80 lg:w-96 flex flex-col h-full border-l border-[var(--border-subtle)] bg-[var(--card-bg)] shrink-0 transition-all">
+          
+          <!-- صندوق البحث والفلترة -->
+          <div class="p-3 border-b border-[var(--border-subtle)] space-y-2.5">
+            <div class="relative">
+              <input id="chatSearchInput" type="text" placeholder="بحث في المحادثات، الأسماء، الأرقام..." class="w-full bg-[var(--card-elevated)] border border-[var(--border-subtle)] focus:border-brand-500 rounded-2xl py-2 pr-9 pl-4 text-xs sm:text-sm text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none transition-all" />
+              <svg class="w-4 h-4 absolute right-3 top-3 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+
+            <!-- أزرار التصفية السريعة -->
+            <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-none">
+              <button onclick="app.filterConversations('all')" class="filter-tab active px-3 py-1 rounded-xl text-xs font-semibold bg-brand-500/20 text-brand-400 border border-brand-500/30 whitespace-nowrap">الكل</button>
+              <button onclick="app.filterConversations('unread')" class="filter-tab px-3 py-1 rounded-xl text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-elevated)] whitespace-nowrap">غير مقروءة</button>
+              <button onclick="app.filterConversations('groups')" class="filter-tab px-3 py-1 rounded-xl text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-elevated)] whitespace-nowrap">المجموعات</button>
+              <button onclick="app.filterConversations('resolved')" class="filter-tab px-3 py-1 rounded-xl text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-elevated)] whitespace-nowrap">المكتملة</button>
+            </div>
+          </div>
+
+          <!-- قائمة المحادثات القابلة للتمرير -->
+          <div id="conversationsContainer" class="flex-1 overflow-y-auto overflow-touch divide-y divide-[var(--border-subtle)]">
+            <!-- تُحقن عناصر المحادثات هنا برمجياً -->
+          </div>
+        </div>
+
+        <!-- نافذة المحادثة النشطة (Active Chat Stream Pane) -->
+        <div id="activeChatPane" class="hidden md:flex flex-1 flex-col h-full overflow-hidden bg-[var(--bg-main)] relative">
+          
+          <!-- ترويسة المحادثة النشطة -->
+          <div class="h-16 px-4 border-b border-[var(--border-subtle)] glass-effect flex items-center justify-between z-10 shrink-0">
+            <div class="flex items-center gap-3">
+              <!-- زر العودة لقائمة المحادثات (في الجوال) -->
+              <button id="backToConversationsBtn" class="md:hidden w-8 h-8 rounded-xl bg-[var(--card-elevated)] flex items-center justify-center text-[var(--text-main)] active:scale-95">
+                <svg class="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              <div id="activeChatAvatar" class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
+                ع
+              </div>
+
+              <div class="flex flex-col">
+                <div class="flex items-center gap-2">
+                  <h3 id="activeChatTitle" class="text-sm font-bold text-[var(--text-main)]">عبدالله السبيعي</h3>
+                  <span id="activeChatTag" class="px-2 py-0.5 rounded-md text-[10px] bg-brand-500/20 text-brand-400 font-semibold border border-brand-500/30">عميل محتمل</span>
+                </div>
+                <div class="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                  <span id="activeChatPhone" class="tabular-nums">+966 50 123 4567</span>
+                  <span>•</span>
+                  <span id="activeChatLineName" class="text-brand-400 font-medium">واتساب المبيعات 1</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- أزرار الإجراءات السريعة في ترويسة الشات -->
+            <div class="flex items-center gap-1 sm:gap-2">
+              <button onclick="app.toggleCustomerDetails()" class="p-2 rounded-xl bg-[var(--card-elevated)] text-[var(--text-muted)] hover:text-[var(--text-main)] border border-[var(--border-subtle)] hover:border-brand-500 transition-all" title="معلومات العميل">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- شريط الرسائل القابل للتمرير (Messages Scroll Area) -->
+          <div id="messagesContainer" class="flex-1 overflow-y-auto overflow-touch p-4 sm:p-6 space-y-4">
+            <!-- تُحقن فقاعات الرسائل هنا برمجياً مع التباين الفائق والزوايا الناعمة -->
+          </div>
+
+          <!-- شريط الردود السريعة (Quick Reply Chips) -->
+          <div class="px-4 py-2 border-t border-[var(--border-subtle)] bg-[var(--card-bg)]/80 flex items-center gap-2 overflow-x-auto scrollbar-none text-xs">
+            <span class="text-[11px] text-[var(--text-muted)] whitespace-nowrap">رد سريع:</span>
+            <button onclick="app.sendQuickReply('أهلاً بك يا أستاذ، كيف يمكنني مساعدتك اليوم؟')" class="px-3 py-1 rounded-xl bg-[var(--card-elevated)] hover:bg-brand-500/20 text-[var(--text-main)] text-xs border border-[var(--border-subtle)] whitespace-nowrap transition-all">أهلاً بك ومرحباً 👋</button>
+            <button onclick="app.sendQuickReply('تم تأكيد حجز الموعد بنجاح، وسنرسل لك تفاصيل الموقع.')" class="px-3 py-1 rounded-xl bg-[var(--card-elevated)] hover:bg-brand-500/20 text-[var(--text-main)] text-xs border border-[var(--border-subtle)] whitespace-nowrap transition-all">تأكيد الحجز والموعد 📅</button>
+            <button onclick="app.sendQuickReply('يسعدنا تزويدك بعرض السعر المرفق، بانتظار ملاحظاتكم الكريمة.')" class="px-3 py-1 rounded-xl bg-[var(--card-elevated)] hover:bg-brand-500/20 text-[var(--text-main)] text-xs border border-[var(--border-subtle)] whitespace-nowrap transition-all">إرسال عرض السعر 💼</button>
+          </div>
+
+          <!-- صندوق إدخال النص الذكي المثبت (Smart Bottom Input Area) -->
+          <div class="p-3 sm:p-4 border-t border-[var(--border-subtle)] glass-effect z-10 shrink-0">
+            <form id="chatMessageForm" onsubmit="app.handleSendMessage(event)" class="flex items-end gap-2 sm:gap-3">
+              
+              <!-- أزرار المرفقات والوسائط -->
+              <button type="button" class="p-2 sm:p-2.5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-brand-400 active:scale-95 transition-all" title="إرفاق ملف أو صورة">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+              </button>
+
+              <!-- حقل كتابة الرسالة -->
+              <div class="flex-1 relative">
+                <textarea id="messageTextInput" rows="1" placeholder="اكتب رسالتك لعميل واتساب هنا... (Shift+Enter لسطر جديد)" class="w-full resize-none max-h-32 bg-[var(--card-elevated)] border border-[var(--border-subtle)] focus:border-brand-500 rounded-2xl py-2.5 px-4 text-xs sm:text-sm text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none transition-all leading-relaxed"></textarea>
+              </div>
+
+              <!-- زر الإرسال مع أنيميشن ناعم -->
+              <button type="submit" class="p-2.5 sm:px-5 sm:py-2.5 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-semibold text-xs sm:text-sm shadow-glow-sm active:scale-95 transition-all flex items-center gap-2">
+                <span class="hidden sm:inline">إرسال</span>
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </button>
+
+            </form>
+
+            <!-- معلومات التوقيع التلقائي للموظف -->
+            <div class="flex items-center justify-between mt-2 text-[10px] text-[var(--text-muted)] px-1">
+              <span>التوقيع الآلي: <strong id="signatureBadge" class="text-brand-400 font-semibold">*م. أيمن مريعي* — واتساب المبيعات 1</strong></span>
+              <span>مباشر بدون وسيط • Evolution API</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- لوحة تفاصيل العميل الجانبية (Slide-over Details Drawer) -->
+        <div id="customerDetailsPane" class="hidden w-72 lg:w-80 border-r border-[var(--border-subtle)] bg-[var(--card-bg)] flex-col h-full overflow-y-auto p-4 space-y-5">
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
+            <h4 class="text-sm font-bold text-[var(--text-main)]">بطاقة العميل الموحدة</h4>
+            <button onclick="app.toggleCustomerDetails()" class="text-[var(--text-muted)] hover:text-[var(--text-main)]">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- هوية العميل -->
+          <div class="text-center">
+            <div class="w-16 h-16 rounded-3xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white text-2xl font-black flex items-center justify-center mx-auto shadow-glow-sm mb-2">
+              ع
+            </div>
+            <h5 class="font-bold text-base text-[var(--text-main)]">عبدالله السبيعي</h5>
+            <p class="text-xs text-[var(--text-muted)] tabular-nums">+966 50 123 4567</p>
+          </div>
+
+          <!-- تفاصيل الحالة والخط -->
+          <div class="space-y-3 bg-[var(--card-elevated)] p-3 rounded-2xl border border-[var(--border-subtle)] text-xs">
+            <div class="flex justify-between">
+              <span class="text-[var(--text-muted)]">الخط المرتبط:</span>
+              <span class="font-semibold text-brand-400">واتساب المبيعات 1</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--text-muted)]">حالة التذكرة:</span>
+              <span class="text-emerald-400 font-semibold">مفتوحة (Open)</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--text-muted)]">آخر تفاعل:</span>
+              <span class="tabular-nums">منذ دقيقتين</span>
+            </div>
+          </div>
+
+          <!-- وسوم العميل -->
+          <div>
+            <span class="text-xs font-semibold text-[var(--text-muted)] block mb-2">الوسوم والتصنيفات:</span>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="px-2.5 py-1 rounded-xl text-xs bg-brand-500/15 text-brand-400 border border-brand-500/25">عميل محتمل</span>
+              <span class="px-2.5 py-1 rounded-xl text-xs bg-amber-500/15 text-amber-400 border border-amber-500/25">مبيعات VIP</span>
+              <span class="px-2.5 py-1 rounded-xl text-xs bg-blue-500/15 text-blue-400 border border-blue-500/25">مهتم بعرض سنوي</span>
+            </div>
+          </div>
+
+          <!-- ملاحظات الموظفين الداخلية -->
+          <div>
+            <span class="text-xs font-semibold text-[var(--text-muted)] block mb-2">ملاحظة داخلية للموظفين:</span>
+            <div class="p-3 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-xs leading-relaxed text-[var(--text-muted)]">
+              العميل يرغب في زيارة الفرع غداً لمعاينة شاشات النظام قبل توقيع العقد النهائي.
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==============================================
+           ب. واجهة الموديلات "قريباً" (Coming Soon View)
+           بتأثير زجاجي مطفأ مبهر وتدرجات مستقبلية
+           ============================================== -->
+      <div id="view-placeholder" class="hidden h-full flex-1 overflow-y-auto p-6 md:p-12 flex flex-col items-center justify-center text-center">
+        <div class="max-w-xl w-full p-8 rounded-3xl glass-effect border border-[var(--border-subtle)] shadow-ios-glass relative overflow-hidden">
+          
+          <div class="w-20 h-20 rounded-3xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white flex items-center justify-center mx-auto shadow-glow-md mb-6">
+            <svg id="placeholderIcon" class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </div>
+
+          <div class="inline-block badge-glass px-4 py-1.5 rounded-full text-xs font-bold text-brand-400 border border-brand-500/30 mb-4">
+            خارطة الطريق الرسمية 2026
+          </div>
+
+          <h2 id="placeholderTitle" class="text-2xl sm:text-3xl font-black text-[var(--text-main)] mb-3">دليل جهات الاتصال الموحد</h2>
+          <p id="placeholderDesc" class="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
+            يجري حالياً تطوير هذه الوحدة لربطها مباشرة بقاعدة بيانات النظام الموحدة و Evolution API بدون وسيط خارجي لضمان الأمان والسرعة القصوى.
+          </p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-right text-xs">
+            <div class="p-3 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)]">
+              <div class="font-bold text-[var(--text-main)] mb-1">✓ مزامنة فورية E.164</div>
+              <p class="text-[var(--text-muted)]">تطبيع وتدقيق كافة أرقام الهواتف السعودية والدولية.</p>
+            </div>
+            <div class="p-3 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)]">
+              <div class="font-bold text-[var(--text-main)] mb-1">✓ صلاحيات دقيقة RBAC</div>
+              <p class="text-[var(--text-muted)]">حماية سرية أرقام العملاء ومنع تصديرها بدون إذن.</p>
+            </div>
+          </div>
+
+          <button onclick="app.switchView('inbox')" class="mt-8 px-6 py-2.5 rounded-2xl bg-brand-600 hover:bg-brand-500 text-white text-xs sm:text-sm font-bold shadow-glow-sm active:scale-95 transition-all">
+            العودة للمحادثات الحية
+          </button>
+        </div>
+      </div>
+
+      <!-- ==============================================
+           ج. واجهة لوحة الإدارة التجريبية (Admin Dashboard View)
+           ============================================== -->
+      <div id="view-admin_dashboard" class="hidden h-full flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-subtle)]">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-black text-[var(--text-main)]">لوحة المؤشرات والتحكم الإداري</h2>
+            <p class="text-xs sm:text-sm text-[var(--text-muted)]">إحصائيات فورية لرسائل وخطوط واتساب ومعدلات الاستجابة للموظفين</p>
+          </div>
+          <span class="px-3 py-1 rounded-xl text-xs font-bold bg-brand-500/20 text-brand-400 border border-brand-500/30">
+            Evolution API v2.4 متصل
+          </span>
+        </div>
+
+        <!-- بطاقات المؤشرات الرقمية -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+          <div class="p-4 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)]">
+            <span class="text-xs text-[var(--text-muted)]">الرسائل الواردة اليوم</span>
+            <div class="text-xl sm:text-3xl font-black text-[var(--text-main)] mt-2 tabular-nums">1,482</div>
+            <span class="text-[10px] text-emerald-400 font-bold mt-1 inline-block">↑ 18% مقارنة بأمس</span>
+          </div>
+          <div class="p-4 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)]">
+            <span class="text-xs text-[var(--text-muted)]">متوسط سرعة الرد</span>
+            <div class="text-xl sm:text-3xl font-black text-[var(--text-main)] mt-2 tabular-nums">1.4 <span class="text-xs font-normal">دقيقة</span></div>
+            <span class="text-[10px] text-emerald-400 font-bold mt-1 inline-block">أداء ممتاز</span>
+          </div>
+          <div class="p-4 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)]">
+            <span class="text-xs text-[var(--text-muted)]">المحادثات المفتوحة</span>
+            <div class="text-xl sm:text-3xl font-black text-brand-400 mt-2 tabular-nums">28</div>
+            <span class="text-[10px] text-[var(--text-muted)] mt-1 inline-block">عبر 4 خطوط</span>
+          </div>
+          <div class="p-4 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)]">
+            <span class="text-xs text-[var(--text-muted)]">حالة الخطوط النشطة</span>
+            <div class="text-xl sm:text-3xl font-black text-emerald-400 mt-2 tabular-nums">4/4</div>
+            <span class="text-[10px] text-emerald-400 mt-1 inline-block">100% متصل ومستقر</span>
+          </div>
+        </div>
+
+        <!-- حالة خطوط واتساب وتفاصيلها -->
+        <div class="p-5 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] space-y-4">
+          <h3 class="text-base font-bold text-[var(--text-main)]">حالة خطوط الواتساب التابعة للمنظومة</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <div class="p-4 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                <div>
+                  <h4 class="text-sm font-bold text-[var(--text-main)]">الرقم الرئيسي (الاستقبال)</h4>
+                  <p class="text-xs text-[var(--text-muted)] tabular-nums">+966 50 *** 1000</p>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-xl text-xs bg-emerald-500/20 text-emerald-400 font-semibold">متصل 94% شحن</span>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                <div>
+                  <h4 class="text-sm font-bold text-[var(--text-main)]">واتساب المبيعات 1</h4>
+                  <p class="text-xs text-[var(--text-muted)] tabular-nums">+966 55 *** 2000</p>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-xl text-xs bg-emerald-500/20 text-emerald-400 font-semibold">متصل 82% شحن</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- ==========================================================================
+       4. شريط التنقل السفلي الطافٍ والمثبت (Mobile Bottom Navigation Bar)
+       مصمم بأسلوب iOS Native Apps لشاشات الجوال بدقة لراحة إبهام اليد
+       ========================================================================== -->
+  <nav class="md:hidden fixed bottom-0 inset-x-0 h-16 glass-effect border-t border-[var(--border-subtle)] z-40 px-4 flex items-center justify-around pb-[env(safe-area-inset-bottom)]">
+    
+    <!-- زر المحادثات الرئيسي -->
+    <button onclick="app.switchView('inbox')" data-mobile-view="inbox" class="mobile-nav-btn active flex flex-col items-center justify-center w-14 h-full text-brand-400 transition-transform active:scale-90">
+      <div class="relative">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+        <span class="absolute -top-1 -right-2 w-4 h-4 bg-brand-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">4</span>
+      </div>
+      <span class="text-[10px] font-bold mt-1">المحادثات</span>
+    </button>
+
+    <!-- زر جهات الاتصال -->
+    <button onclick="app.switchView('contacts')" data-mobile-view="contacts" class="mobile-nav-btn flex flex-col items-center justify-center w-14 h-full text-[var(--text-muted)] transition-transform active:scale-90">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+      <span class="text-[10px] font-medium mt-1">الجهات</span>
+    </button>
+
+    <!-- زر لوحة الإدارة أو المهام -->
+    <button onclick="app.switchView('admin_dashboard')" data-mobile-view="admin_dashboard" class="mobile-nav-btn flex flex-col items-center justify-center w-14 h-full text-[var(--text-muted)] transition-transform active:scale-90">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+      <span class="text-[10px] font-medium mt-1">الإدارة</span>
+    </button>
+
+    <!-- زر القائمة الكاملة -->
+    <button onclick="app.toggleSidebar(true)" class="flex flex-col items-center justify-center w-14 h-full text-[var(--text-muted)] transition-transform active:scale-90">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+      <span class="text-[10px] font-medium mt-1">المزيد</span>
+    </button>
+  </nav>
+
+
+  <!-- ==========================================================================
+       5. شفرة جافاسكربت النقية المخصصة للتحكم والتزامن الفوري (Full JS Engine)
+       ========================================================================== -->
+  <script>
+    /**
+     * كائن التطبيق الموحد TripYou_ChatHUB
+     * يدير: السمات اللونية، التزامن، بيانات المحادثات، تبديل الخطوط، والواجهات
+     */
+    const app = {
+      // الحالة الحالية للتطبيق
+      state: {
+        theme: 'theme-purple',
+        mode: 'dark',
+        currentView: 'inbox',
+        currentLineId: 'line-01',
+        activeConversationId: 'conv-01',
+        currentUserRole: 'super_admin',
+        customerDetailsOpen: false,
+        sidebarOpen: false
+      },
+
+      // بيانات الموظفين وصلاحياتهم (Mock Data مطابقة للمشروع الأصلي)
+      users: {
+        super_admin: {
+          fullName: 'م. أيمن مريعي',
+          roleTitle: 'مسؤول النظام الأعلى (Super Admin)',
+          avatarLetter: 'أ',
+          isAdmin: true
+        },
+        sales_lead: {
+          fullName: 'سارة خالد',
+          roleTitle: 'مدير المبيعات (Sales Lead)',
+          avatarLetter: 'س',
+          isAdmin: true
+        },
+        support_agent: {
+          fullName: 'محمد الدوسري',
+          roleTitle: 'ممثل خدمة العملاء (Support Agent)',
+          avatarLetter: 'م',
+          isAdmin: false
+        },
+        trainee: {
+          fullName: 'فهد العتيبي',
+          roleTitle: 'متدرب (Trainee)',
+          avatarLetter: 'ف',
+          isAdmin: false
+        }
+      },
+
+      // خطوط واتساب المتصلة عبر Evolution API
+      lines: [
+        { id: 'line-01', title: 'الرقم الرئيسي (الاستقبال)', phone: '+966 50 *** 1000', battery: 94, status: 'online' },
+        { id: 'line-02', title: 'واتساب المبيعات 1', phone: '+966 55 *** 2000', battery: 82, status: 'online' },
+        { id: 'line-03', title: 'واتساب الدعم الفني', phone: '+966 54 *** 3000', battery: 78, status: 'online' },
+        { id: 'line-04', title: 'واتساب العروض والترويج', phone: '+966 56 *** 4000', battery: 45, status: 'online' }
+      ],
+
+      // المحادثات النشطة مع التفاصيل الكاملة
+      conversations: [
+        {
+          id: 'conv-01',
+          name: 'عبدالله السبيعي',
+          phone: '+966 50 123 4567',
+          avatarLetter: 'ع',
+          lineTitle: 'واتساب المبيعات 1',
+          lastMessage: 'تم استلام عرض الأسعار، هل يمكن حجز موعد زيارة غداً؟',
+          time: '10:28 ص',
+          unread: 2,
+          tag: 'عميل محتمل',
+          category: 'unread',
+          status: 'open'
+        },
+        {
+          id: 'conv-02',
+          name: 'مجموعة ملاك أبراج العليا',
+          phone: 'مجموعة (24 عضو)',
+          avatarLetter: 'م',
+          lineTitle: 'الرقم الرئيسي (الاستقبال)',
+          lastMessage: 'أحمد: تم إرسال جدول الصيانة المحدث في ملف PDF',
+          time: '11:45 ص',
+          unread: 0,
+          tag: 'مجموعة عقود',
+          category: 'groups',
+          status: 'open'
+        },
+        {
+          id: 'conv-03',
+          name: 'م. ريم الناصر',
+          phone: '+966 55 987 6543',
+          avatarLetter: 'ر',
+          lineTitle: 'واتساب الدعم الفني',
+          lastMessage: 'شكراً جزيلاً لسرعة التجاوب والدعم الرائع!',
+          time: 'أمس 04:30 م',
+          unread: 0,
+          tag: 'دعم فني',
+          category: 'resolved',
+          status: 'resolved'
+        },
+        {
+          id: 'conv-04',
+          name: 'مكتب أفق للاستشارات',
+          phone: '+966 54 332 2110',
+          avatarLetter: 'أ',
+          lineTitle: 'واتساب المبيعات 1',
+          lastMessage: 'هل تتوفر باقات سنوية مع خصم الدفع المسبق؟',
+          time: 'أمس 01:15 م',
+          unread: 1,
+          tag: 'استفسار تسعير',
+          category: 'unread',
+          status: 'open'
+        }
+      ],
+
+      // سجل الرسائل لكل محادثة
+      messages: {
+        'conv-01': [
+          {
+            id: 'm1',
+            direction: 'in',
+            text: 'السلام عليكم ورحمة الله، اطلعت على خدماتكم في الموقع وأرغب في استشارة تخص نظام إدارة الحجوزات والمحادثات.',
+            time: '10:14 ص',
+            sender: 'عبدالله السبيعي'
+          },
+          {
+            id: 'm2',
+            direction: 'out',
+            text: 'وعليكم السلام ورحمة الله وبركاته يا أستاذ عبدالله، أهلاً بك في YouTrip. يسعدنا تقديم الاستشارة وتزويدك بكافة التفاصيل وعروض الأسعار المناسبة لحجم أعمالكم.',
+            time: '10:16 ص',
+            sender: 'م. أيمن مريعي',
+            signature: '*م. أيمن مريعي* — واتساب المبيعات 1',
+            status: 'read'
+          },
+          {
+            id: 'm3',
+            direction: 'in',
+            text: 'تم استلام عرض الأسعار، هل يمكن حجز موعد زيارة غداً؟',
+            time: '10:28 ص',
+            sender: 'عبدالله السبيعي'
+          }
+        ],
+        'conv-02': [
+          {
+            id: 'm21',
+            direction: 'in',
+            text: 'صباح الخير للجميع، متى موعد التفتيش الدوري هذا الأسبوع؟',
+            time: '11:30 ص',
+            sender: 'المهندس ناصر'
+          },
+          {
+            id: 'm22',
+            direction: 'out',
+            text: 'أهلاً مهندس ناصر، التفتيش مجدول يوم الأربعاء القادم الساعة 10 صباحاً بإذن الله وسيتم تزويدكم بالتقرير مباشرة.',
+            time: '11:42 ص',
+            sender: 'م. أيمن مريعي',
+            signature: '*م. أيمن مريعي* — الاستقبال',
+            status: 'read'
+          }
+        ],
+        'conv-03': [
+          {
+            id: 'm31',
+            direction: 'out',
+            text: 'مرحباً مهندسة ريم، تم تحديث بيانات المنفذ بنجاح ويمكنك تسجيل الدخول الآن.',
+            time: '04:15 م',
+            sender: 'م. أيمن مريعي',
+            signature: '*م. أيمن مريعي* — الدعم الفني',
+            status: 'read'
+          },
+          {
+            id: 'm32',
+            direction: 'in',
+            text: 'شكراً جزيلاً لسرعة التجاوب والدعم الرائع!',
+            time: '04:30 م',
+            sender: 'م. ريم الناصر'
+          }
+        ],
+        'conv-04': [
+          {
+            id: 'm41',
+            direction: 'in',
+            text: 'هل تتوفر باقات سنوية مع خصم الدفع المسبق؟',
+            time: '01:15 م',
+            sender: 'مكتب أفق للاستشارات'
+          }
+        ]
+      },
+
+      /**
+       * بدء تشغيل المحرك وربط المستمعين
+       */
+      init() {
+        this.loadSettings();
+        this.renderLinesDropdown();
+        this.renderConversations();
+        this.renderActiveChatMessages();
+        this.setupEventListeners();
+        this.updateThemeButtonsUI();
+      },
+
+      /**
+       * قراءة الإعدادات من التخزين المحلي وتطبيقها لحظياً بدون أي وميض
+       */
+      loadSettings() {
+        this.state.theme = localStorage.getItem('tripyou_theme') || 'theme-purple';
+        this.state.mode = localStorage.getItem('tripyou_mode') || 'dark';
+        this.state.currentUserRole = localStorage.getItem('tripyou_role') || 'super_admin';
+        this.applyThemeAndMode();
+        this.updateUserUI();
+      },
+
+      /**
+       * تطبيق كلاسات السمة والوضع على الـ <html> وحفظها
+       */
+      applyThemeAndMode() {
+        const root = document.documentElement;
+        root.classList.remove('theme-purple', 'theme-blue', 'dark', 'light');
+        root.classList.add(this.state.theme, this.state.mode);
+
+        localStorage.setItem('tripyou_theme', this.state.theme);
+        localStorage.setItem('tripyou_mode', this.state.mode);
+
+        // تحديث أيقونة الشمس / القمر
+        const sunIcon = document.getElementById('sunIcon');
+        const moonIcon = document.getElementById('moonIcon');
+        if (this.state.mode === 'dark') {
+          sunIcon.classList.remove('hidden');
+          moonIcon.classList.add('hidden');
+        } else {
+          sunIcon.classList.add('hidden');
+          moonIcon.classList.remove('hidden');
+        }
+
+        this.updateThemeButtonsUI();
+      },
+
+      /**
+       * تبديل السمة اللونية (بنفسجي / أزرق)
+       */
+      setTheme(newTheme) {
+        this.state.theme = newTheme;
+        this.applyThemeAndMode();
+      },
+
+      /**
+       * تبديل الوضع بين (الداكن / الفاتح)
+       */
+      toggleMode() {
+        this.state.mode = this.state.mode === 'dark' ? 'light' : 'dark';
+        this.applyThemeAndMode();
+      },
+
+      /**
+       * تحديث مظهر أزرار السمة اللونية لتبيان الخيار النشط
+       */
+      updateThemeButtonsUI() {
+        const purpleBtn = document.getElementById('themePurpleBtn');
+        const blueBtn = document.getElementById('themeBlueBtn');
+        if (!purpleBtn || !blueBtn) return;
+
+        if (this.state.theme === 'theme-purple') {
+          purpleBtn.className = 'w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center bg-purple-500/20 ring-2 ring-purple-500 transition-all';
+          blueBtn.className = 'w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center hover:bg-[var(--card-elevated)] transition-all opacity-60 hover:opacity-100';
+        } else {
+          blueBtn.className = 'w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center bg-sky-500/20 ring-2 ring-sky-500 transition-all';
+          purpleBtn.className = 'w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center hover:bg-[var(--card-elevated)] transition-all opacity-60 hover:opacity-100';
+        }
+      },
+
+      /**
+       * تبديل هوية ودور الموظف لتجربة الصلاحيات
+       */
+      setUserRole(roleKey) {
+        if (!this.users[roleKey]) return;
+        this.state.currentUserRole = roleKey;
+        localStorage.setItem('tripyou_role', roleKey);
+        this.updateUserUI();
+        document.getElementById('userDropdown').classList.add('hidden');
+      },
+
+      updateUserUI() {
+        const user = this.users[this.state.currentUserRole];
+        document.getElementById('headerUserName').innerText = user.fullName;
+        document.getElementById('dropdownFullName').innerText = user.fullName;
+        document.getElementById('dropdownRoleTitle').innerText = user.roleTitle;
+        document.getElementById('signatureBadge').innerText = `*${user.fullName}* — واتساب المبيعات 1`;
+
+        // إخفاء أو إظهار قسم الإدارة حسب الصلاحية
+        const adminSection = document.getElementById('adminModulesSection');
+        if (adminSection) {
+          adminSection.style.display = user.isAdmin ? 'block' : 'none';
+        }
+      },
+
+      /**
+       * عرض قائمة خطوط واتساب المنسدلة
+       */
+      renderLinesDropdown() {
+        const container = document.getElementById('linesListContainer');
+        container.innerHTML = this.lines.map(line => `
+          <button onclick="app.selectLine('${line.id}')" class="w-full text-right p-2.5 rounded-xl hover:bg-brand-500/15 flex items-center justify-between transition-colors ${line.id === this.state.currentLineId ? 'bg-brand-500/20 border border-brand-500/30' : ''}">
+            <div class="flex items-center gap-2.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <div>
+                <div class="text-xs font-bold text-[var(--text-main)]">${line.title}</div>
+                <div class="text-[10px] text-[var(--text-muted)] tabular-nums">${line.phone}</div>
+              </div>
+            </div>
+            <span class="text-[10px] text-emerald-400 font-semibold tabular-nums">${line.battery}%</span>
+          </button>
+        `).join('');
+      },
+
+      /**
+       * اختيار خط واتساب والتفاعل معه
+       */
+      selectLine(lineId) {
+        const line = this.lines.find(l => l.id === lineId);
+        if (!line) return;
+        this.state.currentLineId = lineId;
+        document.getElementById('currentLineTitle').innerText = line.title;
+        document.getElementById('currentLinePhone').innerText = line.phone;
+        document.getElementById('linesDropdown').classList.add('hidden');
+        this.renderLinesDropdown();
+      },
+
+      /**
+       * عرض قائمة المحادثات النشطة مع شارات التنبيه
+       */
+      renderConversations(filter = 'all') {
+        const container = document.getElementById('conversationsContainer');
+        const filtered = this.conversations.filter(c => {
+          if (filter === 'all') return true;
+          return c.category === filter;
+        });
+
+        if (filtered.length === 0) {
+          container.innerHTML = `
+            <div class="p-8 text-center text-xs text-[var(--text-muted)]">
+              لا توجد محادثات متطابقة مع هذا الفلتر
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = filtered.map(c => {
+          const isActive = c.id === this.state.activeConversationId;
+          return `
+            <div onclick="app.selectConversation('${c.id}')" class="p-3.5 cursor-pointer transition-all hover:bg-[var(--card-elevated)] ${isActive ? 'bg-brand-500/15 border-r-4 border-brand-500' : ''}">
+              <div class="flex items-start justify-between gap-2 mb-1.5">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                    ${c.avatarLetter}
+                  </div>
+                  <div>
+                    <h4 class="text-xs sm:text-sm font-bold text-[var(--text-main)] leading-tight">${c.name}</h4>
+                    <span class="text-[10px] text-[var(--text-muted)] tabular-nums">${c.phone}</span>
+                  </div>
+                </div>
+                <div class="flex flex-col items-end gap-1">
+                  <span class="text-[10px] text-[var(--text-muted)] tabular-nums">${c.time}</span>
+                  ${c.unread > 0 ? `<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-500 text-white tabular-nums">${c.unread}</span>` : ''}
+                </div>
+              </div>
+              <p class="text-xs text-[var(--text-muted)] line-clamp-1 pr-11">${c.lastMessage}</p>
+              <div class="mt-2 pr-11 flex items-center gap-1.5">
+                <span class="text-[10px] text-brand-400 font-medium">${c.lineTitle}</span>
+                <span class="text-[10px] text-[var(--text-muted)]">•</span>
+                <span class="px-2 py-0.5 rounded-md text-[9px] bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-muted)]">${c.tag}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      },
+
+      /**
+       * اختيار محادثة وعرض رسائلها
+       */
+      selectConversation(convId) {
+        this.state.activeConversationId = convId;
+        const conv = this.conversations.find(c => c.id === convId);
+        if (!conv) return;
+
+        // تصفير غير المقروء
+        conv.unread = 0;
+
+        // تحديث ترويسة المحادثة
+        document.getElementById('activeChatTitle').innerText = conv.name;
+        document.getElementById('activeChatPhone').innerText = conv.phone;
+        document.getElementById('activeChatLineName').innerText = conv.lineTitle;
+        document.getElementById('activeChatAvatar').innerText = conv.avatarLetter;
+        document.getElementById('activeChatTag').innerText = conv.tag;
+
+        this.renderConversations();
+        this.renderActiveChatMessages();
+
+        // في شاشات الجوال: التبديل لعرض نافذة المحادثة وإخفاء القائمة
+        if (window.innerWidth < 768) {
+          document.getElementById('conversationsPane').classList.add('hidden');
+          document.getElementById('activeChatPane').classList.remove('hidden');
+          document.getElementById('activeChatPane').classList.add('flex');
+        }
+      },
+
+      /**
+       * رسم فقاعات الرسائل بتصميم Dribbble الفخم والتباين المريح
+       */
+      renderActiveChatMessages() {
+        const container = document.getElementById('messagesContainer');
+        const msgs = this.messages[this.state.activeConversationId] || [];
+
+        container.innerHTML = msgs.map(m => {
+          const isOut = m.direction === 'out';
+          return `
+            <div class="flex flex-col ${isOut ? 'items-start' : 'items-end'}">
+              <div class="max-w-[85%] sm:max-w-[75%] p-3.5 sm:p-4 ${isOut ? 'bubble-user' : 'bubble-peer'}">
+                ${m.signature ? `<div class="text-[11px] font-bold opacity-90 mb-1 pb-1 border-b border-white/20">${m.signature}</div>` : ''}
+                <p class="text-xs sm:text-sm leading-relaxed">${m.text}</p>
+                <div class="flex items-center justify-end gap-1.5 mt-1.5 text-[10px] opacity-75 tabular-nums">
+                  <span>${m.time}</span>
+                  ${isOut ? `
+                    <svg class="w-3.5 h-3.5 text-sky-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M5 13l4 4L19 7M9 13l2 2L20 6" />
+                    </svg>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // التمرير التلقائي لأسفل المحادثة
+        container.scrollTop = container.scrollHeight;
+      },
+
+      /**
+       * إرسال رسالة جديدة وتحديث الواجهة لحظياً
+       */
+      handleSendMessage(e) {
+        if (e) e.preventDefault();
+        const input = document.getElementById('messageTextInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        const convId = this.state.activeConversationId;
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+
+        const newMsg = {
+          id: 'msg-' + Date.now(),
+          direction: 'out',
+          text: text,
+          time: timeStr,
+          sender: this.users[this.state.currentUserRole].fullName,
+          signature: `*${this.users[this.state.currentUserRole].fullName}* — واتساب المبيعات 1`,
+          status: 'sent'
+        };
+
+        if (!this.messages[convId]) {
+          this.messages[convId] = [];
+        }
+        this.messages[convId].push(newMsg);
+
+        // تحديث آخر رسالة في القائمة
+        const conv = this.conversations.find(c => c.id === convId);
+        if (conv) {
+          conv.lastMessage = text;
+          conv.time = timeStr;
+        }
+
+        input.value = '';
+        input.style.height = 'auto';
+
+        this.renderActiveChatMessages();
+        this.renderConversations();
+
+        // محاكاة رد العميل بعد ثوانٍ بسيطة لإظهار تجربة الـ SaaS الحية
+        setTimeout(() => {
+          this.simulatePeerReply(convId);
+        }, 2500);
+      },
+
+      sendQuickReply(text) {
+        document.getElementById('messageTextInput').value = text;
+        this.handleSendMessage();
+      },
+
+      simulatePeerReply(convId) {
+        if (this.state.activeConversationId !== convId) return;
+        const replies = [
+          'ممتاز جداً، شاكر ومقدر حسن اهتمامكم وسرعة ردكم 🙏',
+          'وصلتني الرسالة تماماً، سأراجع الفريق وأرد عليكم فوراً.',
+          'هل يمكن التنسيق مع أحد الزملاء غداً في الصباح؟'
+        ];
+        const randomReply = replies[Math.floor(Math.random() * replies.length)];
+        const timeStr = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+
+        this.messages[convId].push({
+          id: 'msg-reply-' + Date.now(),
+          direction: 'in',
+          text: randomReply,
+          time: timeStr,
+          sender: 'العميل'
+        });
+
+        const conv = this.conversations.find(c => c.id === convId);
+        if (conv) {
+          conv.lastMessage = randomReply;
+          conv.time = timeStr;
+        }
+
+        this.renderActiveChatMessages();
+        this.renderConversations();
+      },
+
+      /**
+       * تصفية المحادثات حسب التبويب
+       */
+      filterConversations(category) {
+        document.querySelectorAll('.filter-tab').forEach(tab => {
+          tab.classList.remove('active', 'bg-brand-500/20', 'text-brand-400', 'border', 'border-brand-500/30', 'font-semibold');
+          tab.classList.add('text-[var(--text-muted)]', 'font-medium');
+        });
+        event.currentTarget.classList.add('active', 'bg-brand-500/20', 'text-brand-400', 'border', 'border-brand-500/30', 'font-semibold');
+        this.renderConversations(category);
+      },
+
+      /**
+       * التبديل بين الموديلات والواجهات
+       */
+      switchView(viewName) {
+        this.state.currentView = viewName;
+
+        // إخفاء كافة الواجهات
+        document.getElementById('view-inbox').classList.add('hidden');
+        document.getElementById('view-placeholder').classList.add('hidden');
+        document.getElementById('view-admin_dashboard').classList.add('hidden');
+
+        // تحديث حالة أزرار القائمة الجانبية والشريط السفلي
+        document.querySelectorAll('.nav-item').forEach(btn => {
+          btn.classList.remove('active', 'bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
+          if (btn.getAttribute('data-view') === viewName) {
+            btn.classList.add('active', 'bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
+          }
+        });
+
+        document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+          btn.classList.remove('active', 'text-brand-400');
+          btn.classList.add('text-[var(--text-muted)]');
+          if (btn.getAttribute('data-mobile-view') === viewName) {
+            btn.classList.add('active', 'text-brand-400');
+            btn.classList.remove('text-[var(--text-muted)]');
+          }
+        });
+
+        // إظهار الواجهة المطلوبة
+        if (viewName === 'inbox') {
+          document.getElementById('view-inbox').classList.remove('hidden');
+        } else if (viewName === 'admin_dashboard') {
+          document.getElementById('view-admin_dashboard').classList.remove('hidden');
+        } else {
+          // واجهة "قريباً" للموديلات تحت التطوير
+          const placeholder = document.getElementById('view-placeholder');
+          placeholder.classList.remove('hidden');
+          const titleMap = {
+            contacts: 'دليل جهات الاتصال الموحد',
+            tasks: 'منظومة إدارة المهام الذكية',
+            campaigns: 'إدارة الحملات والرسائل الترويجية',
+            labels: 'الوسوم وتصنيفات المحادثات',
+            staff: 'فريق العمل وتوزيع الصلاحيات'
+          };
+          document.getElementById('placeholderTitle').innerText = titleMap[viewName] || 'الوحدة قيد الإعداد';
+        }
+
+        // إغلاق القائمة الجانبية في الجوال
+        this.toggleSidebar(false);
+      },
+
+      /**
+       * إظهار / إخفاء القائمة الجانبية في الجوال
+       */
+      toggleSidebar(show) {
+        this.state.sidebarOpen = typeof show === 'boolean' ? show : !this.state.sidebarOpen;
+        const sidebar = document.getElementById('appSidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+
+        if (this.state.sidebarOpen) {
+          sidebar.classList.remove('translate-x-full');
+          backdrop.classList.remove('hidden');
+        } else {
+          sidebar.classList.add('translate-x-full');
+          backdrop.classList.add('hidden');
+        }
+      },
+
+      /**
+       * إظهار / إخفاء بطاقة تفاصيل العميل
+       */
+      toggleCustomerDetails() {
+        this.state.customerDetailsOpen = !this.state.customerDetailsOpen;
+        const pane = document.getElementById('customerDetailsPane');
+        if (this.state.customerDetailsOpen) {
+          pane.classList.remove('hidden');
+          pane.classList.add('flex');
+        } else {
+          pane.classList.add('hidden');
+          pane.classList.remove('flex');
+        }
+      },
+
+      /**
+       * إعداد مستمعي الأحداث التفاعلية
+       */
+      setupEventListeners() {
+        // أزرار السمة اللونية
+        document.getElementById('themePurpleBtn').addEventListener('click', () => this.setTheme('theme-purple'));
+        document.getElementById('themeBlueBtn').addEventListener('click', () => this.setTheme('theme-blue'));
+        document.getElementById('modeToggleBtn').addEventListener('click', () => this.toggleMode());
+
+        // قائمة خطوط واتساب
+        const lineBtn = document.getElementById('activeLineSelectorBtn');
+        const lineDropdown = document.getElementById('linesDropdown');
+        lineBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          lineDropdown.classList.toggle('hidden');
+        });
+
+        // قائمة المستخدم
+        const userBtn = document.getElementById('userProfileBtn');
+        const userDropdown = document.getElementById('userDropdown');
+        userBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          userDropdown.classList.toggle('hidden');
+        });
+
+        // إغلاق القوائم المنسدلة عند النقر في أي مكان خارجها
+        document.addEventListener('click', () => {
+          lineDropdown.classList.add('hidden');
+          userDropdown.classList.add('hidden');
+        });
+
+        // القائمة الجانبية للجوال
+        document.getElementById('sidebarToggleBtn').addEventListener('click', () => this.toggleSidebar(true));
+        document.getElementById('sidebarCloseBtn').addEventListener('click', () => this.toggleSidebar(false));
+        document.getElementById('sidebarBackdrop').addEventListener('click', () => this.toggleSidebar(false));
+
+        // زر العودة لقائمة المحادثات في الجوال
+        document.getElementById('backToConversationsBtn').addEventListener('click', () => {
+          document.getElementById('conversationsPane').classList.remove('hidden');
+          document.getElementById('activeChatPane').classList.add('hidden');
+          document.getElementById('activeChatPane').classList.remove('flex');
+        });
+
+        // بحث المحادثات
+        document.getElementById('chatSearchInput').addEventListener('input', (e) => {
+          const query = e.target.value.toLowerCase();
+          const filtered = this.conversations.filter(c => 
+            c.name.toLowerCase().includes(query) || 
+            c.phone.includes(query) || 
+            c.lastMessage.toLowerCase().includes(query)
+          );
+          // عرض النتائج المفلترة
+          const container = document.getElementById('conversationsContainer');
+          if (filtered.length === 0) {
+            container.innerHTML = `<div class="p-8 text-center text-xs text-[var(--text-muted)]">لا توجد نتائج مطابقة لبحثك</div>`;
+          } else {
+            // إعادة بناء العناصر بنفس آلية التغذية
+            container.innerHTML = filtered.map(c => `
+              <div onclick="app.selectConversation('${c.id}')" class="p-3.5 cursor-pointer hover:bg-[var(--card-elevated)]">
+                <div class="flex items-center gap-2 mb-1">
+                  <div class="w-8 h-8 rounded-xl bg-brand-600 text-white font-bold flex items-center justify-center text-xs">${c.avatarLetter}</div>
+                  <h4 class="text-xs font-bold text-[var(--text-main)]">${c.name}</h4>
+                </div>
+                <p class="text-xs text-[var(--text-muted)]">${c.lastMessage}</p>
+              </div>
+            `).join('');
+          }
+        });
+
+        // توسيع حقل الرسالة تلقائياً ومفتاح الإرسال السريع
+        const msgInput = document.getElementById('messageTextInput');
+        msgInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            this.handleSendMessage();
+          }
+        });
+      }
+    };
+
+    // تشغيل التطبيق فور اكتمال بناء الـ DOM
+    document.addEventListener('DOMContentLoaded', () => {
+      app.init();
+    });
+  </script>
+</body>
+</html>
+

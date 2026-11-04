@@ -10,7 +10,7 @@ export function Badge({ className, variant = 'default', size = 'md', children, .
   const variants = {
     live: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-semibold',
     beta: 'bg-purple-500/20 text-purple-300 border-purple-500/40 font-semibold',
-    coming_soon: 'bg-purple-900/30 text-purple-300 border-purple-700/40',
+    coming_soon: 'bg-white/10 backdrop-blur-sm text-slate-300 border border-white/15 shadow-sm',
     default: 'bg-[#180E30] text-purple-200 border-purple-800/40',
     outline: 'border-purple-800/50 text-purple-300',
     warning: 'bg-amber-500/15 text-amber-400 border-amber-500/30 font-semibold',

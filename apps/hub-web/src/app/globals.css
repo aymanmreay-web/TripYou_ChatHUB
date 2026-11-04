@@ -5,30 +5,172 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: #080512;
-    --foreground: #FBF9FE;
-    --card-bg: #110A22;
-    --card-surface: #1A0F33;
-    --card-border: rgba(168, 85, 247, 0.14);
-    --primary: #7C3AED;
-    --primary-glow: rgba(124, 58, 237, 0.3);
+  /* ==========================================================================
+     Dynamic Multi-Theming Engine & Material Design 3 Semantic Tokens
+     Calculated with Coolors & ColorSpace (Shades 50 to 950)
+     ========================================================================== */
+
+  /* Default / Royal Purple Theme - Dark Mode (Neon Violet & Royal Purple) */
+  :root,
+  html.theme-purple.dark,
+  html.dark {
+    --bg-main: #07040E;
+    --background: #07040E;
+    --foreground: #FAF5FF;
+    --text-main: #FAF5FF;
+    --text-muted: #A8A29E;
+    --text-secondary: #C084FC;
+
+    --card-bg: #0F091F;
+    --card-elevated: #180F31;
+    --card-surface: #1E123D;
+    --card-border: rgba(168, 85, 247, 0.18);
+    --border-subtle: rgba(168, 85, 247, 0.18);
+    --border-glow: rgba(168, 85, 247, 0.45);
+
+    --primary: #9333EA;
+    --primary-glow: rgba(168, 85, 247, 0.35);
+
+    /* Purple Shades (50 - 950) */
+    --brand-50: #FAF5FF;
+    --brand-100: #F3E8FF;
+    --brand-200: #E9D5FF;
+    --brand-300: #D8B4FE;
+    --brand-400: #C084FC;
+    --brand-500: #A855F7;
+    --brand-600: #9333EA;
+    --brand-700: #7E22CE;
+    --brand-800: #6B21A8;
+    --brand-900: #581C87;
+    --brand-950: #2E0B55;
+
+    /* Chat Bubbles (Dribbble Trends) */
+    --bubble-user-bg: linear-gradient(135deg, #7C3AED 0%, #9333EA 60%, #A855F7 100%);
+    --bubble-user-text: #FFFFFF;
+    --bubble-peer-bg: rgba(24, 15, 49, 0.9);
+    --bubble-peer-border: rgba(168, 85, 247, 0.22);
+    --bubble-peer-text: #F3E8FF;
   }
 
-  /* Light mode variables */
+  /* Royal Purple Theme - Light Mode (Context-Aware Contrast) */
+  html.theme-purple.light,
   html.light {
-    --background: #FAF8FD;
-    --foreground: #140A26;
+    --bg-main: #FBF8FF;
+    --background: #FBF8FF;
+    --foreground: #1E1233;
+    --text-main: #1E1233;
+    --text-muted: #6B7280;
+    --text-secondary: #7E22CE;
+
     --card-bg: #FFFFFF;
-    --card-surface: #F3EDFC;
-    --card-border: rgba(124, 58, 237, 0.12);
-    --primary: #6D28D9;
-    --primary-glow: rgba(109, 40, 217, 0.15);
+    --card-elevated: #F6F0FD;
+    --card-surface: #EDE4F9;
+    --card-border: rgba(147, 51, 234, 0.14);
+    --border-subtle: rgba(147, 51, 234, 0.14);
+    --border-glow: rgba(147, 51, 234, 0.35);
+
+    --primary: #7C3AED;
+    --primary-glow: rgba(147, 51, 234, 0.18);
+
+    --brand-50: #FAF5FF;
+    --brand-100: #F3E8FF;
+    --brand-200: #E9D5FF;
+    --brand-300: #D8B4FE;
+    --brand-400: #C084FC;
+    --brand-500: #A855F7;
+    --brand-600: #7C3AED;
+    --brand-700: #6D28D9;
+    --brand-800: #5B21B6;
+    --brand-900: #4C1D95;
+    --brand-950: #2E0B55;
+
+    --bubble-user-bg: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+    --bubble-user-text: #FFFFFF;
+    --bubble-peer-bg: #F4EEFC;
+    --bubble-peer-border: rgba(124, 58, 237, 0.15);
+    --bubble-peer-text: #1E1233;
+  }
+
+  /* Deep Blue Theme - Dark Mode (Prussian Blue & Electric Ocean) */
+  html.theme-blue.dark {
+    --bg-main: #030814;
+    --background: #030814;
+    --foreground: #F0F9FF;
+    --text-main: #F0F9FF;
+    --text-muted: #94A3B8;
+    --text-secondary: #38BDF8;
+
+    --card-bg: #071329;
+    --card-elevated: #0C1E3E;
+    --card-surface: #102852;
+    --card-border: rgba(56, 189, 248, 0.18);
+    --border-subtle: rgba(56, 189, 248, 0.18);
+    --border-glow: rgba(56, 189, 248, 0.45);
+
+    --primary: #0284C7;
+    --primary-glow: rgba(56, 189, 248, 0.35);
+
+    /* Blue Shades (50 - 950) */
+    --brand-50: #F0F9FF;
+    --brand-100: #E0F2FE;
+    --brand-200: #BAE6FD;
+    --brand-300: #7DD3FC;
+    --brand-400: #38BDF8;
+    --brand-500: #0EA5E9;
+    --brand-600: #0284C7;
+    --brand-700: #0369A1;
+    --brand-800: #075985;
+    --brand-900: #0C4A6E;
+    --brand-950: #042137;
+
+    --bubble-user-bg: linear-gradient(135deg, #0284C7 0%, #0EA5E9 60%, #38BDF8 100%);
+    --bubble-user-text: #FFFFFF;
+    --bubble-peer-bg: rgba(12, 30, 62, 0.9);
+    --bubble-peer-border: rgba(56, 189, 248, 0.22);
+    --bubble-peer-text: #E0F2FE;
+  }
+
+  /* Deep Blue Theme - Light Mode (Clean Sapphire & Pure Sky) */
+  html.theme-blue.light {
+    --bg-main: #F4F8FC;
+    --background: #F4F8FC;
+    --foreground: #0B192C;
+    --text-main: #0B192C;
+    --text-muted: #64748B;
+    --text-secondary: #0284C7;
+
+    --card-bg: #FFFFFF;
+    --card-elevated: #EBF3FA;
+    --card-surface: #DFEDF7;
+    --card-border: rgba(14, 165, 233, 0.15);
+    --border-subtle: rgba(14, 165, 233, 0.15);
+    --border-glow: rgba(14, 165, 233, 0.35);
+
+    --primary: #0284C7;
+    --primary-glow: rgba(14, 165, 233, 0.18);
+
+    --brand-50: #F0F9FF;
+    --brand-100: #E0F2FE;
+    --brand-200: #BAE6FD;
+    --brand-300: #7DD3FC;
+    --brand-400: #38BDF8;
+    --brand-500: #0EA5E9;
+    --brand-600: #0284C7;
+    --brand-700: #0369A1;
+    --brand-800: #075985;
+    --brand-900: #0C4A6E;
+    --brand-950: #082F49;
+
+    --bubble-user-bg: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+    --bubble-user-text: #FFFFFF;
+    --bubble-peer-bg: #EEF6FD;
+    --bubble-peer-border: rgba(14, 165, 233, 0.18);
+    --bubble-peer-text: #0B192C;
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: var(--bg-main);
+    color: var(--text-main);
     font-family: 'Alexandria', 'Cairo', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
@@ -45,36 +187,55 @@
 
 /* Broadcast Luxury Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--background);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(168, 85, 247, 0.25);
+  background: var(--border-glow);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.45);
+  background: var(--brand-500);
 }
 
-/* Luxury Glassmorphism Panel with Royal Violet Glow */
+/* Luxury Glassmorphism Panels */
 .glass-panel {
-  background: rgba(17, 10, 34, 0.82);
+  background: var(--card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(168, 85, 247, 0.15);
+  border: 1px solid var(--border-subtle);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
-html.light .glass-panel {
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  box-shadow: 0 8px 24px 0 rgba(124, 58, 237, 0.08);
+/* Frosted Glassmorphism Badges for "Coming Soon" */
+.badge-glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+html.light .badge-glass {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Chat Bubbles (Dribbble Trends) */
+.bubble-user {
+  background: var(--bubble-user-bg);
+  color: var(--bubble-user-text);
+  border-radius: 1.35rem 1.35rem 0.35rem 1.35rem;
+  box-shadow: 0 4px 15px -3px var(--primary-glow);
+}
+
+.bubble-peer {
+  background: var(--bubble-peer-bg);
+  color: var(--bubble-peer-text);
+  border: 1px solid var(--bubble-peer-border);
+  border-radius: 1.35rem 1.35rem 1.35rem 0.35rem;
 }

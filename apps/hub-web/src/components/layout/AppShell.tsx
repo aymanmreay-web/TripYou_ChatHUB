@@ -10,8 +10,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-300">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] flex flex-col font-sans transition-colors duration-200">
+      {/* Sidebar (Desktop & Mobile Drawer) */}
       <Sidebar
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
@@ -29,12 +29,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Header onOpenMobile={() => setMobileOpen(true)} />
 
         {/* Page Body */}
-        <main className="flex-1 p-3 sm:p-6 pb-20 lg:pb-6 overflow-x-hidden">
+        <main className="flex-1 p-2 sm:p-5 pb-20 lg:pb-6 overflow-x-hidden">
           {children}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation Bar */}
+      {/* Mobile Floating Bottom Navigation Bar */}
       <MobileNav onOpenSidebar={() => setMobileOpen(true)} />
     </div>
   );

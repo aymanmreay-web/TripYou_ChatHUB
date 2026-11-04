@@ -1,8 +1,11 @@
-﻿'use client';
+'use client';
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { StaffMe, WhatsAppLine, ModuleContract } from '../types';
 import { MOCK_USERS, MOCK_LINES, RAW_MODULES, filterModulesForUser } from '../lib/mock-data';
+
+export type AppTheme = 'theme-purple' | 'theme-blue';
+export type AppMode = 'dark' | 'light';
 
 interface AppContextType {
   user: StaffMe;
@@ -18,6 +21,12 @@ interface AppContextType {
   isLoggedIn: boolean;
   login: (roleKey: string) => void;
   logout: () => void;
+  // Dynamic Multi-Theming Engine States
+  theme: AppTheme;
+  setTheme: (theme: AppTheme) => void;
+  mode: AppMode;
+  setMode: (mode: AppMode) => void;
+  toggleMode: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -26,26 +35,68 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userKey, setUserKey] = useState<string>('super_admin');
   const [selectedLineId, setSelectedLineId] = useState<string>('line-01');
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+  const [theme, setThemeState] = useState<AppTheme>('theme-purple');
+  const [mode, setModeState] = useState<AppMode>('dark');
 
-  // Load user from localStorage if present
+  // Load user and theme from localStorage if present
   useEffect(() => {
     try {
       const savedUser = localStorage.getItem('tripyou_hub_user_key');
       const savedLine = localStorage.getItem('tripyou_hub_line_id');
       const savedAuth = localStorage.getItem('tripyou_hub_auth');
+      const savedTheme = (localStorage.getItem('tripyou_theme') as AppTheme) || 'theme-purple';
+      const savedMode = (localStorage.getItem('tripyou_mode') as AppMode) || 'dark';
+
       if (savedUser && MOCK_USERS[savedUser]) {
         setUserKey(savedUser);
       }
-      if (savedLine && MOCK_LINES.some(l => l.id === savedLine)) {
+      if (savedLine && MOCK_LINES.some((l) => l.id === savedLine)) {
         setSelectedLineId(savedLine);
       }
       if (savedAuth !== null) {
         setIsLoggedIn(savedAuth === 'true');
       }
+
+      setThemeState(savedTheme);
+      setModeState(savedMode);
+
+      // Synchronize <html> classes immediately
+      const root = document.documentElement;
+      root.classList.remove('theme-purple', 'theme-blue', 'dark', 'light');
+      root.classList.add(savedTheme, savedMode);
     } catch {
       // ignore
     }
   }, []);
+
+  const setTheme = (newTheme: AppTheme) => {
+    setThemeState(newTheme);
+    try {
+      localStorage.setItem('tripyou_theme', newTheme);
+      const root = document.documentElement;
+      root.classList.remove('theme-purple', 'theme-blue');
+      root.classList.add(newTheme);
+    } catch {
+      // ignore
+    }
+  };
+
+  const setMode = (newMode: AppMode) => {
+    setModeState(newMode);
+    try {
+      localStorage.setItem('tripyou_mode', newMode);
+      const root = document.documentElement;
+      root.classList.remove('dark', 'light');
+      root.classList.add(newMode);
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleMode = () => {
+    const nextMode = mode === 'dark' ? 'light' : 'dark';
+    setMode(nextMode);
+  };
 
   const handleSetUserKey = (key: string) => {
     if (MOCK_USERS[key]) {
@@ -120,6 +171,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isLoggedIn,
         login,
         logout,
+        theme,
+        setTheme,
+        mode,
+        setMode,
+        toggleMode,
       }}
     >
       {children}

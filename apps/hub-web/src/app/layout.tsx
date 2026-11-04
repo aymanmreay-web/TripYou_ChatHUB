@@ -13,10 +13,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#080512',
+  themeColor: '#07040E',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
@@ -25,8 +26,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ar" dir="rtl" className="dark">
-      <body className="bg-[#080512] text-slate-100 min-h-screen antialiased selection:bg-purple-600 selection:text-white">
+    <html lang="ar" dir="rtl" className="dark theme-purple" suppressHydrationWarning>
+      <head>
+        {/* منع الوميض FOUC Prevention Script في قمة الـ Head */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var savedTheme = localStorage.getItem('tripyou_theme') || 'theme-purple';
+                  var savedMode = localStorage.getItem('tripyou_mode') || 'dark';
+                  var root = document.documentElement;
+                  root.classList.remove('theme-purple', 'theme-blue', 'dark', 'light');
+                  root.classList.add(savedTheme, savedMode);
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className="bg-[var(--bg-main)] text-[var(--text-main)] min-h-screen antialiased selection:bg-purple-600 selection:text-white transition-colors duration-200">
         <AppProvider>
           {children}
         </AppProvider>
