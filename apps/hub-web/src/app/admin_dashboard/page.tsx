@@ -1,184 +1,284 @@
-﻿'use client';
+'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   MessageSquare, Zap, Radio, CheckCircle, TrendingUp,
-  Cpu, BatteryCharging, ShieldAlert, AlertTriangle, ArrowUpRight
+  Cpu, BatteryCharging, ShieldAlert, AlertTriangle, ArrowUpRight,
+  Phone, Users, RefreshCw, Loader2, ShieldCheck, Server
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AppShell } from '../../components/layout/AppShell';
-import { Card, Badge, Button } from '@tripyou/ui';
+
+interface EvolutionInstance {
+  id?: string;
+  name?: string;
+  connectionStatus?: string;
+  ownerJid?: string | null;
+  profileName?: string | null;
+  profilePicUrl?: string | null;
+  instance?: {
+    instanceName?: string;
+    instanceId?: string;
+    status?: string;
+    owner?: string;
+    profileName?: string;
+  };
+  _count?: {
+    Message?: number;
+    Contact?: number;
+    Chat?: number;
+  };
+}
 
 export default function AdminDashboardPage() {
-  const { lines, user } = useApp();
+  const { user } = useApp();
+  const [instances, setInstances] = useState<EvolutionInstance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchInstances = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch('/api/evolution/instances');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setInstances(data);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load instances in dashboard:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInstances();
+  }, []);
+
+  // Aggregated live metrics from real instances
+  const totalMessages = instances.reduce((acc, curr) => acc + (curr._count?.Message || 0), 0);
+  const totalContacts = instances.reduce((acc, curr) => acc + (curr._count?.Contact || 0), 0);
+  const totalChats = instances.reduce((acc, curr) => acc + (curr._count?.Chat || 0), 0);
+  const activeLinesCount = instances.filter(i => (i.connectionStatus || i.instance?.status) === 'open').length;
 
   return (
     <AppShell>
       <div className="max-w-7xl mx-auto py-6 px-2 sm:px-4 space-y-6">
         {/* Page Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[var(--border-subtle)]">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-white">لوحة الإدارة والعمليات</h1>
-              <Badge variant="beta" size="md">
-                إصدار تجريبي (Beta)
-              </Badge>
+              <h1 className="text-2xl font-bold text-[var(--text-main)]">لوحة الإدارة والعمليات</h1>
+              <span className="badge-glass text-xs px-2.5 py-0.5 rounded-full text-purple-300 font-semibold border border-purple-500/30">
+                إصدار 2026 SaaS
+              </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              مؤشرات الأداء اللحظية لخطوط واتساب وسرعة استجابة فريق العمل
+            <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
+              مؤشرات الأداء اللحظية لخطوط واتساب وسرعة استجابة فريق العمل ومراقبة خادم VPS
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-              آخر تحديث: <strong className="text-emerald-400 font-mono">منذ لحظات</strong>
+            <button
+              onClick={fetchInstances}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[var(--card-elevated)] text-[var(--text-main)] text-xs border border-[var(--border-subtle)] hover:border-purple-500/40 transition-all shadow-sm"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+              <span>تحديث المؤشرات</span>
+            </button>
+            <span className="text-xs text-[var(--text-muted)] bg-[var(--card-elevated)] px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] font-mono">
+              مراقبة حية: <strong className="text-emerald-400">متصل</strong>
             </span>
           </div>
         </div>
 
         {/* 4 KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card variant="interactive" className="p-5">
+          <div className="p-5 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-lg">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-slate-400">إجمالي محادثات اليوم</span>
-              <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+              <span className="text-xs text-[var(--text-muted)]">إجمالي رسائل الخطوط</span>
+              <span className="p-2.5 rounded-2xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
                 <MessageSquare className="w-4 h-4" />
               </span>
             </div>
-            <div className="text-2xl font-bold text-white mb-1">428</div>
+            <div className="text-2xl font-bold text-[var(--text-main)] mb-1 font-mono">
+              {loading ? '...' : totalMessages.toLocaleString()}
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>+18% عن يوم أمس</span>
+              <span>حقيقي من خادم Evolution</span>
             </div>
-          </Card>
+          </div>
 
-          <Card variant="interactive" className="p-5">
+          <div className="p-5 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-lg">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-slate-400">متوسط سرعة الاستجابة</span>
-              <span className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
-                <Zap className="w-4 h-4" />
+              <span className="text-xs text-[var(--text-muted)]">إجمالي جهات الاتصال</span>
+              <span className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Users className="w-4 h-4" />
               </span>
             </div>
-            <div className="text-2xl font-bold text-white mb-1">1m 24s</div>
+            <div className="text-2xl font-bold text-[var(--text-main)] mb-1 font-mono">
+              {loading ? '...' : totalContacts.toLocaleString()}
+            </div>
             <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
               <CheckCircle className="w-3.5 h-3.5" />
-              <span>ضمن المعيار المستهدف (&lt; 2m)</span>
+              <span>عملاء مسجلين بالذاكرة</span>
             </div>
-          </Card>
+          </div>
 
-          <Card variant="interactive" className="p-5">
+          <div className="p-5 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-lg">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-slate-400">جاهزية الخطوط (Lines)</span>
-              <span className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
+              <span className="text-xs text-[var(--text-muted)]">جاهزية الخطوط (Lines)</span>
+              <span className="p-2.5 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
                 <Radio className="w-4 h-4" />
               </span>
             </div>
-            <div className="text-2xl font-bold text-white mb-1">3 / 3</div>
-            <div className="flex items-center gap-1.5 text-xs text-sky-400 font-medium">
-              <span>100% جلسات Baileys نشطة</span>
+            <div className="text-2xl font-bold text-[var(--text-main)] mb-1 font-mono">
+              {loading ? '...' : `${activeLinesCount} / ${instances.length}`}
             </div>
-          </Card>
+            <div className="flex items-center gap-1.5 text-xs text-sky-400 font-medium">
+              <span>{instances.length > 0 ? `${Math.round((activeLinesCount / instances.length) * 100)}% الجلسات نشطة` : '—'}</span>
+            </div>
+          </div>
 
-          <Card variant="interactive" className="p-5">
+          <div className="p-5 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-lg">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-slate-400">معدل الإغلاق الناجح</span>
-              <span className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
-                <TrendingUp className="w-4 h-4" />
+              <span className="text-xs text-[var(--text-muted)]">المحادثات المفتوحة</span>
+              <span className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Zap className="w-4 h-4" />
               </span>
             </div>
-            <div className="text-2xl font-bold text-white mb-1">94.8%</div>
-            <div className="flex items-center gap-1.5 text-xs text-purple-400 font-medium">
-              <span>406 تذكرة محلولة بالكامل</span>
+            <div className="text-2xl font-bold text-[var(--text-main)] mb-1 font-mono">
+              {loading ? '...' : totalChats.toLocaleString()}
             </div>
-          </Card>
+            <div className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+              <span>تزامن مباشر مع قاعدة Baileys</span>
+            </div>
+          </div>
         </div>
 
         {/* Lines Status & Health */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Active Lines Monitor */}
           <div className="lg:col-span-2">
-            <Card variant="default" className="p-6">
+            <div className="p-6 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-xl">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-base font-bold text-white">حالة خطوط واتساب (Evolution API)</h2>
-                <Badge variant="live" size="sm">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-5 h-5 text-purple-400" />
+                  <h2 className="text-base font-bold text-[var(--text-main)]">حالة خطوط واتساب الحقيقية (Evolution API)</h2>
+                </div>
+                <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   مراقبة حية
-                </Badge>
+                </span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400">
-                      <th className="pb-3 font-semibold">اسم الخط</th>
-                      <th className="pb-3 font-semibold">الرقم المقنّع</th>
-                      <th className="pb-3 font-semibold">الحالة</th>
-                      <th className="pb-3 font-semibold">البطارية</th>
-                      <th className="pb-3 font-semibold">المحادثات غير المقروءة</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {lines.map((l) => (
-                      <tr key={l.id} className="hover:bg-slate-850/50 transition-colors">
-                        <td className="py-3 font-medium text-white">{l.title_ar}</td>
-                        <td className="py-3 font-mono text-slate-400">{l.phone_masked}</td>
-                        <td className="py-3">
-                          <Badge variant={l.status === 'online' ? 'live' : 'warning'} size="sm">
-                            {l.status === 'online' ? 'متصل' : 'تنبيه'}
-                          </Badge>
-                        </td>
-                        <td className="py-3">
-                          <span className="inline-flex items-center gap-1 text-slate-300 font-mono">
-                            <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
-                            {l.battery_level}%
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-bold">
-                            {l.unread_count}
-                          </span>
-                        </td>
+              {loading ? (
+                <div className="flex items-center justify-center py-12 text-[var(--text-muted)] gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+                  <span className="text-xs">جاري جلب إحصائيات الخطوط...</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--border-subtle)] text-[var(--text-muted)]">
+                        <th className="pb-3 font-semibold">اسم الخط</th>
+                        <th className="pb-3 font-semibold">الرقم المرتبط</th>
+                        <th className="pb-3 font-semibold">الحالة</th>
+                        <th className="pb-3 font-semibold">الرسائل</th>
+                        <th className="pb-3 font-semibold">المحادثات</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-subtle)]">
+                      {instances.map((l) => {
+                        const status = l.connectionStatus || l.instance?.status || 'close';
+                        const owner = l.ownerJid || l.instance?.owner || '';
+                        const phone = owner ? `+${owner.replace('@s.whatsapp.net', '')}` : '—';
+                        const isConnected = status === 'open';
+
+                        return (
+                          <tr key={l.id || l.name} className="hover:bg-[var(--card-elevated)] transition-colors">
+                            <td className="py-3.5 font-bold text-[var(--text-main)]">
+                              {l.profileName || l.name}
+                            </td>
+                            <td className="py-3.5 font-mono text-[var(--text-secondary)]">
+                              {phone}
+                            </td>
+                            <td className="py-3.5">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
+                                isConnected
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                                {isConnected ? 'متصل ومستقر' : 'بانتظار الاقتران'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 font-mono text-[var(--text-main)]">
+                              {l._count?.Message?.toLocaleString() || 0}
+                            </td>
+                            <td className="py-3.5 font-mono text-[var(--text-main)]">
+                              {l._count?.Chat?.toLocaleString() || 0}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Infrastructure Health Card */}
           <div>
-            <Card variant="subtle" className="p-6 space-y-4">
-              <h2 className="text-base font-bold text-white mb-2">سلامة البنية والخادم</h2>
+            <div className="p-6 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-xl space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Server className="w-5 h-5 text-purple-400" />
+                <h2 className="text-base font-bold text-[var(--text-main)]">سلامة خادم Hostinger VPS</h2>
+              </div>
 
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/60 space-y-1">
+              <div className="p-3.5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">استهلاك الذاكرة (VPS 8GB):</span>
-                  <span className="font-mono text-white">4.2 GB / 8.0 GB</span>
+                  <span className="text-[var(--text-muted)]">عنوان السيرفر (Hostinger):</span>
+                  <span className="font-mono text-emerald-400 font-semibold">69.62.122.89</span>
                 </div>
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div className="bg-emerald-500 h-full rounded-full" style={{ width: '52%' }} />
+                <div className="flex justify-between text-xs">
+                  <span className="text-[var(--text-muted)]">إصدار النظام:</span>
+                  <span className="font-mono text-[var(--text-main)]">Ubuntu 24.04 LTS</span>
+                </div>
+                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-1">
+                  <div className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full" style={{ width: '48%' }} />
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/60 space-y-2 text-xs">
+              <div className="p-3.5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] space-y-2.5 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">حاكم الإرسال (SendGovernor):</span>
-                  <span className="text-emerald-400 font-semibold">نشط (حماية من الحظر)</span>
+                  <span className="text-[var(--text-muted)]">حاكم الإرسال (SendGovernor):</span>
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    نشط (حماية من الحظر)
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">قاطع الدائرة (Circuit Breaker):</span>
+                  <span className="text-[var(--text-muted)]">قاطع الدائرة (Circuit Breaker):</span>
                   <span className="text-emerald-400 font-semibold">مغلق (سليم)</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">نظام المزامنة:</span>
-                  <span className="text-slate-200 font-semibold">Supabase Cloud + Traefik</span>
+                  <span className="text-[var(--text-muted)]">خادم النطاقات الآمن:</span>
+                  <span className="text-[var(--text-main)] font-mono">sslip.io (SSL Active)</span>
                 </div>
               </div>
 
-              <div className="pt-2 text-xs text-slate-500 leading-relaxed">
-                يتم إدارة وتوزيع الحمل بين جلسات وحاويات Evolution API تلقائياً وبشكل مباشر لمنع أي ضغط على السيرفر.
+              <div className="pt-2 text-xs text-[var(--text-muted)] leading-relaxed">
+                يتم إدارة وتوزيع أحمال الرسائل تلقائياً عبر محرك Evolution API مع عزل تام لكل جلسة لمنع أي تأثير متبادل.
               </div>
-            </Card>
+            </div>
           </div>
         </div>
       </div>

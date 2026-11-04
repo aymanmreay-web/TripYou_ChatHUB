@@ -60,7 +60,9 @@ export interface ConversationItem {
   title: string;
   phone_or_jid: string;
   avatar_letter: string;
+  avatar_url?: string;
   is_group: boolean;
+  participant_count?: number;
   line_id: string;
   line_title: string;
   last_message_text: string;

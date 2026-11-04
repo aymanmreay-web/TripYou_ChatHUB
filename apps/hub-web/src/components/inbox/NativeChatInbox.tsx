@@ -29,7 +29,14 @@ import {
   Lock,
   Unlock,
   Moon,
-  ArrowUpRight
+  ArrowUpRight,
+  FileText,
+  Image as ImageIcon,
+  Music,
+  Video,
+  X,
+  Download,
+  FileUp
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
@@ -89,6 +96,20 @@ export function NativeChatInbox() {
   const [pendingSendText, setPendingSendText] = useState<string>('');
   const [lockedLinesMap, setLockedLinesMap] = useState<Record<string, string>>({});
 
+  // --- مرفقات الوسائط (Media & Attachments) ---
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachmentModalOpen, setAttachmentModalOpen] = useState<boolean>(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<{
+    file: File;
+    base64: string;
+    previewUrl: string;
+    mediaType: 'image' | 'document' | 'audio' | 'video';
+    mimeType: string;
+    fileName: string;
+    caption: string;
+  } | null>(null);
+  const [isSendingMedia, setIsSendingMedia] = useState<boolean>(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // حساب ساعات الهدوء بتوقيت مكة المكرمة (+3)
@@ -127,24 +148,53 @@ export function NativeChatInbox() {
     fetchInstances();
   }, [fetchInstances]);
 
-  // 2. Fetch real chats for the selected instance
+  // 2. Fetch real chats & WhatsApp groups for the selected instance
   const fetchChats = useCallback(async (instanceName: string) => {
     if (!instanceName) return;
     try {
       setLoadingChats(true);
-      const res = await fetch(`/api/evolution/instances/${instanceName}/chats`);
-      if (res.ok) {
-        const rawChats = await res.json();
+      // Fetch chats and all groups in parallel
+      const [chatsRes, groupsRes] = await Promise.allSettled([
+        fetch(`/api/evolution/instances/${instanceName}/chats`),
+        fetch(`/api/evolution/instances/${instanceName}/groups?participants=false`),
+      ]);
+
+      const groupMap = new Map<string, { subject: string; size?: number; pictureUrl?: string }>();
+      if (groupsRes.status === 'fulfilled' && groupsRes.value.ok) {
+        try {
+          const rawGroups = await groupsRes.value.json();
+          if (Array.isArray(rawGroups)) {
+            rawGroups.forEach((g: any) => {
+              const id = g.id || g.jid;
+              if (id) {
+                groupMap.set(id, {
+                  subject: g.subject || g.name || '',
+                  size: g.size || (Array.isArray(g.participants) ? g.participants.length : undefined),
+                  pictureUrl: g.pictureUrl,
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Failed parsing groups list:', e);
+        }
+      }
+
+      if (chatsRes.status === 'fulfilled' && chatsRes.value.ok) {
+        const rawChats = await chatsRes.value.json();
         if (Array.isArray(rawChats)) {
           const nowTs = Date.now();
           const mapped: ConversationItem[] = rawChats.map((c: any) => {
             const jid = c.remoteJid || c.id || '';
             const isGroup = jid.includes('@g.us');
             const cleanPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+            const groupInfo = groupMap.get(jid);
             
-            let title = c.pushName || '';
-            if (!title) {
-              title = isGroup ? 'مجموعة واتساب' : cleanPhone ? `+${cleanPhone}` : 'محادثة جديدة';
+            let title = '';
+            if (isGroup) {
+              title = groupInfo?.subject || c.subject || c.name || (cleanPhone ? `مجموعة (${cleanPhone.slice(-6)})` : 'مجموعة واتساب');
+            } else {
+              title = c.pushName || c.name || (cleanPhone ? `+${cleanPhone}` : 'محادثة جديدة');
             }
 
             let lastText = '';
@@ -159,6 +209,7 @@ export function NativeChatInbox() {
                 msgObj.imageMessage?.caption ||
                 (msgObj.imageMessage ? '📷 صورة' : '') ||
                 (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
+                (msgObj.videoMessage ? '🎥 مقطع فيديو' : '') ||
                 (c.lastMessage.messageType ? `[${c.lastMessage.messageType}]` : '');
             }
 
@@ -176,9 +227,11 @@ export function NativeChatInbox() {
               title: title,
               phone_or_jid: isGroup ? jid : `+${cleanPhone}`,
               avatar_letter: title.charAt(0) || '؟',
+              avatar_url: groupInfo?.pictureUrl || c.profilePictureUrl || undefined,
               avatar_color: isGroup ? 'from-indigo-600 to-purple-600' : 'from-emerald-600 to-teal-600',
               unread_count: c.unreadCount || 0,
               is_group: isGroup,
+              participant_count: groupInfo?.size,
               line_id: instanceName,
               line_title: instanceName === 'Master' ? 'الرقم الرئيسي' : instanceName,
               last_message_text: lastText || 'بدء المحادثة',
@@ -232,20 +285,42 @@ export function NativeChatInbox() {
         const mapped: ChatMessage[] = list.map((m: any) => {
           const fromMe = m.key?.fromMe ?? false;
           let text = '';
+          let mediaType: any = 'text';
+          let mediaUrl: string | undefined = undefined;
+
           if (m.message) {
             const msgObj = m.message;
-            text =
-              msgObj.conversation ||
-              msgObj.extendedTextMessage?.text ||
-              msgObj.reactionMessage?.text ||
-              msgObj.documentMessage?.caption ||
-              (msgObj.documentMessage ? '📄 مستند' : '') ||
-              msgObj.imageMessage?.caption ||
-              (msgObj.imageMessage ? '📷 صورة' : '') ||
-              (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
-              (msgObj.videoMessage ? '🎥 مقطع فيديو' : '') ||
-              (msgObj.pollUpdateMessage ? '📊 استطلاع تصويت' : '') ||
-              (m.messageType ? `[${m.messageType}]` : '');
+            if (msgObj.conversation) {
+              text = msgObj.conversation;
+            } else if (msgObj.extendedTextMessage?.text) {
+              text = msgObj.extendedTextMessage.text;
+            } else if (msgObj.imageMessage) {
+              mediaType = 'image';
+              text = msgObj.imageMessage.caption || '';
+              if (msgObj.imageMessage.jpegThumbnail) {
+                mediaUrl = `data:image/jpeg;base64,${msgObj.imageMessage.jpegThumbnail}`;
+              } else if (msgObj.imageMessage.url) {
+                mediaUrl = msgObj.imageMessage.url;
+              }
+            } else if (msgObj.documentMessage) {
+              mediaType = 'document';
+              text = msgObj.documentMessage.fileName || msgObj.documentMessage.title || msgObj.documentMessage.caption || 'مستند';
+              mediaUrl = msgObj.documentMessage.url;
+            } else if (msgObj.audioMessage) {
+              mediaType = 'audio';
+              text = 'تسجيل صوتي';
+              mediaUrl = msgObj.audioMessage.url;
+            } else if (msgObj.videoMessage) {
+              mediaType = 'video';
+              text = msgObj.videoMessage.caption || 'مقطع فيديو';
+              mediaUrl = msgObj.videoMessage.url;
+            } else if (msgObj.reactionMessage) {
+              text = msgObj.reactionMessage.text || 'تفاعل';
+            } else if (msgObj.pollUpdateMessage) {
+              text = '📊 استطلاع تصويت';
+            } else if (m.messageType) {
+              text = `[${m.messageType}]`;
+            }
           }
 
           let timeStr = '';
@@ -259,8 +334,9 @@ export function NativeChatInbox() {
             conversation_id: chatJid,
             chat_jid: chatJid,
             direction: fromMe ? 'out' : 'in',
-            body: text || '(رسالة وسائط)',
-            media_type: m.messageType || 'text',
+            body: text || (mediaType !== 'text' ? '' : '(رسالة)'),
+            media_type: mediaType,
+            media_url: mediaUrl,
             sender_name: fromMe ? 'أنا' : (m.pushName || 'العميل'),
             status: fromMe ? (m.status === 'READ' ? 'read' : 'delivered') : 'delivered',
             line_id: instanceName,
@@ -542,6 +618,101 @@ export function NativeChatInbox() {
     executeSendMessage(trimmed);
   };
 
+  // --- معالجة اختيار ملف للإرفاق ---
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    let mediaType: 'image' | 'document' | 'audio' | 'video' = 'document';
+    if (file.type.startsWith('image/')) mediaType = 'image';
+    else if (file.type.startsWith('audio/')) mediaType = 'audio';
+    else if (file.type.startsWith('video/')) mediaType = 'video';
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setSelectedAttachment({
+        file,
+        base64,
+        previewUrl: URL.createObjectURL(file),
+        mediaType,
+        mimeType: file.type || 'application/octet-stream',
+        fileName: file.name,
+        caption: '',
+      });
+      setAttachmentModalOpen(true);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // --- إرسال المرفق عبر Evolution API ---
+  const handleSendAttachment = async () => {
+    if (!selectedAttachment || !activeConversation || isSendingMedia) return;
+
+    if (isBreakerTripped) {
+      alert('قاطع الدائرة مفعل حالياً! لا يمكن إرسال المرفقات قبل إعادة الضبط.');
+      return;
+    }
+
+    setIsSendingMedia(true);
+    try {
+      const res = await fetch(`/api/evolution/instances/${selectedInstanceName}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: activeConversation.chat_jid,
+          mediaType: selectedAttachment.mediaType,
+          mimeType: selectedAttachment.mimeType,
+          media: selectedAttachment.base64,
+          caption: selectedAttachment.caption,
+          fileName: selectedAttachment.fileName,
+        }),
+      });
+
+      if (res.ok) {
+        setConsecutiveErrors(0);
+        const newMsg: ChatMessage = {
+          id: `media-${Date.now()}`,
+          conversation_id: activeConversation.id,
+          chat_jid: activeConversation.chat_jid,
+          direction: 'out',
+          body: selectedAttachment.caption || (selectedAttachment.mediaType === 'image' ? '📷 صورة' : `📄 ${selectedAttachment.fileName}`),
+          media_type: selectedAttachment.mediaType,
+          media_url: selectedAttachment.previewUrl,
+          sender_name: user.full_name,
+          status: 'sent',
+          line_id: selectedInstanceName,
+          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+        };
+
+        setMessages((prev) => [...prev, newMsg]);
+
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeConversation.id
+              ? {
+                  ...c,
+                  last_message_text: selectedAttachment.caption || (selectedAttachment.mediaType === 'image' ? '📷 صورة' : `📄 ${selectedAttachment.fileName}`),
+                  last_message_at: 'الآن',
+                }
+              : c
+          )
+        );
+
+        setAttachmentModalOpen(false);
+        setSelectedAttachment(null);
+      } else {
+        const errData = await res.json();
+        alert(`فشل إرسال المرفق: ${errData.error || res.statusText}`);
+      }
+    } catch (err: any) {
+      alert(`خطأ في الاتصال أثناء إرسال المرفق: ${err.message}`);
+    } finally {
+      setIsSendingMedia(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
       
@@ -728,20 +899,33 @@ export function NativeChatInbox() {
                     }`}
                   >
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 overflow-hidden ${
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 overflow-hidden border ${
                         conv.is_group
-                          ? 'bg-purple-600/20 text-purple-300 border border-purple-500/30'
-                          : 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                          ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
+                          : 'bg-violet-600/20 text-violet-300 border-violet-500/30'
                       }`}
                     >
-                      {conv.is_group ? <Users className="w-5 h-5" /> : conv.avatar_letter}
+                      {conv.avatar_url ? (
+                        <img src={conv.avatar_url} alt={conv.title} className="w-full h-full object-cover" />
+                      ) : conv.is_group ? (
+                        <Users className="w-5 h-5" />
+                      ) : (
+                        conv.avatar_letter
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="font-medium text-xs text-white truncate">
-                          {conv.title}
-                        </span>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-semibold text-xs text-white truncate">
+                            {conv.title}
+                          </span>
+                          {conv.participant_count && (
+                            <span className="text-[10px] text-purple-300/80 shrink-0 font-normal">
+                              ({conv.participant_count})
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-slate-400 shrink-0 font-mono">
                           {conv.last_message_at}
                         </span>
@@ -804,13 +988,15 @@ export function NativeChatInbox() {
                   </button>
 
                   <div
-                    className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shadow-sm ${
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden border ${
                       activeConversation.is_group
-                        ? 'bg-purple-600/20 text-purple-300 border border-purple-500/30'
-                        : 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white'
+                        ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
+                        : 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white border-transparent'
                     }`}
                   >
-                    {activeConversation.is_group ? (
+                    {activeConversation.avatar_url ? (
+                      <img src={activeConversation.avatar_url} alt={activeConversation.title} className="w-full h-full object-cover" />
+                    ) : activeConversation.is_group ? (
                       <Users className="w-5 h-5" />
                     ) : (
                       activeConversation.avatar_letter
@@ -824,7 +1010,7 @@ export function NativeChatInbox() {
                       </span>
                       {activeConversation.is_group && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/40 text-purple-300 border border-purple-700/50">
-                          مجموعة
+                          {activeConversation.participant_count ? `مجموعة (${activeConversation.participant_count} عضو)` : 'مجموعة'}
                         </span>
                       )}
 
@@ -922,6 +1108,11 @@ export function NativeChatInbox() {
                 ) : (
                   messages.map((msg) => {
                     const isOut = msg.direction === 'out';
+                    const isImage = msg.media_type === 'image';
+                    const isDoc = msg.media_type === 'document';
+                    const isAudio = msg.media_type === 'audio';
+                    const isVideo = msg.media_type === 'video';
+
                     return (
                       <div
                         key={msg.id}
@@ -940,7 +1131,84 @@ export function NativeChatInbox() {
                             </div>
                           )}
 
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                          {/* Image Attachment */}
+                          {isImage && (
+                            <div className="mb-2 rounded-xl overflow-hidden border border-white/20 max-w-sm">
+                              {msg.media_url ? (
+                                <img
+                                  src={msg.media_url}
+                                  alt="مرفق صورة"
+                                  className="w-full h-auto object-cover max-h-72 cursor-pointer hover:opacity-95 transition-opacity"
+                                  onClick={() => window.open(msg.media_url, '_blank')}
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2 p-3 bg-purple-900/30 text-xs text-purple-200">
+                                  <ImageIcon className="w-5 h-5 text-purple-300" />
+                                  <span>📷 صورة مرفقة</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Document Attachment */}
+                          {isDoc && (
+                            <div className="flex items-center gap-2.5 mb-2 p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs">
+                              <div className="p-2 rounded-lg bg-purple-500/20 text-purple-300 shrink-0">
+                                <FileText className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-white truncate">{msg.body || 'مستند مرفق'}</div>
+                                <div className="text-[10px] text-slate-400">مستند WhatsApp (PDF / Doc)</div>
+                              </div>
+                              {msg.media_url && (
+                                <a
+                                  href={msg.media_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white shrink-0"
+                                  title="تنزيل المستند"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Audio Attachment */}
+                          {isAudio && (
+                            <div className="flex items-center gap-2.5 mb-2 p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs">
+                              <div className="p-2 rounded-lg bg-purple-500/20 text-purple-300 shrink-0">
+                                <Music className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-white">تسجيل صوتي</div>
+                                {msg.media_url ? (
+                                  <audio controls src={msg.media_url} className="h-8 w-full mt-1 max-w-[220px]" />
+                                ) : (
+                                  <div className="text-[10px] text-slate-400">رسالة صوتية (Audio)</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Video Attachment */}
+                          {isVideo && (
+                            <div className="mb-2 rounded-xl overflow-hidden border border-white/20 max-w-sm">
+                              {msg.media_url ? (
+                                <video controls src={msg.media_url} className="w-full h-auto max-h-72" />
+                              ) : (
+                                <div className="flex items-center gap-2 p-3 bg-purple-900/30 text-xs text-purple-200">
+                                  <Video className="w-5 h-5 text-purple-300" />
+                                  <span>🎥 مقطع فيديو</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Text Body */}
+                          {msg.body && !isDoc && (
+                            <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                          )}
 
                           {msg.signature && (
                             <div className="mt-2 pt-1.5 border-t border-white/20 text-[11px] opacity-90 flex items-center gap-1 font-mono">
@@ -995,12 +1263,20 @@ export function NativeChatInbox() {
                 </div>
 
                 <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                    accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,audio/*,video/*"
+                  />
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
+                    onClick={() => fileInputRef.current?.click()}
                     className="h-10 w-10 p-0 text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                    title="إرفاق ملف أو مستند"
+                    title="إرفاق ملف، صورة أو مستند"
                   >
                     <Paperclip className="w-5 h-5" />
                   </Button>
@@ -1078,6 +1354,113 @@ export function NativeChatInbox() {
                 className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-colors shadow-lg shadow-amber-950/50"
               >
                 تأكيد الإرسال الاستثنائي الآن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- نافذة معاينة وإرسال المرفقات --- */}
+      {attachmentModalOpen && selectedAttachment && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
+              <div className="flex items-center gap-2">
+                <FileUp className="w-5 h-5 text-purple-400" />
+                <h3 className="font-bold text-base text-white">إرسال مرفق عبر واتساب</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachmentModalOpen(false);
+                  setSelectedAttachment(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Preview of file */}
+            <div className="rounded-2xl bg-black/40 border border-purple-900/40 p-4 flex flex-col items-center justify-center">
+              {selectedAttachment.mediaType === 'image' ? (
+                <div className="max-h-64 overflow-hidden rounded-xl">
+                  <img
+                    src={selectedAttachment.previewUrl}
+                    alt={selectedAttachment.fileName}
+                    className="max-h-64 object-contain rounded-xl"
+                  />
+                </div>
+              ) : selectedAttachment.mediaType === 'audio' ? (
+                <div className="flex items-center gap-3 p-4 text-purple-300">
+                  <Music className="w-10 h-10" />
+                  <audio controls src={selectedAttachment.previewUrl} className="h-8" />
+                </div>
+              ) : selectedAttachment.mediaType === 'video' ? (
+                <video controls src={selectedAttachment.previewUrl} className="max-h-64 rounded-xl" />
+              ) : (
+                <div className="flex items-center gap-3 p-4 text-purple-300">
+                  <FileText className="w-10 h-10 text-purple-400" />
+                  <div className="text-right">
+                    <div className="font-semibold text-white text-sm">{selectedAttachment.fileName}</div>
+                    <div className="text-xs text-slate-400 font-mono mt-0.5">
+                      {(selectedAttachment.file.size / 1024).toFixed(1)} KB • {selectedAttachment.mimeType}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Caption Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-medium">الوصف المصاحب (Caption):</label>
+              <input
+                type="text"
+                value={selectedAttachment.caption}
+                onChange={(e) =>
+                  setSelectedAttachment((prev) => (prev ? { ...prev, caption: e.target.value } : null))
+                }
+                placeholder="اكتب تعليقاً على المرفق (اختياري)..."
+                className="w-full bg-[#080512] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
+              />
+            </div>
+
+            {/* Recipient summary */}
+            <div className="text-xs text-slate-400 flex items-center justify-between px-1">
+              <span>المستلم: <strong className="text-purple-300">{activeConversation?.title}</strong></span>
+              <span>الخط: <strong className="text-emerald-400 font-mono">{selectedInstanceName}</strong></span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachmentModalOpen(false);
+                  setSelectedAttachment(null);
+                }}
+                disabled={isSendingMedia}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleSendAttachment}
+                disabled={isSendingMedia}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white text-xs font-bold transition-all shadow-lg shadow-purple-950/50 flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSendingMedia ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري الرفع والإرسال...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>إرسال المرفق الآن</span>
+                    <Send className="w-3.5 h-3.5 rotate-180" />
+                  </>
+                )}
               </button>
             </div>
           </div>
