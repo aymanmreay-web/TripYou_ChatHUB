@@ -35,7 +35,7 @@ export interface WhatsAppLine {
 
 export type MessageDirection = 'in' | 'out';
 export type MessageStatus = 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
-export type MediaType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker';
+export type MediaType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker' | 'poll';
 
 export interface ChatMessage {
   id: string;

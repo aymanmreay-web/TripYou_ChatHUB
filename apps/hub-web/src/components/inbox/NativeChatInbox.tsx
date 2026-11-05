@@ -36,7 +36,11 @@ import {
   Video,
   X,
   Download,
-  FileUp
+  FileUp,
+  Mic,
+  Smile,
+  Trash2,
+  StopCircle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
@@ -44,12 +48,15 @@ import { Button } from '@tripyou/ui';
 import { supabase } from '../../lib/supabase';
 
 // ─────────────────────────────────────────────
-// 🔧 مساعد: تحويل رابط وسائط Evolution إلى رابط وكيل محلي
+// 🔧 مساعد: تحويل معرف الرسالة أو الرابط إلى رابط وكيل لفك التشفير
 // ─────────────────────────────────────────────
-function getProxiedUrl(url: string | undefined, instanceName: string): string | null {
-  if (!url) return null;
-  if (url.startsWith('data:')) return url; // base64 — لا يحتاج وكيل
-  return `/api/evolution/instances/${instanceName}/media/proxy?url=${encodeURIComponent(url)}`;
+function getProxiedUrl(mediaUrl: string | undefined, instanceName: string, messageId?: string): string | null {
+  if (messageId) {
+    return `/api/evolution/instances/${instanceName}/media/proxy?id=${encodeURIComponent(messageId)}`;
+  }
+  if (!mediaUrl) return null;
+  if (mediaUrl.startsWith('data:')) return mediaUrl;
+  return `/api/evolution/instances/${instanceName}/media/proxy?url=${encodeURIComponent(mediaUrl)}`;
 }
 
 // ─────────────────────────────────────────────
@@ -263,7 +270,18 @@ export function NativeChatInbox() {
   const [lightboxMedia, setLightboxMedia] = useState<{
     type: 'image' | 'video';
     src: string;
+    caption?: string;
   } | null>(null);
+
+  // ─── تسجيل الصوت الحي (Live Voice Note Recorder) ───
+  const [isRecordingVoice, setIsRecordingVoice] = useState<boolean>(false);
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ─── لوحة الإيموجي (Emoji Picker) ───
+  const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -364,8 +382,12 @@ export function NativeChatInbox() {
                 msgObj.imageMessage?.caption ||
                 (msgObj.imageMessage ? '📷 صورة' : '') ||
                 (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
+                msgObj.videoMessage?.caption ||
                 (msgObj.videoMessage ? '🎥 مقطع فيديو' : '') ||
-                (c.lastMessage.messageType ? `[${c.lastMessage.messageType}]` : '');
+                (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3 ? '📊 استطلاع رأي' : '') ||
+                (msgObj.pollUpdateMessage ? '📊 استطلاع رأي' : '') ||
+                (c.lastMessage.messageType && c.lastMessage.messageType.includes('poll') ? '📊 استطلاع رأي' : '') ||
+                '';
             }
 
             let timeStr = '';
@@ -452,29 +474,30 @@ export function NativeChatInbox() {
             } else if (msgObj.imageMessage) {
               mediaType = 'image';
               text = msgObj.imageMessage.caption || '';
-              if (msgObj.imageMessage.jpegThumbnail) {
-                mediaUrl = `data:image/jpeg;base64,${msgObj.imageMessage.jpegThumbnail}`;
-              } else if (msgObj.imageMessage.url) {
-                mediaUrl = msgObj.imageMessage.url;
-              }
+              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
             } else if (msgObj.documentMessage) {
               mediaType = 'document';
               text = msgObj.documentMessage.fileName || msgObj.documentMessage.title || msgObj.documentMessage.caption || 'مستند';
-              mediaUrl = msgObj.documentMessage.url;
+              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
             } else if (msgObj.audioMessage) {
               mediaType = 'audio';
-              text = 'تسجيل صوتي';
-              mediaUrl = msgObj.audioMessage.url;
+              text = '';
+              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
             } else if (msgObj.videoMessage) {
               mediaType = 'video';
-              text = msgObj.videoMessage.caption || 'مقطع فيديو';
-              mediaUrl = msgObj.videoMessage.url;
+              text = msgObj.videoMessage.caption || '';
+              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
             } else if (msgObj.reactionMessage) {
-              text = msgObj.reactionMessage.text || 'تفاعل';
+              text = msgObj.reactionMessage.text || '';
+            } else if (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3) {
+              mediaType = 'poll';
+              const pollObj = msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3;
+              text = pollObj?.name || 'استطلاع رأي';
             } else if (msgObj.pollUpdateMessage) {
-              text = '📊 استطلاع تصويت';
+              mediaType = 'poll';
+              text = 'استطلاع رأي تفاعلي';
             } else if (m.messageType) {
-              text = `[${m.messageType}]`;
+              text = m.messageType.includes('poll') ? 'استطلاع رأي' : '';
             }
           }
 
@@ -866,6 +889,132 @@ export function NativeChatInbox() {
     } finally {
       setIsSendingMedia(false);
     }
+  };
+
+  // ─── إدراج إيموجي في مربع النص ───
+  const handleInsertEmoji = (emoji: string) => {
+    setInputText((prev) => prev + emoji);
+  };
+
+  // ─── بدء تسجيل الصوت الحي ───
+  const handleStartVoiceRecording = async () => {
+    if (isBreakerTripped) {
+      alert('قاطع الدائرة مفعل حالياً! لا يمكن التسجيل.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      audioChunksRef.current = [];
+
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mr.start(200);
+      setIsRecordingVoice(true);
+      setRecordingSeconds(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      alert(`تعذر الوصول إلى الميكروفون: ${err.message || 'يرجى تفعيل صلاحية الميكروفون في المتصفح'}`);
+    }
+  };
+
+  // ─── إلغاء تسجيل الصوت ───
+  const handleCancelVoiceRecording = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (mediaRecorderRef.current) {
+      try {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
+    }
+    setIsRecordingVoice(false);
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
+  };
+
+  // ─── إنهاء التسجيل وإرساله فوراً عبر واتساب ───
+  const handleStopAndSendVoiceRecording = async () => {
+    if (!mediaRecorderRef.current || !activeConversation) return;
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+    const mr = mediaRecorderRef.current;
+    mr.onstop = async () => {
+      try {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg; codecs=opus' });
+        mr.stream.getTracks().forEach((t) => t.stop());
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const fullBase64 = reader.result as string;
+          const rawBase64 = fullBase64.includes(';base64,') ? fullBase64.split(';base64,')[1] : fullBase64;
+          if (!rawBase64) return;
+
+          setIsSendingMedia(true);
+          try {
+            const res = await fetch(`/api/evolution/instances/${selectedInstanceName}/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: activeConversation.chat_jid,
+                mediaType: 'audio',
+                mimeType: 'audio/ogg; codecs=opus',
+                media: rawBase64,
+                fileName: 'voice_note.ogg',
+              }),
+            });
+
+            if (res.ok) {
+              const resData = await res.json();
+              setConsecutiveErrors(0);
+              const newMsg: ChatMessage = {
+                id: resData?.key?.id || `voice-${Date.now()}`,
+                conversation_id: activeConversation.id,
+                chat_jid: activeConversation.chat_jid,
+                direction: 'out',
+                body: '',
+                media_type: 'audio',
+                media_url: `/api/evolution/instances/${selectedInstanceName}/media/proxy?id=${resData?.key?.id || ''}`,
+                sender_name: user.full_name,
+                status: 'sent',
+                line_id: selectedInstanceName,
+                created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+              };
+
+              setMessages((prev) => [...prev, newMsg]);
+              setConversations((prev) =>
+                prev.map((c) =>
+                  c.id === activeConversation.id
+                    ? { ...c, last_message_text: '🎵 تسجيل صوتي', last_message_at: 'الآن' }
+                    : c
+                )
+              );
+            } else {
+              const err = await res.json();
+              alert(`فشل إرسال البصمة الصوتية: ${err.error || res.statusText}`);
+            }
+          } catch (err: any) {
+            alert(`خطأ أثناء إرسال التسجيل: ${err.message}`);
+          } finally {
+            setIsSendingMedia(false);
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+      } catch (err: any) {
+        alert(`خطأ في معالجة الصوت: ${err.message}`);
+      }
+    };
+
+    mr.stop();
+    setIsRecordingVoice(false);
+    setRecordingSeconds(0);
   };
 
   return (
@@ -1287,32 +1436,30 @@ export function NativeChatInbox() {
                           )}
 
                           {/* ════════════════════════════════════════
-                              📷 صورة — ثابتة الحجم + lightbox عند الضغط
+                              📷 صورة — دقة كاملة + lightbox عند الضغط
                              ════════════════════════════════════════ */}
                           {isImage && (() => {
-                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
                             return (
-                              <div className="mb-1.5">
+                              <div className="mb-1">
                                 {proxied ? (
                                   <div
-                                    className="w-56 h-36 rounded-xl overflow-hidden cursor-pointer bg-black/20 border border-white/10 hover:opacity-90 transition-opacity flex items-center justify-center"
-                                    onClick={() => setLightboxMedia({ type: 'image', src: proxied })}
-                                    title="اضغط لعرض كامل"
+                                    className="rounded-2xl overflow-hidden cursor-pointer bg-black/20 border border-white/10 hover:opacity-95 transition-opacity max-w-sm max-h-80 flex items-center justify-center"
+                                    onClick={() => setLightboxMedia({ type: 'image', src: proxied, caption: msg.body })}
+                                    title="اضغط لتكبير الصورة بكامل دقتها"
                                   >
                                     <img
                                       src={proxied}
                                       alt="صورة"
-                                      className="w-full h-full object-cover"
+                                      className="w-full max-h-80 object-cover rounded-2xl"
+                                      loading="lazy"
                                     />
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
                                     <ImageIcon className="w-5 h-5" />
-                                    <span>صورة مرفقة</span>
+                                    <span>صورة</span>
                                   </div>
-                                )}
-                                {msg.body && (
-                                  <p className="text-sm mt-1 whitespace-pre-wrap">{msg.body}</p>
                                 )}
                               </div>
                             );
@@ -1331,7 +1478,7 @@ export function NativeChatInbox() {
                                 <div className="text-[10px] text-slate-400">مستند (PDF / Doc)</div>
                               </div>
                               {msg.media_url && (() => {
-                                const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                                const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
                                 return (
                                   <a
                                     href={proxied || msg.media_url}
@@ -1347,12 +1494,12 @@ export function NativeChatInbox() {
                           )}
 
                           {/* ════════════════════════════════════════
-                              🎵 صوت — مشغّل مخصص مع شريط الموجة
+                              🎵 صوت — مشغّل صوتي مخصص مع شريط الترددات
                              ════════════════════════════════════════ */}
                           {isAudio && (() => {
-                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
                             return (
-                              <div className="mb-1.5">
+                              <div className="mb-1">
                                 {proxied ? (
                                   <AudioMessagePlayer
                                     src={proxied}
@@ -1370,27 +1517,26 @@ export function NativeChatInbox() {
                           })()}
 
                           {/* ════════════════════════════════════════
-                              🎥 فيديو — ثابت الحجم + lightbox عند الضغط
+                              🎥 فيديو — مشغّل فيديو مع شاشة كاملة
                              ════════════════════════════════════════ */}
                           {isVideo && (() => {
-                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
                             return (
-                              <div className="mb-1.5">
+                              <div className="mb-1">
                                 {proxied ? (
                                   <div
-                                    className="relative w-56 h-36 rounded-xl overflow-hidden cursor-pointer bg-black border border-white/10 hover:opacity-90 transition-opacity flex items-center justify-center"
-                                    onClick={() => setLightboxMedia({ type: 'video', src: proxied })}
-                                    title="اضغط لتشغيل بشاشة كاملة"
+                                    className="relative rounded-2xl overflow-hidden cursor-pointer bg-black border border-white/10 hover:opacity-95 transition-opacity max-w-sm max-h-80 flex items-center justify-center group"
+                                    onClick={() => setLightboxMedia({ type: 'video', src: proxied, caption: msg.body })}
+                                    title="اضغط لتشغيل مقطع الفيديو بشاشة كاملة"
                                   >
                                     <video
                                       src={proxied}
-                                      className="w-full h-full object-cover"
-                                      muted
+                                      className="w-full max-h-80 object-cover rounded-2xl bg-black"
                                       preload="metadata"
                                     />
-                                    {/* أيقونة تشغيل فوق الصورة المصغّرة */}
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                                      <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                                    {/* زر تشغيل أنيق فوق الفيديو */}
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition-colors">
+                                      <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
                                         <svg
                                           className="w-5 h-5 text-purple-700 ml-1"
                                           fill="currentColor"
@@ -1407,16 +1553,28 @@ export function NativeChatInbox() {
                                     <span>مقطع فيديو</span>
                                   </div>
                                 )}
-                                {msg.body && (
-                                  <p className="text-sm mt-1 whitespace-pre-wrap">{msg.body}</p>
-                                )}
                               </div>
                             );
                           })()}
 
-                          {/* Text Body */}
-                          {msg.body && !isDoc && (
-                            <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                          {/* ════════════════════════════════════════
+                              📊 استطلاع رأي (Poll) بطاقة أنيقة
+                             ════════════════════════════════════════ */}
+                          {msg.media_type === 'poll' && (
+                            <div className="p-3 rounded-2xl bg-purple-950/40 border border-purple-500/30 text-xs space-y-1.5 min-w-[220px]">
+                              <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
+                                <span>📊</span>
+                                <span>{msg.body || 'استطلاع رأي / تصويت'}</span>
+                              </div>
+                              <div className="text-[10px] text-purple-300/70">
+                                استطلاع تفاعلي عبر واتساب
+                              </div>
+                            </div>
+                          )}
+
+                          {/* النص الفعلي للرسالة — يظهر فقط إذا كان هناك نص حقيقي ولم يكن تسجيلاً صوتياً أو تصويتاً */}
+                          {msg.body && !isDoc && !isAudio && msg.media_type !== 'poll' && (
+                            <p className="whitespace-pre-wrap leading-relaxed mt-1">{msg.body}</p>
                           )}
 
                           {msg.signature && (
@@ -1471,50 +1629,128 @@ export function NativeChatInbox() {
                   </label>
                 </div>
 
-                <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileInputChange}
-                    className="hidden"
-                    accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,audio/*,video/*"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-10 w-10 p-0 text-[var(--text-muted)] hover:text-[var(--text-main)]"
-                    title="إرفاق ملف، صورة أو مستند"
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </Button>
+                {/* شريط الإدخال أو شريط تسجيل الصوت الحي */}
+                {isRecordingVoice ? (
+                  <div className="flex items-center justify-between gap-3 bg-rose-950/40 border border-rose-500/40 rounded-2xl p-2.5 text-white">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-ping" />
+                      <span className="font-mono text-sm font-bold text-rose-300">
+                        {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}
+                      </span>
+                      <span className="text-xs text-rose-200/80 mr-2">جاري تسجيل البصمة الصوتية...</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCancelVoiceRecording}
+                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                        title="إلغاء التسجيل"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-400" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStopAndSendVoiceRecording}
+                        disabled={isSendingMedia}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md"
+                        title="إنهاء وإرسال التسجيل الصوتي عبر واتساب"
+                      >
+                        {isSendingMedia ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 rotate-180" />}
+                        <span>إرسال الصوت</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSendMessage} className="flex items-center gap-2 relative">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileInputChange}
+                      className="hidden"
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,audio/*,video/*"
+                    />
+                    
+                    {/* زر المرفقات */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="h-10 w-10 p-0 text-[var(--text-muted)] hover:text-[var(--text-main)] shrink-0"
+                      title="إرفاق ملف، صورة أو مستند"
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </Button>
 
-                  <input
-                    type="text"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="اكتب رسالتك إلى العميل... (اضغط Enter للإرسال المباشر عبر واتساب)"
-                    disabled={isSending || isBreakerTripped}
-                    className="flex-1 bg-[var(--card-elevated)] text-sm text-[var(--text-main)] px-4 py-2.5 rounded-2xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)] disabled:opacity-50"
-                  />
+                    {/* زر الإيموجي */}
+                    <div className="relative shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowEmojiPicker((prev) => !prev)}
+                        className="h-10 w-10 p-0 text-[var(--text-muted)] hover:text-amber-400 shrink-0"
+                        title="لوحة الرموز التعبيرية (الإيموجي)"
+                      >
+                        <Smile className="w-5 h-5" />
+                      </Button>
 
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    disabled={!inputText.trim() || isSending || isBreakerTripped}
-                    className="h-10 px-5 rounded-2xl flex items-center gap-2 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-semibold disabled:opacity-40 shadow-sm"
-                  >
-                    {isSending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {showEmojiPicker && (
+                        <div className="absolute bottom-12 right-0 z-50 bg-[#120B24] border border-purple-500/40 rounded-2xl p-3 shadow-2xl w-72 grid grid-cols-8 gap-1.5 text-xl backdrop-blur-md">
+                          {['😀','😂','🤣','😍','🥰','😘','😜','😎','🥳','🤔','🤫','🙄','😬','😴','👍','👎','👏','🙌','🙏','🤝','🔥','❤️','🎉','✨','🇸🇦','🌹','✈️','🏨','💼','📞','💬','✅','❌','⚠️','💯','👌','🤲','👋','💪','🎯'].map((em) => (
+                            <button
+                              key={em}
+                              type="button"
+                              onClick={() => {
+                                handleInsertEmoji(em);
+                              }}
+                              className="p-1 hover:bg-purple-600/30 rounded-lg transition-transform hover:scale-125"
+                            >
+                              {em}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="اكتب رسالتك إلى العميل... (اضغط Enter للإرسال المباشر عبر واتساب)"
+                      disabled={isSending || isBreakerTripped}
+                      className="flex-1 bg-[var(--card-elevated)] text-sm text-[var(--text-main)] px-4 py-2.5 rounded-2xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)] disabled:opacity-50"
+                    />
+
+                    {!inputText.trim() ? (
+                      <button
+                        type="button"
+                        onClick={handleStartVoiceRecording}
+                        disabled={isBreakerTripped}
+                        className="h-10 w-10 rounded-2xl flex items-center justify-center bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white transition-all border border-purple-500/40 shrink-0 shadow-sm"
+                        title="تسجيل رسالة صوتية (Voice Note)"
+                      >
+                        <Mic className="w-5 h-5" />
+                      </button>
                     ) : (
-                      <>
-                        <span>إرسال</span>
-                        <Send className="w-4 h-4 rotate-180" />
-                      </>
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        disabled={!inputText.trim() || isSending || isBreakerTripped}
+                        className="h-10 px-5 rounded-2xl flex items-center gap-2 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-semibold disabled:opacity-40 shadow-sm shrink-0"
+                      >
+                        {isSending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <span>إرسال</span>
+                            <Send className="w-4 h-4 rotate-180" />
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
-                </form>
+                  </form>
+                )}
               </div>
             </>
           ) : (
@@ -1685,32 +1921,39 @@ export function NativeChatInbox() {
           className="fixed inset-0 z-[200] bg-black/92 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
           onClick={() => setLightboxMedia(null)}
         >
+          {/* زر الإغلاق الدائم في الزاوية */}
+          <button
+            onClick={() => setLightboxMedia(null)}
+            className="fixed top-5 right-5 z-[210] w-11 h-11 rounded-full bg-black/70 hover:bg-black/90 text-white flex items-center justify-center transition-colors shadow-2xl border border-white/20"
+            title="إغلاق (Esc)"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
           {/* الحاوية الداخلية — الضغط عليها لا يغلق النافذة */}
           <div
-            className="relative max-w-5xl max-h-[90vh] w-full flex items-center justify-center"
+            className="relative flex flex-col items-center justify-center max-w-[92vw] max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* زر الإغلاق */}
-            <button
-              onClick={() => setLightboxMedia(null)}
-              className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition-colors shadow-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
             {lightboxMedia.type === 'image' ? (
               <img
                 src={lightboxMedia.src}
                 alt="عرض كامل"
-                className="max-w-full max-h-[88vh] rounded-2xl object-contain shadow-2xl"
+                className="max-w-[92vw] max-h-[82vh] rounded-2xl object-contain shadow-2xl"
               />
             ) : (
               <video
                 src={lightboxMedia.src}
                 controls
                 autoPlay
-                className="max-w-full max-h-[88vh] rounded-2xl shadow-2xl bg-black"
+                className="max-w-[92vw] max-h-[82vh] rounded-2xl shadow-2xl bg-black"
               />
+            )}
+
+            {lightboxMedia.caption && (
+              <div className="mt-3 text-center text-sm text-white bg-black/80 px-5 py-2.5 rounded-2xl backdrop-blur-md max-w-2xl border border-white/10 shadow-lg">
+                {lightboxMedia.caption}
+              </div>
             )}
           </div>
         </div>

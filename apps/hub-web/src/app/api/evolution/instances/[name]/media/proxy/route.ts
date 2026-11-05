@@ -1,13 +1,15 @@
 /**
- * GET /api/evolution/instances/[name]/media/proxy?url=<encoded_url>
+ * GET /api/evolution/instances/[name]/media/proxy?id=<messageId>&url=<optionalFallbackUrl>
  *
- * وكيل وسائط Evolution API — يُضيف رأس apikey المطلوب ويُعيد البث للمتصفح.
- * المتصفح لا يمكنه حقن رؤوس HTTP في وسوم <img>/<video>/<audio>،
- * لذلك نمرر الطلب عبر هذا المسار الذي يملك المفتاح.
+ * وكيل وسائط متطور لفك تشفير وتدفق وسائط WhatsApp الرسمية (Evolution API v2).
+ * وسائط WhatsApp مُشفرة بتشفير AES طرف إلى طرف (.enc)،
+ * يقوم هذا المسار باستدعاء getBase64FromMediaMessage لفك تشفيرها في الذاكرة
+ * وبثها للمتصفح بترميزها الأصلي (MP4, JPEG, OGG/Opus, PDF) مع كاش سريع.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 
+const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.sslip.io';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'bc6075e9f95967407faae5d0fa9ac875a8d88a94782172db';
 
 export async function GET(
@@ -15,54 +17,78 @@ export async function GET(
   { params }: { params: { name: string } }
 ) {
   const { searchParams } = new URL(req.url);
+  const messageId = searchParams.get('id');
   const mediaUrl = searchParams.get('url');
 
-  if (!mediaUrl) {
-    return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
+  if (!messageId && !mediaUrl) {
+    return NextResponse.json({ error: 'Missing id or url parameter' }, { status: 400 });
   }
 
-  let decodedUrl: string;
-  try {
-    decodedUrl = decodeURIComponent(mediaUrl);
-  } catch {
-    return NextResponse.json({ error: 'Invalid url encoding' }, { status: 400 });
-  }
+  const { name } = params;
 
-  if (!decodedUrl.startsWith('http')) {
-    return NextResponse.json({ error: 'Invalid media URL' }, { status: 400 });
-  }
+  // 1. الأولوية القصوى: فك التشفير عبر معرّف الرسالة (للحصول على الصورة الأصلية أو الفيديو بدون تشويش)
+  if (messageId) {
+    try {
+      const upstream = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${name}`, {
+        method: 'POST',
+        headers: {
+          apikey: EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: {
+            key: { id: messageId },
+          },
+          convertToMp4: false,
+        }),
+      });
 
-  try {
-    const upstream = await fetch(decodedUrl, {
-      headers: {
-        apikey: EVOLUTION_API_KEY,
-        Accept: '*/*',
-      },
-    });
-
-    if (!upstream.ok) {
-      return NextResponse.json(
-        { error: `Upstream error: ${upstream.status}` },
-        { status: upstream.status }
-      );
+      if (upstream.ok) {
+        const data = await upstream.json();
+        if (data && data.base64) {
+          const buffer = Buffer.from(data.base64, 'base64');
+          const mime = data.mimetype || 'application/octet-stream';
+          return new NextResponse(buffer, {
+            status: 200,
+            headers: {
+              'Content-Type': mime,
+              'Content-Length': buffer.length.toString(),
+              'Cache-Control': 'public, max-age=604800, immutable',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+      }
+    } catch (err: any) {
+      console.warn('[MediaProxy] Decrypt via id failed:', messageId, err?.message);
     }
-
-    const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
-    const body = await upstream.arrayBuffer();
-
-    return new NextResponse(body, {
-      status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=7200, stale-while-revalidate=86400',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  } catch (err: any) {
-    console.error('[MediaProxy] fetch error:', err?.message);
-    return NextResponse.json(
-      { error: 'Failed to fetch media from upstream' },
-      { status: 502 }
-    );
   }
+
+  // 2. إذا تم تمرير رابط بديل وكان رابطاً مباشراً غير مشفر
+  if (mediaUrl) {
+    try {
+      const decodedUrl = decodeURIComponent(mediaUrl);
+      if (decodedUrl.startsWith('http') && !decodedUrl.includes('.enc')) {
+        const directRes = await fetch(decodedUrl, {
+          headers: { apikey: EVOLUTION_API_KEY, Accept: '*/*' },
+        });
+        if (directRes.ok) {
+          const contentType = directRes.headers.get('content-type') || 'application/octet-stream';
+          const body = await directRes.arrayBuffer();
+          return new NextResponse(body, {
+            status: 200,
+            headers: {
+              'Content-Type': contentType,
+              'Cache-Control': 'public, max-age=86400',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+      }
+    } catch (err: any) {
+      console.warn('[MediaProxy] Direct fetch failed:', err?.message);
+    }
+  }
+
+  return NextResponse.json({ error: 'Media could not be retrieved or decrypted' }, { status: 404 });
 }
