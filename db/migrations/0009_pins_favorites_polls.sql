@@ -51,3 +51,4 @@ create table if not exists hub.interactive_poll_votes(
   voted_at timestamptz not null default now(),
   primary key(poll_id, voter_jid)
 );
+

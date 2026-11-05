@@ -39,6 +39,7 @@ export type MediaType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'loc
 
 export interface ChatMessage {
   id: string;
+  msg_key_id?: string;        // Real WhatsApp key ID (from m.key.id); undefined for outgoing optimistic msgs
   conversation_id: string;
   chat_jid: string;
   direction: MessageDirection;

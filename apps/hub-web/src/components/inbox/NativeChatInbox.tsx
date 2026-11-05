@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
@@ -608,9 +608,12 @@ export function NativeChatInbox() {
         
         const mapped: ChatMessage[] = list.map((m: any) => {
           const fromMe = m.key?.fromMe ?? false;
-          let text = '';
-          let mediaType: any = 'text';
-          let mediaUrl: string | undefined = undefined;
+          let text = ``;
+          let mediaType: any = `text`;
+          // ─── msgKeyId: المعرّف الحقيقي لرسالة واتساب (من m.key.id فقط)
+          // يُستخدم لبناء رابط الوكيل عند العرض — لا نبني الرابط هنا لتجنب double-proxy bug
+          const msgKeyId: string | undefined = m.key?.id || undefined;
+          let docFileName: string | undefined = undefined;
 
           if (m.message) {
             const msgObj = m.message;
@@ -619,53 +622,52 @@ export function NativeChatInbox() {
             } else if (msgObj.extendedTextMessage?.text) {
               text = msgObj.extendedTextMessage.text;
             } else if (msgObj.imageMessage) {
-              mediaType = 'image';
-              text = msgObj.imageMessage.caption || '';
-              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
+              mediaType = `image`;
+              text = msgObj.imageMessage.caption || ``;
             } else if (msgObj.documentMessage) {
-              mediaType = 'document';
-              text = msgObj.documentMessage.fileName || msgObj.documentMessage.title || msgObj.documentMessage.caption || 'مستند';
-              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
+              mediaType = `document`;
+              docFileName = msgObj.documentMessage.fileName || msgObj.documentMessage.title || undefined;
+              text = docFileName || msgObj.documentMessage.caption || `مستند`;
             } else if (msgObj.audioMessage) {
-              mediaType = 'audio';
-              text = '';
-              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
+              mediaType = `audio`;
+              text = ``;
             } else if (msgObj.videoMessage) {
-              mediaType = 'video';
-              text = msgObj.videoMessage.caption || '';
-              mediaUrl = `/api/evolution/instances/${instanceName}/media/proxy?id=${m.key?.id || m.id}`;
+              mediaType = `video`;
+              text = msgObj.videoMessage.caption || ``;
             } else if (msgObj.reactionMessage) {
-              text = msgObj.reactionMessage.text || '';
+              text = msgObj.reactionMessage.text || ``;
             } else if (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3) {
-              mediaType = 'poll';
+              mediaType = `poll`;
               const pollObj = msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3;
-              text = pollObj?.name || 'استطلاع رأي';
+              text = pollObj?.name || `استطلاع رأي`;
             } else if (msgObj.pollUpdateMessage) {
-              mediaType = 'poll';
-              text = 'استطلاع رأي تفاعلي';
+              mediaType = `poll`;
+              text = `استطلاع رأي تفاعلي`;
             } else if (m.messageType) {
-              text = m.messageType.includes('poll') ? 'استطلاع رأي' : '';
+              text = m.messageType.includes(`poll`) ? `استطلاع رأي` : ``;
             }
           }
 
-          let timeStr = '';
+          let timeStr = ``;
           if (m.messageTimestamp) {
             const date = new Date(m.messageTimestamp * 1000);
-            timeStr = date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+            timeStr = date.toLocaleTimeString(`ar-SA`, { hour: `2-digit`, minute: `2-digit` });
           }
 
           return {
-            id: m.key?.id || m.id || `msg-${Math.random()}`,
+            id: msgKeyId || m.id || ('msg-' + Date.now() + '-' + Math.random()),
+            msg_key_id: msgKeyId,
             conversation_id: chatJid,
             chat_jid: chatJid,
-            direction: fromMe ? 'out' : 'in',
-            body: text || (mediaType !== 'text' ? '' : '(رسالة)'),
+            direction: fromMe ? `out` : `in`,
+            body: text || (mediaType !== `text` ? `` : `(رسالة)`),
             media_type: mediaType,
-            media_url: mediaUrl,
-            sender_name: fromMe ? 'أنا' : (m.pushName || 'العميل'),
-            status: fromMe ? (m.status === 'READ' ? 'read' : 'delivered') : 'delivered',
+            media_url: undefined,
+            file_name: docFileName,
+            sender_name: fromMe ? `أنا` : (m.pushName || `العميل`),
+            status: fromMe ? (m.status === `READ` ? `read` : `delivered`) : `delivered`,
             line_id: instanceName,
-            created_at: timeStr || 'الآن',
+            created_at: timeStr || `الآن`,
           };
         });
 
@@ -896,6 +898,7 @@ export function NativeChatInbox() {
         );
 
         setInputText('');
+        setShowEmojiPicker(false);
       } else {
         const errData = await res.json();
         const newErrCount = consecutiveErrors + 1;
@@ -1233,14 +1236,19 @@ export function NativeChatInbox() {
 
       if (res.ok) {
         setConsecutiveErrors(0);
+        const sentData = await res.json();
+        const sentKeyId: string | undefined = sentData?.key?.id || undefined;
         const newMsg: ChatMessage = {
-          id: `media-${Date.now()}`,
+          id: sentKeyId || ('media-' + Date.now()),
+          msg_key_id: sentKeyId,
           conversation_id: activeConversation.id,
           chat_jid: activeConversation.chat_jid,
           direction: 'out',
-          body: selectedAttachment.caption || (selectedAttachment.mediaType === 'image' ? '📷 صورة' : `📄 ${selectedAttachment.fileName}`),
+          body: selectedAttachment.caption || (selectedAttachment.mediaType === `image` ? `📷 صورة` : `📄 ${selectedAttachment.fileName}`),
           media_type: selectedAttachment.mediaType,
-          media_url: selectedAttachment.previewUrl,
+          // للرسائل الصادرة المؤقتة: نستخدم blob URL مباشرةً حتى إعادة تحميل المحادثة
+          media_url: sentKeyId ? undefined : selectedAttachment.previewUrl,
+          file_name: selectedAttachment.fileName,
           sender_name: user.full_name,
           status: 'sent',
           line_id: selectedInstanceName,
@@ -1358,14 +1366,16 @@ export function NativeChatInbox() {
             if (res.ok) {
               const resData = await res.json();
               setConsecutiveErrors(0);
+              const sentKeyId: string | undefined = resData?.key?.id || undefined;
               const newMsg: ChatMessage = {
-                id: resData?.key?.id || `voice-${Date.now()}`,
+                id: sentKeyId || ('voice-' + Date.now()),
+                msg_key_id: sentKeyId,
                 conversation_id: activeConversation.id,
                 chat_jid: activeConversation.chat_jid,
                 direction: 'out',
                 body: '',
                 media_type: 'audio',
-                media_url: `/api/evolution/instances/${selectedInstanceName}/media/proxy?id=${resData?.key?.id || ''}`,
+                media_url: undefined,
                 sender_name: user.full_name,
                 status: 'sent',
                 line_id: selectedInstanceName,
@@ -1967,22 +1977,32 @@ export function NativeChatInbox() {
                           {/* ════════════════════════════════════════
                               📷 صورة — دقة كاملة + lightbox عند الضغط
                              ════════════════════════════════════════ */}
+                          {/* ════════════════════════════════════════
+                              📷 صورة — ثابتة الحجم + lightbox عند الضغط
+                             ════════════════════════════════════════ */}
                           {isImage && (() => {
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, msg.body || 'image.jpg');
+                            // ✅ نستخدم msg_key_id (المعرّف الحقيقي لواتساب) لبناء رابط الوكيل
+                            // وللرسائل الصادرة المؤقتة (blob:) نستخدم media_url مباشرةً
+                            const proxied = msg.msg_key_id
+                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(msg.body || 'image.jpg')}`
+                              : (msg.media_url || null);
                             return (
                               <div className="mb-1">
                                 {proxied ? (
                                   <div
-                                    className="rounded-2xl overflow-hidden cursor-pointer bg-black/20 border border-white/10 hover:opacity-95 transition-opacity max-w-sm max-h-80 flex items-center justify-center"
+                                    className="rounded-2xl overflow-hidden cursor-pointer border border-white/10 hover:opacity-95 transition-opacity w-72 h-48 bg-black/30"
                                     onClick={() => setLightboxMedia({ type: 'image', src: proxied, caption: msg.body })}
                                     title="اضغط لتكبير الصورة بكامل دقتها"
                                   >
                                     <img
                                       src={proxied}
                                       alt="صورة"
-                                      className="w-full max-h-80 object-cover rounded-2xl"
+                                      className="w-full h-full object-cover rounded-2xl"
                                       loading="lazy"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
                                     />
                                   </div>
                                 ) : (
@@ -2002,7 +2022,9 @@ export function NativeChatInbox() {
                             const rawFileName = msg.file_name || msg.body || 'document.pdf';
                             const meta = getFileCardMeta(rawFileName);
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, rawFileName);
+                            const proxied = msg.msg_key_id
+                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(rawFileName)}&download=true`
+                              : (msg.media_url || null);
 
                             return (
                               <div className={`flex items-center gap-3 mb-2 p-3 rounded-2xl border transition-all ${meta.cardBg}`}>
@@ -2031,7 +2053,7 @@ export function NativeChatInbox() {
                                 </div>
 
                                 <a
-                                  href={proxied || msg.media_url}
+                                  href={proxied || '#'}
                                   download={rawFileName}
                                   className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white shrink-0 shadow transition-colors flex items-center justify-center"
                                   title={`تحميل الملف باسمه الأصلي: ${rawFileName}`}
@@ -2043,11 +2065,15 @@ export function NativeChatInbox() {
                           })()}
 
                           {/* ════════════════════════════════════════
-                              🎵 صوت — مشغّل صوتي مخصص مع شريط الترددات
+                              🎵 صوت — مشغّل صوتي مخصص مع شريط الترددات القابل للضغط
                              ════════════════════════════════════════ */}
                           {isAudio && (() => {
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, 'voice_note.ogg');
+                            // للرسائل الواردة: نبني رابط الوكيل من msg_key_id
+                            // للرسائل الصادرة المؤقتة: نستخدم media_url مباشرةً (blob: أو proxy URL بعد الإرسال)
+                            const proxied = msg.msg_key_id
+                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=voice_note.ogg`
+                              : (msg.media_url || null);
                             return (
                               <div className="mb-1">
                                 {proxied ? (
@@ -2067,29 +2093,33 @@ export function NativeChatInbox() {
                           })()}
 
                           {/* ════════════════════════════════════════
-                              🎥 فيديو — مشغّل فيديو مع شاشة كاملة
+                              🎥 فيديو — صورة مصغّرة + lightbox للتشغيل الكامل
                              ════════════════════════════════════════ */}
                           {isVideo && (() => {
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, msg.body || 'video.mp4');
+                            const proxied = msg.msg_key_id
+                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(msg.body || 'video.mp4')}`
+                              : (msg.media_url || null);
                             return (
                               <div className="mb-1">
                                 {proxied ? (
                                   <div
-                                    className="relative rounded-2xl overflow-hidden cursor-pointer bg-black border border-white/10 hover:opacity-95 transition-opacity max-w-sm max-h-80 flex items-center justify-center group"
+                                    className="relative rounded-2xl overflow-hidden cursor-pointer bg-black border border-white/10 hover:opacity-95 transition-opacity w-72 h-48 flex items-center justify-center group"
                                     onClick={() => setLightboxMedia({ type: 'video', src: proxied, caption: msg.body })}
                                     title="اضغط لتشغيل مقطع الفيديو بشاشة كاملة"
                                   >
+                                    {/* صورة مصغّرة: نستخدم #t=0.001 لإجبار المتصفح على تحميل الإطار الأول */}
                                     <video
-                                      src={proxied}
-                                      className="w-full max-h-80 object-cover rounded-2xl bg-black"
+                                      src={`${proxied}#t=0.001`}
+                                      className="w-full h-full object-cover rounded-2xl bg-black"
                                       preload="metadata"
+                                      muted
                                     />
                                     {/* زر تشغيل أنيق فوق الفيديو */}
                                     <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition-colors">
-                                      <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
+                                      <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
                                         <svg
-                                          className="w-5 h-5 text-purple-700 ml-1"
+                                          className="w-6 h-6 text-purple-700 ml-1"
                                           fill="currentColor"
                                           viewBox="0 0 24 24"
                                         >
@@ -2097,6 +2127,10 @@ export function NativeChatInbox() {
                                         </svg>
                                       </div>
                                     </div>
+                                    {/* مدة الفيديو */}
+                                    <span className="absolute bottom-2 right-2 text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded-md font-mono">
+                                      🎥 فيديو
+                                    </span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
@@ -2300,20 +2334,26 @@ export function NativeChatInbox() {
                       </Button>
 
                       {showEmojiPicker && (
-                        <div className="absolute bottom-12 right-0 z-50 bg-[#120B24] border border-purple-500/40 rounded-2xl p-3 shadow-2xl w-72 grid grid-cols-8 gap-1.5 text-xl backdrop-blur-md">
-                          {['😀','😂','🤣','😍','🥰','😘','😜','😎','🥳','🤔','🤫','🙄','😬','😴','👍','👎','👏','🙌','🙏','🤝','🔥','❤️','🎉','✨','🇸🇦','🌹','✈️','🏨','💼','📞','💬','✅','❌','⚠️','💯','👌','🤲','👋','💪','🎯'].map((em) => (
-                            <button
-                              key={em}
-                              type="button"
-                              onClick={() => {
-                                handleInsertEmoji(em);
-                              }}
-                              className="p-1 hover:bg-purple-600/30 rounded-lg transition-transform hover:scale-125"
-                            >
-                              {em}
-                            </button>
-                          ))}
-                        </div>
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setShowEmojiPicker(false)}
+                          />
+                          <div className="absolute bottom-12 right-0 z-50 bg-[#120B24] border border-purple-500/40 rounded-2xl p-3 shadow-2xl w-72 grid grid-cols-8 gap-1.5 text-xl backdrop-blur-md">
+                            {['😀','😂','🤣','😍','🥰','😘','😜','😎','🥳','🤔','🤫','🙄','😬','😴','👍','👎','👏','🙌','🙏','🤝','🔥','❤️','🎉','✨','🇸🇦','🌹','✈️','🏨','💼','📞','💬','✅','❌','⚠️','💯','👌','🤲','👋','💪','🎯'].map((em) => (
+                              <button
+                                key={em}
+                                type="button"
+                                onClick={() => {
+                                  handleInsertEmoji(em);
+                                }}
+                                className="p-1 hover:bg-purple-600/30 rounded-lg transition-transform hover:scale-125"
+                              >
+                                {em}
+                              </button>
+                            ))}
+                          </div>
+                        </>
                       )}
                     </div>
 

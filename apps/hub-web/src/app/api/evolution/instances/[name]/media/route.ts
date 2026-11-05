@@ -48,9 +48,10 @@ export async function POST(req: Request, { params }: { params: { name: string } 
     }
 
     // إرسال عبر sendMedia العام (صور، مقاطع فيديو، مستندات)
+    // ✅ Evolution API v2 يستخدم camelCase: mediaType وليس mediatype
     const payload = {
       number: cleanNumber,
-      mediatype: mediaType || 'document',
+      mediaType: mediaType || 'document',   // ← camelCase إلزامي في Evolution API v2
       mimetype: mimeType || 'application/octet-stream',
       caption: caption || '',
       media: cleanMedia,
