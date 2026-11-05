@@ -43,6 +43,155 @@ import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
 import { Button } from '@tripyou/ui';
 import { supabase } from '../../lib/supabase';
 
+// ─────────────────────────────────────────────
+// 🔧 مساعد: تحويل رابط وسائط Evolution إلى رابط وكيل محلي
+// ─────────────────────────────────────────────
+function getProxiedUrl(url: string | undefined, instanceName: string): string | null {
+  if (!url) return null;
+  if (url.startsWith('data:')) return url; // base64 — لا يحتاج وكيل
+  return `/api/evolution/instances/${instanceName}/media/proxy?url=${encodeURIComponent(url)}`;
+}
+
+// ─────────────────────────────────────────────
+// 🎵 مساعد: توليد ارتفاعات أعمدة موجة صوتية (شبه عشوائي من معرّف الرسالة)
+// ─────────────────────────────────────────────
+function getWaveformBars(seed: string, count = 32): number[] {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) & 0xffffffff;
+  return Array.from({ length: count }, () => {
+    hash = (hash * 1664525 + 1013904223) & 0xffffffff;
+    return 20 + (Math.abs(hash) % 60); // ارتفاع 20% – 80%
+  });
+}
+
+// ─────────────────────────────────────────────
+// 🎵 مكوّن: مشغّل الصوت المخصص مع شريط الموجة
+// ─────────────────────────────────────────────
+interface AudioPlayerProps {
+  src: string;
+  msgId: string;
+  isOut: boolean;
+}
+
+function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const bars = useMemo(() => getWaveformBars(msgId), [msgId]);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(() => {});
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleTimeUpdate = () => {
+    if (!audioRef.current) return;
+    const dur = audioRef.current.duration || 0;
+    const cur = audioRef.current.currentTime;
+    setCurrentTime(cur);
+    setProgress(dur ? (cur / dur) * 100 : 0);
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) setDuration(audioRef.current.duration);
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setProgress(0);
+    setCurrentTime(0);
+  };
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    audioRef.current.currentTime = pct * (audioRef.current.duration || 0);
+  };
+
+  const formatTime = (s: number) =>
+    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  return (
+    <div
+      className={`flex items-center gap-2.5 p-2.5 rounded-2xl min-w-[220px] max-w-[300px] ${
+        isOut ? 'bg-purple-700/40' : 'bg-slate-800/60'
+      }`}
+    >
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={handleEnded}
+        preload="metadata"
+      />
+
+      {/* زر التشغيل / الإيقاف */}
+      <button
+        onClick={togglePlay}
+        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors shadow ${
+          isOut
+            ? 'bg-purple-500 hover:bg-purple-400'
+            : 'bg-purple-600 hover:bg-purple-500'
+        }`}
+      >
+        {isPlaying ? (
+          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+          </svg>
+        ) : (
+          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <polygon points="5,3 19,12 5,21" />
+          </svg>
+        )}
+      </button>
+
+      {/* الموجة الصوتية + شريط التقدم */}
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
+        <div
+          className="flex items-end gap-[2px] h-9 cursor-pointer"
+          onClick={handleProgressClick}
+          title="اضغط للانتقال"
+        >
+          {bars.map((h, i) => {
+            const barPct = (i / bars.length) * 100;
+            const isActive = barPct <= progress;
+            return (
+              <div
+                key={i}
+                className={`flex-1 rounded-full transition-colors ${
+                  isActive
+                    ? isOut
+                      ? 'bg-purple-200'
+                      : 'bg-purple-400'
+                    : isOut
+                    ? 'bg-purple-500/40'
+                    : 'bg-slate-500/50'
+                }`}
+                style={{ height: `${h}%` }}
+              />
+            );
+          })}
+        </div>
+        {/* الوقت */}
+        <div className="flex justify-between text-[10px] text-slate-400 tabular-nums px-0.5">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface EvolutionInstanceSummary {
   id: string;
   name: string;
@@ -109,6 +258,12 @@ export function NativeChatInbox() {
     caption: string;
   } | null>(null);
   const [isSendingMedia, setIsSendingMedia] = useState<boolean>(false);
+
+  // ─── Lightbox: عرض الصور والفيديو في نافذة كاملة ───
+  const [lightboxMedia, setLightboxMedia] = useState<{
+    type: 'image' | 'video';
+    src: string;
+  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -1131,79 +1286,133 @@ export function NativeChatInbox() {
                             </div>
                           )}
 
-                          {/* Image Attachment */}
-                          {isImage && (
-                            <div className="mb-2 rounded-xl overflow-hidden border border-white/20 max-w-sm">
-                              {msg.media_url ? (
-                                <img
-                                  src={msg.media_url}
-                                  alt="مرفق صورة"
-                                  className="w-full h-auto object-cover max-h-72 cursor-pointer hover:opacity-95 transition-opacity"
-                                  onClick={() => window.open(msg.media_url, '_blank')}
-                                />
-                              ) : (
-                                <div className="flex items-center gap-2 p-3 bg-purple-900/30 text-xs text-purple-200">
-                                  <ImageIcon className="w-5 h-5 text-purple-300" />
-                                  <span>📷 صورة مرفقة</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                          {/* ════════════════════════════════════════
+                              📷 صورة — ثابتة الحجم + lightbox عند الضغط
+                             ════════════════════════════════════════ */}
+                          {isImage && (() => {
+                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                            return (
+                              <div className="mb-1.5">
+                                {proxied ? (
+                                  <div
+                                    className="w-56 h-36 rounded-xl overflow-hidden cursor-pointer bg-black/20 border border-white/10 hover:opacity-90 transition-opacity flex items-center justify-center"
+                                    onClick={() => setLightboxMedia({ type: 'image', src: proxied })}
+                                    title="اضغط لعرض كامل"
+                                  >
+                                    <img
+                                      src={proxied}
+                                      alt="صورة"
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
+                                    <ImageIcon className="w-5 h-5" />
+                                    <span>صورة مرفقة</span>
+                                  </div>
+                                )}
+                                {msg.body && (
+                                  <p className="text-sm mt-1 whitespace-pre-wrap">{msg.body}</p>
+                                )}
+                              </div>
+                            );
+                          })()}
 
-                          {/* Document Attachment */}
+                          {/* ════════════════════════════════════════
+                              📄 مستند
+                             ════════════════════════════════════════ */}
                           {isDoc && (
-                            <div className="flex items-center gap-2.5 mb-2 p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs">
+                            <div className="flex items-center gap-2.5 mb-1.5 p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs">
                               <div className="p-2 rounded-lg bg-purple-500/20 text-purple-300 shrink-0">
                                 <FileText className="w-4 h-4" />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium text-white truncate">{msg.body || 'مستند مرفق'}</div>
-                                <div className="text-[10px] text-slate-400">مستند WhatsApp (PDF / Doc)</div>
+                                <div className="text-[10px] text-slate-400">مستند (PDF / Doc)</div>
                               </div>
-                              {msg.media_url && (
-                                <a
-                                  href={msg.media_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white shrink-0"
-                                  title="تنزيل المستند"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </a>
-                              )}
+                              {msg.media_url && (() => {
+                                const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                                return (
+                                  <a
+                                    href={proxied || msg.media_url}
+                                    download
+                                    className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white shrink-0"
+                                    title="تنزيل المستند"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </a>
+                                );
+                              })()}
                             </div>
                           )}
 
-                          {/* Audio Attachment */}
-                          {isAudio && (
-                            <div className="flex items-center gap-2.5 mb-2 p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs">
-                              <div className="p-2 rounded-lg bg-purple-500/20 text-purple-300 shrink-0">
-                                <Music className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-white">تسجيل صوتي</div>
-                                {msg.media_url ? (
-                                  <audio controls src={msg.media_url} className="h-8 w-full mt-1 max-w-[220px]" />
+                          {/* ════════════════════════════════════════
+                              🎵 صوت — مشغّل مخصص مع شريط الموجة
+                             ════════════════════════════════════════ */}
+                          {isAudio && (() => {
+                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                            return (
+                              <div className="mb-1.5">
+                                {proxied ? (
+                                  <AudioMessagePlayer
+                                    src={proxied}
+                                    msgId={msg.id}
+                                    isOut={isOut}
+                                  />
                                 ) : (
-                                  <div className="text-[10px] text-slate-400">رسالة صوتية (Audio)</div>
+                                  <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
+                                    <Music className="w-5 h-5" />
+                                    <span>تسجيل صوتي</span>
+                                  </div>
                                 )}
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
-                          {/* Video Attachment */}
-                          {isVideo && (
-                            <div className="mb-2 rounded-xl overflow-hidden border border-white/20 max-w-sm">
-                              {msg.media_url ? (
-                                <video controls src={msg.media_url} className="w-full h-auto max-h-72" />
-                              ) : (
-                                <div className="flex items-center gap-2 p-3 bg-purple-900/30 text-xs text-purple-200">
-                                  <Video className="w-5 h-5 text-purple-300" />
-                                  <span>🎥 مقطع فيديو</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                          {/* ════════════════════════════════════════
+                              🎥 فيديو — ثابت الحجم + lightbox عند الضغط
+                             ════════════════════════════════════════ */}
+                          {isVideo && (() => {
+                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName);
+                            return (
+                              <div className="mb-1.5">
+                                {proxied ? (
+                                  <div
+                                    className="relative w-56 h-36 rounded-xl overflow-hidden cursor-pointer bg-black border border-white/10 hover:opacity-90 transition-opacity flex items-center justify-center"
+                                    onClick={() => setLightboxMedia({ type: 'video', src: proxied })}
+                                    title="اضغط لتشغيل بشاشة كاملة"
+                                  >
+                                    <video
+                                      src={proxied}
+                                      className="w-full h-full object-cover"
+                                      muted
+                                      preload="metadata"
+                                    />
+                                    {/* أيقونة تشغيل فوق الصورة المصغّرة */}
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                      <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                                        <svg
+                                          className="w-5 h-5 text-purple-700 ml-1"
+                                          fill="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <polygon points="5,3 19,12 5,21" />
+                                        </svg>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
+                                    <Video className="w-5 h-5" />
+                                    <span>مقطع فيديو</span>
+                                  </div>
+                                )}
+                                {msg.body && (
+                                  <p className="text-sm mt-1 whitespace-pre-wrap">{msg.body}</p>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           {/* Text Body */}
                           {msg.body && !isDoc && (
@@ -1463,6 +1672,46 @@ export function NativeChatInbox() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          🖼️ Lightbox — نافذة عرض الصور/الفيديو بشاشة كاملة
+          اضغط على الخلفية أو زر X لإغلاقها
+         ════════════════════════════════════════════════════════ */}
+      {lightboxMedia && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/92 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxMedia(null)}
+        >
+          {/* الحاوية الداخلية — الضغط عليها لا يغلق النافذة */}
+          <div
+            className="relative max-w-5xl max-h-[90vh] w-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* زر الإغلاق */}
+            <button
+              onClick={() => setLightboxMedia(null)}
+              className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition-colors shadow-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {lightboxMedia.type === 'image' ? (
+              <img
+                src={lightboxMedia.src}
+                alt="عرض كامل"
+                className="max-w-full max-h-[88vh] rounded-2xl object-contain shadow-2xl"
+              />
+            ) : (
+              <video
+                src={lightboxMedia.src}
+                controls
+                autoPlay
+                className="max-w-full max-h-[88vh] rounded-2xl shadow-2xl bg-black"
+              />
+            )}
           </div>
         </div>
       )}
