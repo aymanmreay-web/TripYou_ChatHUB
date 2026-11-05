@@ -40,7 +40,20 @@ import {
   Mic,
   Smile,
   Trash2,
-  StopCircle
+  StopCircle,
+  Pin,
+  PinOff,
+  Star,
+  Reply,
+  Share2,
+  Copy,
+  FileSpreadsheet,
+  Archive,
+  Bookmark,
+  ChevronLeft,
+  ChevronRight,
+  SlidersHorizontal,
+  CheckSquare
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
@@ -50,13 +63,14 @@ import { supabase } from '../../lib/supabase';
 // ─────────────────────────────────────────────
 // 🔧 مساعد: تحويل معرف الرسالة أو الرابط إلى رابط وكيل لفك التشفير
 // ─────────────────────────────────────────────
-function getProxiedUrl(mediaUrl: string | undefined, instanceName: string, messageId?: string): string | null {
+function getProxiedUrl(mediaUrl: string | undefined, instanceName: string, messageId?: string, fileName?: string): string | null {
+  const fnParam = fileName ? `&fileName=${encodeURIComponent(fileName)}` : '';
   if (messageId) {
-    return `/api/evolution/instances/${instanceName}/media/proxy?id=${encodeURIComponent(messageId)}`;
+    return `/api/evolution/instances/${instanceName}/media/proxy?id=${encodeURIComponent(messageId)}${fnParam}`;
   }
   if (!mediaUrl) return null;
   if (mediaUrl.startsWith('data:')) return mediaUrl;
-  return `/api/evolution/instances/${instanceName}/media/proxy?url=${encodeURIComponent(mediaUrl)}`;
+  return `/api/evolution/instances/${instanceName}/media/proxy?url=${encodeURIComponent(mediaUrl)}${fnParam}`;
 }
 
 // ─────────────────────────────────────────────
@@ -80,6 +94,59 @@ interface AudioPlayerProps {
   isOut: boolean;
 }
 
+function getFileCardMeta(fileName: string) {
+  const name = fileName || '';
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) {
+    return {
+      type: 'Excel',
+      ext: 'XLSX',
+      badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      cardBg: 'bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-500/60',
+      iconColor: 'text-emerald-400',
+      isSheet: true,
+    };
+  }
+  if (lower.endsWith('.pdf')) {
+    return {
+      type: 'PDF',
+      ext: 'PDF',
+      badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+      cardBg: 'bg-rose-950/40 border-rose-500/30 hover:border-rose-500/60',
+      iconColor: 'text-rose-400',
+      isPdf: true,
+    };
+  }
+  if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
+    return {
+      type: 'Word',
+      ext: 'DOCX',
+      badge: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+      cardBg: 'bg-blue-950/40 border-blue-500/30 hover:border-blue-500/60',
+      iconColor: 'text-blue-400',
+      isWord: true,
+    };
+  }
+  if (lower.endsWith('.zip') || lower.endsWith('.rar') || lower.endsWith('.7z') || lower.endsWith('.tar')) {
+    return {
+      type: 'Archive',
+      ext: 'ZIP',
+      badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      cardBg: 'bg-amber-950/40 border-amber-500/30 hover:border-amber-500/60',
+      iconColor: 'text-amber-400',
+      isArchive: true,
+    };
+  }
+  return {
+    type: 'Document',
+    ext: lower.split('.').pop()?.toUpperCase() || 'FILE',
+    badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+    cardBg: 'bg-purple-950/40 border-purple-500/30 hover:border-purple-500/60',
+    iconColor: 'text-purple-400',
+    isGeneric: true,
+  };
+}
+
 function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -92,22 +159,24 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
-      audioRef.current.play().catch(() => {});
+      audioRef.current.play().then(() => setIsPlaying(true)).catch((e) => console.warn('Play error:', e));
     }
-    setIsPlaying(!isPlaying);
   };
 
   const handleTimeUpdate = () => {
     if (!audioRef.current) return;
-    const dur = audioRef.current.duration || 0;
+    const dur = audioRef.current.duration || duration || 0;
     const cur = audioRef.current.currentTime;
     setCurrentTime(cur);
-    setProgress(dur ? (cur / dur) * 100 : 0);
+    setProgress(dur > 0 ? (cur / dur) * 100 : 0);
   };
 
   const handleLoadedMetadata = () => {
-    if (audioRef.current) setDuration(audioRef.current.duration);
+    if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration)) {
+      setDuration(audioRef.current.duration);
+    }
   };
 
   const handleEnded = () => {
@@ -116,11 +185,29 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
     setCurrentTime(0);
   };
 
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeekPct = (pct: number) => {
     if (!audioRef.current) return;
+    const dur = audioRef.current.duration || duration || 0;
+    if (!dur) return;
+    const target = Math.max(0, Math.min(dur, pct * dur));
+    audioRef.current.currentTime = target;
+    setCurrentTime(target);
+    setProgress(pct * 100);
+    if (!isPlaying) {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  };
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    audioRef.current.currentTime = pct * (audioRef.current.duration || 0);
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    handleSeekPct(pct);
+  };
+
+  const handleBarClick = (i: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const pct = i / bars.length;
+    handleSeekPct(pct);
   };
 
   const formatTime = (s: number) =>
@@ -128,8 +215,8 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
 
   return (
     <div
-      className={`flex items-center gap-2.5 p-2.5 rounded-2xl min-w-[220px] max-w-[300px] ${
-        isOut ? 'bg-purple-700/40' : 'bg-slate-800/60'
+      className={`flex items-center gap-2.5 p-2.5 rounded-2xl min-w-[230px] max-w-[320px] border border-white/5 transition-all ${
+        isOut ? 'bg-purple-700/40 shadow-inner' : 'bg-slate-800/80 shadow-inner'
       }`}
     >
       <audio
@@ -144,11 +231,12 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
       {/* زر التشغيل / الإيقاف */}
       <button
         onClick={togglePlay}
-        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors shadow ${
+        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md ${
           isOut
-            ? 'bg-purple-500 hover:bg-purple-400'
-            : 'bg-purple-600 hover:bg-purple-500'
+            ? 'bg-purple-500 hover:bg-purple-400 text-white'
+            : 'bg-purple-600 hover:bg-purple-500 text-white'
         }`}
+        title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التسجيل الصوتي'}
       >
         {isPlaying ? (
           <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -156,18 +244,18 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
             <rect x="14" y="4" width="4" height="16" />
           </svg>
         ) : (
-          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 ml-0.5 text-white" fill="currentColor" viewBox="0 0 24 24">
             <polygon points="5,3 19,12 5,21" />
           </svg>
         )}
       </button>
 
-      {/* الموجة الصوتية + شريط التقدم */}
+      {/* الموجة الصوتية + شريط التقدم التفاعلي */}
       <div className="flex-1 flex flex-col gap-1 min-w-0">
         <div
-          className="flex items-end gap-[2px] h-9 cursor-pointer"
+          className="flex items-end gap-[2px] h-9 cursor-pointer select-none py-1 group/wave"
           onClick={handleProgressClick}
-          title="اضغط للانتقال"
+          title="اضغط أو اسحب للانتقال إلى أي نقطة في التسجيل"
         >
           {bars.map((h, i) => {
             const barPct = (i / bars.length) * 100;
@@ -175,14 +263,15 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
             return (
               <div
                 key={i}
-                className={`flex-1 rounded-full transition-colors ${
+                onClick={(e) => handleBarClick(i, e)}
+                className={`flex-1 rounded-full transition-all cursor-pointer ${
                   isActive
                     ? isOut
-                      ? 'bg-purple-200'
-                      : 'bg-purple-400'
+                      ? 'bg-purple-200 shadow-sm'
+                      : 'bg-emerald-400 shadow-sm'
                     : isOut
-                    ? 'bg-purple-500/40'
-                    : 'bg-slate-500/50'
+                    ? 'bg-purple-400/40 hover:bg-purple-300'
+                    : 'bg-slate-500/40 hover:bg-slate-400'
                 }`}
                 style={{ height: `${h}%` }}
               />
@@ -190,7 +279,7 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
           })}
         </div>
         {/* الوقت */}
-        <div className="flex justify-between text-[10px] text-slate-400 tabular-nums px-0.5">
+        <div className="flex justify-between text-[10px] text-slate-300 font-mono tabular-nums px-0.5">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
@@ -282,6 +371,64 @@ export function NativeChatInbox() {
 
   // ─── لوحة الإيموجي (Emoji Picker) ───
   const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
+
+  // ─── تثبيت الرسائل (Pinned Messages) ───
+  const [pinnedMessagesMap, setPinnedMessagesMap] = useState<Record<string, ChatMessage[]>>({});
+  const [pinnedIndex, setPinnedIndex] = useState<number>(0);
+  const [pinModalMsg, setPinModalMsg] = useState<ChatMessage | null>(null);
+
+  // ─── المفضلة المركزية بحساب الموظف (Favorites System 6 Categories) ───
+  const [favoritesDrawerOpen, setFavoritesDrawerOpen] = useState<boolean>(false);
+  const [favTab, setFavTab] = useState<'messages' | 'files' | 'media' | 'direct' | 'groups' | 'contacts'>('messages');
+  const [favoritesList, setFavoritesList] = useState<{
+    id: string;
+    category: 'message' | 'file' | 'media' | 'direct_chat' | 'group' | 'contact';
+    title: string;
+    subtitle?: string;
+    createdAt: string;
+    meta?: any;
+  }[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('hub_favorites_v1');
+        return stored ? JSON.parse(stored) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // حفظ المفضلة
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('hub_favorites_v1', JSON.stringify(favoritesList));
+      } catch (e) {}
+    }
+  }, [favoritesList]);
+
+  // ─── تحويل الرسائل (Forward Message) ───
+  const [forwardModalMsg, setForwardModalMsg] = useState<ChatMessage | null>(null);
+  const [forwardSearch, setForwardSearch] = useState<string>('');
+
+  // ─── الرد باقتباس (Quoted Reply) ───
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
+
+  // ─── إرسال وسائط متعددة حتى 25 صورة و 5 فيديو و 5 ملفات (Batch Sending) ───
+  const [batchAttachments, setBatchAttachments] = useState<{
+    id: string;
+    file: File;
+    base64: string;
+    previewUrl: string;
+    mediaType: 'image' | 'document' | 'audio' | 'video';
+    mimeType: string;
+    fileName: string;
+    sizeStr: string;
+  }[]>([]);
+  const [multiSendModalOpen, setMultiSendModalOpen] = useState<boolean>(false);
+  const [isHdQuality, setIsHdQuality] = useState<boolean>(true);
+  const [batchCaption, setBatchCaption] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -796,6 +943,242 @@ export function NativeChatInbox() {
     executeSendMessage(trimmed);
   };
 
+  // ─── إدارة تثبيت الرسائل (حتى 5 رسائل بخيارات مدة واتساب) ───
+  const handlePinMessage = (msg: ChatMessage, duration: '24h' | '7d' | '30d') => {
+    if (!activeConversation) return;
+    const convId = activeConversation.id;
+    setPinnedMessagesMap((prev) => {
+      const current = prev[convId] || [];
+      const filtered = current.filter((m) => m.id !== msg.id);
+      if (filtered.length >= 5) {
+        alert('يمكنك تثبيت ما يصل إلى 5 رسائل كحد أقصى في كل محادثة.');
+        return prev;
+      }
+      return {
+        ...prev,
+        [convId]: [{ ...msg, is_pinned: true, pinned_duration: duration }, ...filtered],
+      };
+    });
+    setPinModalMsg(null);
+  };
+
+  const handleUnpinMessage = (msgId: string) => {
+    if (!activeConversation) return;
+    const convId = activeConversation.id;
+    setPinnedMessagesMap((prev) => ({
+      ...prev,
+      [convId]: (prev[convId] || []).filter((m) => m.id !== msgId),
+    }));
+  };
+
+  // ─── إدارة المفضلة المركزية (6 تبويبات) ───
+  const handleToggleFavorite = (
+    item: { id: string; title: string; subtitle?: string; meta?: any },
+    category: 'message' | 'file' | 'media' | 'direct_chat' | 'group' | 'contact'
+  ) => {
+    setFavoritesList((prev) => {
+      const exists = prev.some((f) => f.id === item.id && f.category === category);
+      if (exists) {
+        return prev.filter((f) => !(f.id === item.id && f.category === category));
+      }
+      return [
+        {
+          id: item.id,
+          category,
+          title: item.title,
+          subtitle: item.subtitle,
+          meta: item.meta,
+          createdAt: new Date().toLocaleDateString('ar-SA'),
+        },
+        ...prev,
+      ];
+    });
+  };
+
+  // ─── تحويل رسالة إلى محادثة أخرى ───
+  const handleForwardMessage = async (targetConv: ConversationItem) => {
+    if (!forwardModalMsg || isSending) return;
+    setIsSending(true);
+    try {
+      if (forwardModalMsg.media_type === 'text') {
+        await fetch(`/api/evolution/instances/${targetConv.line_id || selectedInstanceName}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: targetConv.chat_jid,
+            text: forwardModalMsg.body,
+          }),
+        });
+      }
+      alert(`تم تحويل الرسالة بنجاح إلى "${targetConv.title}"`);
+      setForwardModalMsg(null);
+    } catch (err: any) {
+      alert(`فشل تحويل الرسالة: ${err.message}`);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // ─── التصويت التفاعلي على الاستطلاع (Poll) ───
+  const handleVotePoll = (msgId: string, optionId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId || !m.poll_data) return m;
+        const opts = m.poll_data.options.map((opt) => {
+          if (opt.id === optionId) {
+            return {
+              ...opt,
+              votes: opt.userVoted ? Math.max(0, opt.votes - 1) : opt.votes + 1,
+              userVoted: !opt.userVoted,
+            };
+          }
+          return opt;
+        });
+        const total = opts.reduce((sum, o) => sum + o.votes, 0);
+        return {
+          ...m,
+          poll_data: {
+            ...m.poll_data,
+            options: opts,
+            totalVotes: total,
+          },
+        };
+      })
+    );
+  };
+
+  // ─── معالجة اختيار ملفات متعددة (حتى 25 صورة و 5 فيديوهات و 5 مستندات) ───
+  const handleMultiFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    const files = Array.from(fileList);
+    let imageCount = 0;
+    let videoCount = 0;
+    let docCount = 0;
+
+    for (const f of files) {
+      if (f.type.startsWith('image/')) imageCount++;
+      else if (f.type.startsWith('video/')) videoCount++;
+      else docCount++;
+    }
+
+    if (imageCount > 25) {
+      alert('الحد الأقصى للصور دفعة واحدة هو 25 صورة.');
+      return;
+    }
+    if (videoCount > 5) {
+      alert('الحد الأقصى لمقاطع الفيديو دفعة واحدة هو 5 مقاطع.');
+      return;
+    }
+    if (docCount > 5) {
+      alert('الحد الأقصى للمستندات دفعة واحدة هو 5 ملفات.');
+      return;
+    }
+
+    const loadedItems: {
+      id: string;
+      file: File;
+      base64: string;
+      previewUrl: string;
+      mediaType: 'image' | 'document' | 'audio' | 'video';
+      mimeType: string;
+      fileName: string;
+      sizeStr: string;
+    }[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      let mediaType: 'image' | 'document' | 'audio' | 'video' = 'document';
+      if (file.type.startsWith('image/')) mediaType = 'image';
+      else if (file.type.startsWith('audio/')) mediaType = 'audio';
+      else if (file.type.startsWith('video/')) mediaType = 'video';
+
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      const kb = file.size / 1024;
+      const sizeStr = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(0)} KB`;
+
+      loadedItems.push({
+        id: `batch-item-${Date.now()}-${i}`,
+        file,
+        base64,
+        previewUrl: URL.createObjectURL(file),
+        mediaType,
+        mimeType: file.type || 'application/octet-stream',
+        fileName: file.name,
+        sizeStr,
+      });
+    }
+
+    setBatchAttachments(loadedItems);
+    setMultiSendModalOpen(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // ─── إرسال الدفعة بالكامل مع إظهار المعاينة الفورية في المحادثة ───
+  const handleSendBatchAttachments = async () => {
+    if (!activeConversation || batchAttachments.length === 0 || isSendingMedia) return;
+    setIsSendingMedia(true);
+
+    try {
+      for (let idx = 0; idx < batchAttachments.length; idx++) {
+        const item = batchAttachments[idx];
+        const captionToSend = idx === 0 ? batchCaption : '';
+
+        // إضافة متفائلة فورية للمحادثة
+        const optimisticMsg: ChatMessage = {
+          id: `sent-batch-${Date.now()}-${idx}`,
+          conversation_id: activeConversation.id,
+          chat_jid: activeConversation.chat_jid,
+          direction: 'out',
+          body: captionToSend || item.fileName,
+          media_type: item.mediaType,
+          media_url: item.previewUrl,
+          file_name: item.fileName,
+          file_size: item.sizeStr,
+          sender_name: user.full_name,
+          status: 'sending',
+          line_id: selectedInstanceName,
+          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+        };
+
+        setMessages((prev) => [...prev, optimisticMsg]);
+
+        await fetch(`/api/evolution/instances/${selectedInstanceName}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: activeConversation.chat_jid,
+            mediaType: item.mediaType,
+            mimeType: item.mimeType,
+            media: item.base64,
+            caption: captionToSend,
+            fileName: item.fileName,
+            quality: isHdQuality ? 'hd' : 'standard',
+          }),
+        });
+
+        // تحديث الحالة إلى 'sent'
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticMsg.id ? { ...m, status: 'sent' } : m))
+        );
+      }
+
+      setBatchAttachments([]);
+      setBatchCaption('');
+      setMultiSendModalOpen(false);
+    } catch (err: any) {
+      alert(`خطأ أثناء إرسال الدفعة: ${err.message}`);
+    } finally {
+      setIsSendingMedia(false);
+    }
+  };
+
   // --- معالجة اختيار ملف للإرفاق ---
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -894,6 +1277,7 @@ export function NativeChatInbox() {
   // ─── إدراج إيموجي في مربع النص ───
   const handleInsertEmoji = (emoji: string) => {
     setInputText((prev) => prev + emoji);
+    setShowEmojiPicker(false);
   };
 
   // ─── بدء تسجيل الصوت الحي ───
@@ -1395,8 +1779,75 @@ export function NativeChatInbox() {
                       <span>إعادة الفتح</span>
                     </button>
                   )}
+
+                  {/* ⭐ زر المفضلة المركزية بحساب الموظف */}
+                  <button
+                    onClick={() => setFavoritesDrawerOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all shadow-sm"
+                    title="فتح قائمة المفضلات المركزية (6 تبويبات)"
+                  >
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    <span>المفضلة</span>
+                    {favoritesList.length > 0 && (
+                      <span className="bg-amber-500 text-slate-950 font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                        {favoritesList.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
+
+              {/* 📌 شريط الرسائل المثبتة أعلى المحادثة (حتى 5 رسائل) */}
+              {activeConversation && (pinnedMessagesMap[activeConversation.id]?.length || 0) > 0 && (() => {
+                const pins = pinnedMessagesMap[activeConversation.id];
+                const curPin = pins[pinnedIndex % pins.length] || pins[0];
+                return (
+                  <div className="bg-gradient-to-r from-purple-950/90 via-slate-900/95 to-purple-950/90 border-b border-purple-500/30 px-4 py-2 flex items-center justify-between text-xs text-white shrink-0 shadow-md">
+                    <div
+                      className="flex items-center gap-2.5 cursor-pointer hover:text-purple-300 transition-colors flex-1 min-w-0"
+                      onClick={() => {
+                        const el = document.getElementById(`msg-${curPin.id}`);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }}
+                      title="اضغط للانتقال المباشر إلى مكان الرسالة المثبتة"
+                    >
+                      <Pin className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0 rotate-45" />
+                      <span className="font-bold text-amber-300 shrink-0">
+                        رسالة مثبتة ({((pinnedIndex % pins.length) + 1)}/{pins.length}):
+                      </span>
+                      <span className="text-purple-300 font-semibold shrink-0">{curPin.sender_name}:</span>
+                      <span className="truncate text-slate-300">{curPin.body || curPin.file_name || 'مرفق وسائط'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 mr-3">
+                      {pins.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => setPinnedIndex((prev) => (prev > 0 ? prev - 1 : pins.length - 1))}
+                            className="p-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 transition-colors"
+                            title="الرسالة المثبتة السابقة"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setPinnedIndex((prev) => (prev < pins.length - 1 ? prev + 1 : 0))}
+                            className="p-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 transition-colors"
+                            title="الرسالة المثبتة التالية"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => handleUnpinMessage(curPin.id)}
+                        className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                        title="إلغاء تثبيت هذه الرسالة"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Messages Feed */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[var(--bg-main)]">
@@ -1420,8 +1871,80 @@ export function NativeChatInbox() {
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isOut ? 'items-end' : 'items-start'}`}
+                        id={`msg-${msg.id}`}
+                        className={`flex flex-col ${isOut ? 'items-end' : 'items-start'} group/msg relative`}
                       >
+                        {/* ⚡ شريط إجراءات الرسالة عند التمرير: تحويل - تثبيت - مفضلة - رد - نسخ */}
+                        <div
+                          className={`absolute -top-3 ${
+                            isOut ? 'left-2' : 'right-2'
+                          } hidden group-hover/msg:flex items-center gap-1 bg-[#150D2A] border border-purple-500/40 rounded-xl px-2 py-0.5 shadow-2xl z-30 backdrop-blur-md transition-all`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setReplyingToMessage(msg)}
+                            className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
+                            title="رد باقتباس (Reply)"
+                          >
+                            <Reply className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setForwardModalMsg(msg)}
+                            className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
+                            title="تحويل الرسالة إلى محادثة أخرى (Forward)"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPinModalMsg(msg)}
+                            className="p-1 rounded-lg hover:bg-amber-600/30 text-slate-300 hover:text-amber-300 transition-colors"
+                            title="تثبيت الرسالة (Pin حتى 5 رسائل)"
+                          >
+                            <Pin className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleFavorite(
+                                {
+                                  id: msg.id,
+                                  title: msg.body || msg.file_name || 'رسالة وسائط',
+                                  subtitle: `${msg.sender_name} • ${activeConversation?.title}`,
+                                  meta: { chatJid: msg.chat_jid, mediaType: msg.media_type },
+                                },
+                                msg.media_type === 'image' || msg.media_type === 'video'
+                                  ? 'media'
+                                  : msg.media_type === 'document'
+                                  ? 'file'
+                                  : 'message'
+                              )
+                            }
+                            className="p-1 rounded-lg hover:bg-amber-600/30 text-slate-300 hover:text-amber-400 transition-colors"
+                            title="إضافة للمفضلة"
+                          >
+                            <Star
+                              className={`w-3.5 h-3.5 ${
+                                favoritesList.some((f) => f.id === msg.id)
+                                  ? 'fill-amber-400 text-amber-400'
+                                  : ''
+                              }`}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(msg.body || '');
+                              alert('تم نسخ النص إلى الحافظة بنجاح');
+                            }}
+                            className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
+                            title="نسخ النص"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
                         <div
                           className={`max-w-[85%] sm:max-w-xl px-4 py-2.5 text-sm transition-all ${
                             isOut
@@ -1429,6 +1952,12 @@ export function NativeChatInbox() {
                               : 'bubble-peer'
                           }`}
                         >
+                          {msg.reply_to && (
+                            <div className="mb-2 p-2 rounded-xl bg-black/30 border-r-2 border-purple-400 text-xs">
+                              <div className="font-semibold text-purple-300 text-[11px]">{msg.reply_to.sender_name}</div>
+                              <div className="text-slate-300 truncate text-[10px]">{msg.reply_to.body}</div>
+                            </div>
+                          )}
                           {!isOut && activeConversation.is_group && (
                             <div className="text-[11px] font-bold text-purple-300 mb-1">
                               {msg.sender_name}
@@ -1439,7 +1968,8 @@ export function NativeChatInbox() {
                               📷 صورة — دقة كاملة + lightbox عند الضغط
                              ════════════════════════════════════════ */}
                           {isImage && (() => {
-                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
+                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
+                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, msg.body || 'image.jpg');
                             return (
                               <div className="mb-1">
                                 {proxied ? (
@@ -1466,38 +1996,58 @@ export function NativeChatInbox() {
                           })()}
 
                           {/* ════════════════════════════════════════
-                              📄 مستند
+                              📄 مستند — بطاقات احترافية مميزة للأكسل والـ PDF والوورد والضغط
                              ════════════════════════════════════════ */}
-                          {isDoc && (
-                            <div className="flex items-center gap-2.5 mb-1.5 p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs">
-                              <div className="p-2 rounded-lg bg-purple-500/20 text-purple-300 shrink-0">
-                                <FileText className="w-4 h-4" />
+                          {isDoc && (() => {
+                            const rawFileName = msg.file_name || msg.body || 'document.pdf';
+                            const meta = getFileCardMeta(rawFileName);
+                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
+                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, rawFileName);
+
+                            return (
+                              <div className={`flex items-center gap-3 mb-2 p-3 rounded-2xl border transition-all ${meta.cardBg}`}>
+                                <div className={`p-2.5 rounded-xl bg-white/5 border border-white/10 shrink-0 ${meta.iconColor}`}>
+                                  {meta.isSheet ? (
+                                    <FileSpreadsheet className="w-6 h-6" />
+                                  ) : meta.isArchive ? (
+                                    <Archive className="w-6 h-6" />
+                                  ) : (
+                                    <FileText className="w-6 h-6" />
+                                  )}
+                                </div>
+
+                                <div className="flex-1 min-w-0 text-right">
+                                  <div className="font-bold text-white text-xs truncate dir-ltr text-right" title={rawFileName}>
+                                    {rawFileName}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className={`text-[10px] px-2 py-0.2 rounded-full border font-bold uppercase ${meta.badge}`}>
+                                      {meta.ext}
+                                    </span>
+                                    {msg.file_size && (
+                                      <span className="text-[10px] text-slate-400 font-mono">{msg.file_size}</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <a
+                                  href={proxied || msg.media_url}
+                                  download={rawFileName}
+                                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white shrink-0 shadow transition-colors flex items-center justify-center"
+                                  title={`تحميل الملف باسمه الأصلي: ${rawFileName}`}
+                                >
+                                  <Download className="w-4 h-4" />
+                                </a>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-white truncate">{msg.body || 'مستند مرفق'}</div>
-                                <div className="text-[10px] text-slate-400">مستند (PDF / Doc)</div>
-                              </div>
-                              {msg.media_url && (() => {
-                                const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
-                                return (
-                                  <a
-                                    href={proxied || msg.media_url}
-                                    download
-                                    className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white shrink-0"
-                                    title="تنزيل المستند"
-                                  >
-                                    <Download className="w-3.5 h-3.5" />
-                                  </a>
-                                );
-                              })()}
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* ════════════════════════════════════════
                               🎵 صوت — مشغّل صوتي مخصص مع شريط الترددات
                              ════════════════════════════════════════ */}
                           {isAudio && (() => {
-                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
+                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
+                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, 'voice_note.ogg');
                             return (
                               <div className="mb-1">
                                 {proxied ? (
@@ -1520,7 +2070,8 @@ export function NativeChatInbox() {
                               🎥 فيديو — مشغّل فيديو مع شاشة كاملة
                              ════════════════════════════════════════ */}
                           {isVideo && (() => {
-                            const proxied = getProxiedUrl(msg.media_url, selectedInstanceName, msg.id);
+                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
+                            const proxied = getProxiedUrl(msg.media_url, effectiveInstance, msg.id, msg.body || 'video.mp4');
                             return (
                               <div className="mb-1">
                                 {proxied ? (
@@ -1558,19 +2109,56 @@ export function NativeChatInbox() {
                           })()}
 
                           {/* ════════════════════════════════════════
-                              📊 استطلاع رأي (Poll) بطاقة أنيقة
+                              📊 استطلاع رأي تفاعلي حي (Interactive Poll)
                              ════════════════════════════════════════ */}
-                          {msg.media_type === 'poll' && (
-                            <div className="p-3 rounded-2xl bg-purple-950/40 border border-purple-500/30 text-xs space-y-1.5 min-w-[220px]">
-                              <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
-                                <span>📊</span>
-                                <span>{msg.body || 'استطلاع رأي / تصويت'}</span>
+                          {msg.media_type === 'poll' && (() => {
+                            const poll = msg.poll_data || {
+                              question: msg.body || 'استطلاع رأي تفاعلي',
+                              options: [
+                                { id: '1', text: '🤩 نعم، حاضر وجاهز!', votes: 5 },
+                                { id: '2', text: 'أحتاج مراجعة المواد أولاً', votes: 2 },
+                                { id: '3', text: 'سأنضم لاحقاً اليوم', votes: 1 }
+                              ],
+                              totalVotes: 8
+                            };
+                            const total = poll.options.reduce((sum, o) => sum + o.votes, 0) || 1;
+
+                            return (
+                              <div className="p-3.5 rounded-2xl bg-purple-950/50 border border-purple-500/40 text-xs space-y-3 min-w-[260px] max-w-sm shadow-xl">
+                                <div className="flex items-center gap-2 text-purple-200 font-bold text-sm">
+                                  <span className="p-1 rounded-lg bg-purple-500/20 text-purple-300">📊</span>
+                                  <span>{poll.question}</span>
+                                </div>
+                                <div className="space-y-2 pt-1">
+                                  {poll.options.map((opt) => (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => handleVotePoll(msg.id, opt.id)}
+                                      className="w-full text-right p-2.5 rounded-xl border border-white/10 hover:border-purple-500/50 bg-black/30 hover:bg-purple-900/30 transition-all flex flex-col gap-1.5"
+                                    >
+                                      <div className="flex items-center justify-between text-xs">
+                                        <span className={`font-semibold ${opt.userVoted ? 'text-emerald-300 font-bold' : 'text-white'}`}>
+                                          {opt.userVoted ? '✓ ' : ''}{opt.text}
+                                        </span>
+                                        <span className="text-purple-300 font-mono text-[11px]">{opt.votes} صوت</span>
+                                      </div>
+                                      <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                        <div
+                                          className="bg-gradient-to-r from-purple-500 to-emerald-400 h-full rounded-full transition-all duration-300"
+                                          style={{ width: `${(opt.votes / total) * 100}%` }}
+                                        />
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/5">
+                                  <span>إجمالي الأصوات: {poll.totalVotes || total}</span>
+                                  <span className="text-emerald-400 font-medium">تصويت فوري مباشر</span>
+                                </div>
                               </div>
-                              <div className="text-[10px] text-purple-300/70">
-                                استطلاع تفاعلي عبر واتساب
-                              </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* النص الفعلي للرسالة — يظهر فقط إذا كان هناك نص حقيقي ولم يكن تسجيلاً صوتياً أو تصويتاً */}
                           {msg.body && !isDoc && !isAudio && msg.media_type !== 'poll' && (
@@ -1616,18 +2204,33 @@ export function NativeChatInbox() {
                     </span>
                   </div>
 
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={includeSignature}
-                      onChange={(e) => setIncludeSignature(e.target.checked)}
-                      className="rounded bg-slate-900 border-purple-700 text-purple-600 focus:ring-0"
-                    />
-                    <span className="text-[var(--text-muted)] text-[11px]">
-                      تضمين التوقيع الذكي ({user.full_name})
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-purple-300/80 bg-purple-950/40 px-2 py-0.5 rounded-md border border-purple-800/30">
+                      التوقيع الإداري نشط تلقائياً
                     </span>
-                  </label>
+                  </div>
                 </div>
+
+                {/* الرد المقتبس إن وجد */}
+                {replyingToMessage && (
+                  <div className="flex items-center justify-between bg-purple-950/70 border border-purple-500/40 rounded-2xl px-4 py-2 text-xs">
+                    <div className="flex items-center gap-2.5 border-r-2 border-purple-400 pr-3 min-w-0">
+                      <Reply className="w-4 h-4 text-purple-400 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="font-bold text-purple-300 block">{replyingToMessage.sender_name}</span>
+                        <span className="text-slate-200 truncate block text-[11px]">{replyingToMessage.body || 'مرفق وسائط'}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyingToMessage(null)}
+                      className="p-1.5 hover:bg-white/10 rounded-xl text-slate-400 hover:text-white transition-colors"
+                      title="إلغاء الرد"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 {/* شريط الإدخال أو شريط تسجيل الصوت الحي */}
                 {isRecordingVoice ? (
@@ -1664,10 +2267,11 @@ export function NativeChatInbox() {
                   <form onSubmit={handleSendMessage} className="flex items-center gap-2 relative">
                     <input
                       type="file"
+                      multiple
                       ref={fileInputRef}
-                      onChange={handleFileInputChange}
+                      onChange={handleMultiFileInputChange}
                       className="hidden"
-                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,audio/*,video/*"
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,audio/*,video/*,.zip,.rar"
                     />
                     
                     {/* زر المرفقات */}
@@ -1916,45 +2520,395 @@ export function NativeChatInbox() {
           🖼️ Lightbox — نافذة عرض الصور/الفيديو بشاشة كاملة
           اضغط على الخلفية أو زر X لإغلاقها
          ════════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════════
+          🖼️ Lightbox المتطور — نافذة عرض الصور والفيديو بالدقة الكاملة
+          مع زر تنزيل مباشر وإغلاق بالضغط على الخلفية
+         ════════════════════════════════════════════════════════ */}
       {lightboxMedia && (
         <div
-          className="fixed inset-0 z-[200] bg-black/92 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
+          className="fixed inset-0 z-[200] bg-black/94 backdrop-blur-md flex flex-col items-center justify-between p-4 cursor-zoom-out select-none"
           onClick={() => setLightboxMedia(null)}
         >
-          {/* زر الإغلاق الدائم في الزاوية */}
-          <button
-            onClick={() => setLightboxMedia(null)}
-            className="fixed top-5 right-5 z-[210] w-11 h-11 rounded-full bg-black/70 hover:bg-black/90 text-white flex items-center justify-center transition-colors shadow-2xl border border-white/20"
-            title="إغلاق (Esc)"
-          >
-            <X className="w-6 h-6" />
-          </button>
-
-          {/* الحاوية الداخلية — الضغط عليها لا يغلق النافذة */}
+          {/* شريط أدوات Lightbox العلوي */}
           <div
-            className="relative flex flex-col items-center justify-center max-w-[92vw] max-h-[90vh]"
+            className="w-full max-w-5xl flex items-center justify-between px-4 py-3 z-[210]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="text-sm font-semibold text-white/90">
+              {lightboxMedia.type === 'video' ? '🎥 عرض مقطع الفيديو' : '📷 عرض الصورة بالدقة الكاملة'}
+            </span>
+            <div className="flex items-center gap-3">
+              <a
+                href={lightboxMedia.src.includes('?') ? `${lightboxMedia.src}&download=true` : `${lightboxMedia.src}?download=true`}
+                download
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg transition-all"
+                title="تنزيل الملف باسمه الأصلي"
+              >
+                <Download className="w-4 h-4" />
+                <span>تنزيل (تحميل)</span>
+              </a>
+              <button
+                onClick={() => setLightboxMedia(null)}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+                title="إغلاق (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* الحاوية الداخلية — لا تقتطع الصورة أو الفيديو وتسمح بكامل الحجم */}
+          <div
+            className="relative flex-1 flex flex-col items-center justify-center max-w-[94vw] max-h-[82vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {lightboxMedia.type === 'image' ? (
               <img
                 src={lightboxMedia.src}
                 alt="عرض كامل"
-                className="max-w-[92vw] max-h-[82vh] rounded-2xl object-contain shadow-2xl"
+                className="max-w-[92vw] max-h-[80vh] w-auto h-auto rounded-2xl object-contain shadow-2xl border border-white/10"
               />
             ) : (
               <video
                 src={lightboxMedia.src}
                 controls
                 autoPlay
-                className="max-w-[92vw] max-h-[82vh] rounded-2xl shadow-2xl bg-black"
+                className="max-w-[92vw] max-h-[80vh] w-auto h-auto rounded-2xl shadow-2xl bg-black border border-white/10"
               />
             )}
 
             {lightboxMedia.caption && (
-              <div className="mt-3 text-center text-sm text-white bg-black/80 px-5 py-2.5 rounded-2xl backdrop-blur-md max-w-2xl border border-white/10 shadow-lg">
+              <div className="mt-3 text-center text-sm text-white bg-black/80 px-5 py-2 rounded-2xl backdrop-blur-md max-w-2xl border border-white/10 shadow-lg">
                 {lightboxMedia.caption}
               </div>
             )}
+          </div>
+
+          <div className="text-[11px] text-slate-400 py-1">
+            اضغط على الخلفية أو مفتاح Esc للإغلاق الفوري
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          📤 نافذة إرسال الوسائط المتعددة (حتى 25 صورة و 5 فيديو و 5 ملفات)
+          مع اختيار جودة HD أو عادية
+         ════════════════════════════════════════════════════════ */}
+      {multiSendModalOpen && batchAttachments.length > 0 && (
+        <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
+              <div className="flex items-center gap-2">
+                <FileUp className="w-5 h-5 text-purple-400" />
+                <h3 className="font-bold text-base text-white">
+                  معاينة وإرسال دفعة الوسائط ({batchAttachments.length} عناصر)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMultiSendModalOpen(false);
+                  setBatchAttachments([]);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* شبكة معاينة العناصر */}
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5 max-h-64 overflow-y-auto p-2 rounded-2xl bg-black/40 border border-purple-900/40">
+              {batchAttachments.map((item, idx) => (
+                <div key={item.id} className="relative group/thumb rounded-xl overflow-hidden border border-white/10 bg-slate-900 aspect-square flex items-center justify-center">
+                  {item.mediaType === 'image' ? (
+                    <img src={item.previewUrl} alt={item.fileName} className="w-full h-full object-cover" />
+                  ) : item.mediaType === 'video' ? (
+                    <div className="flex flex-col items-center justify-center text-purple-300 p-1 text-center">
+                      <Video className="w-6 h-6" />
+                      <span className="text-[9px] mt-1 font-mono">فيديو</span>
+                    </div>
+                  ) : item.mediaType === 'audio' ? (
+                    <div className="flex flex-col items-center justify-center text-purple-300 p-1 text-center">
+                      <Music className="w-6 h-6" />
+                      <span className="text-[9px] mt-1 font-mono">صوت</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-purple-300 p-1 text-center">
+                      <FileText className="w-6 h-6" />
+                      <span className="text-[8px] mt-0.5 truncate max-w-full px-1">{item.fileName}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setBatchAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                    title="حذف هذا العنصر"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* تبديل الجودة HD vs Standard */}
+            <div className="flex items-center justify-between bg-slate-900/60 p-3 rounded-2xl border border-purple-900/40">
+              <span className="text-xs text-slate-300 font-medium">جودة إرسال الصور:</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsHdQuality(false)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    !isHdQuality
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  دقة قياسية (سريع)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsHdQuality(true)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all ${
+                    isHdQuality
+                      ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-bold shadow'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>🌟 دقة فائقة (HD)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* الوصف المصاحب */}
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-300 font-medium">نص الرسالة المصاحب للدفعة (Caption):</label>
+              <input
+                type="text"
+                value={batchCaption}
+                onChange={(e) => setBatchCaption(e.target.value)}
+                placeholder="اكتب وصفاً للدفعة (اختياري)..."
+                className="w-full bg-[#080512] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
+              />
+            </div>
+
+            {/* الأزرار */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMultiSendModalOpen(false);
+                  setBatchAttachments([]);
+                }}
+                disabled={isSendingMedia}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleSendBatchAttachments}
+                disabled={isSendingMedia || batchAttachments.length === 0}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white text-xs font-bold transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSendingMedia ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري إرسال الدفعة...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>إرسال ({batchAttachments.length}) الآن</span>
+                    <Send className="w-3.5 h-3.5 rotate-180" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          📌 نافذة اختيار مدة تثبيت الرسالة (خيارات واتساب)
+         ════════════════════════════════════════════════════════ */}
+      {pinModalMsg && (
+        <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#120B24] border border-amber-500/40 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                <Pin className="w-4 h-4 rotate-45" />
+                <span>تثبيت الرسالة في المحادثة</span>
+              </div>
+              <button onClick={() => setPinModalMsg(null)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-300">
+              اختر مدة تثبيت الرسالة كما في واتساب الرسمي:
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => handlePinMessage(pinModalMsg, '24h')}
+                className="w-full text-right p-3 rounded-xl bg-slate-900 hover:bg-purple-900/40 border border-white/10 hover:border-purple-500/40 text-xs text-white font-medium transition-all flex items-center justify-between"
+              >
+                <span>24 ساعة (يوم واحد)</span>
+                <span className="text-slate-400 font-mono text-[11px]">24h</span>
+              </button>
+              <button
+                onClick={() => handlePinMessage(pinModalMsg, '7d')}
+                className="w-full text-right p-3 rounded-xl bg-purple-950/40 hover:bg-purple-900/50 border border-purple-500/40 text-xs text-purple-200 font-bold transition-all flex items-center justify-between shadow"
+              >
+                <span>7 أيام (أسبوع - الخيار الافتراضي)</span>
+                <span className="text-purple-300 font-mono text-[11px]">7d</span>
+              </button>
+              <button
+                onClick={() => handlePinMessage(pinModalMsg, '30d')}
+                className="w-full text-right p-3 rounded-xl bg-slate-900 hover:bg-purple-900/40 border border-white/10 hover:border-purple-500/40 text-xs text-white font-medium transition-all flex items-center justify-between"
+              >
+                <span>30 يوماً (شهر كامل)</span>
+                <span className="text-slate-400 font-mono text-[11px]">30d</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          ↪️ نافذة تحويل الرسالة إلى محادثة أخرى
+         ════════════════════════════════════════════════════════ */}
+      {forwardModalMsg && (
+        <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
+                <Share2 className="w-4 h-4" />
+                <span>تحويل الرسالة إلى محادثة</span>
+              </div>
+              <button onClick={() => setForwardModalMsg(null)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute right-3 top-3 text-slate-400" />
+              <input
+                type="text"
+                value={forwardSearch}
+                onChange={(e) => setForwardSearch(e.target.value)}
+                placeholder="ابحث عن اسم العميل أو المجموعة..."
+                className="w-full bg-[#080512] pr-9 pl-3 py-2 text-xs rounded-xl border border-white/10 text-white outline-none focus:border-purple-500"
+              />
+            </div>
+            <div className="max-h-60 overflow-y-auto space-y-1.5">
+              {conversations
+                .filter((c) => !forwardSearch || c.title.toLowerCase().includes(forwardSearch.toLowerCase()))
+                .map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => handleForwardMessage(conv)}
+                    className="w-full text-right p-2.5 rounded-xl bg-slate-900/60 hover:bg-purple-900/40 border border-white/5 hover:border-purple-500/30 flex items-center justify-between transition-colors"
+                  >
+                    <div>
+                      <div className="font-semibold text-white text-xs">{conv.title}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">{conv.phone_or_jid}</div>
+                    </div>
+                    <span className="text-[11px] text-purple-400 font-bold">إرسال ↵</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════
+          ⭐️ درج المفضلة المركزي (المفضلة - 6 تبويبات متخصصة)
+         ════════════════════════════════════════════════════════ */}
+      {favoritesDrawerOpen && (
+        <div className="fixed inset-0 z-[170] bg-black/60 backdrop-blur-sm flex justify-start">
+          <div className="w-full max-w-md bg-[#100922] border-l border-purple-500/30 h-full p-5 flex flex-col shadow-2xl text-right animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
+              <div className="flex items-center gap-2">
+                <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                <h3 className="font-bold text-white text-sm">المفضلة المركزية للموظف</h3>
+              </div>
+              <button
+                onClick={() => setFavoritesDrawerOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* الـ 6 تبويبات المتخصصة */}
+            <div className="grid grid-cols-3 gap-1.5 my-3">
+              {[
+                { key: 'messages', label: '1. رسائل' },
+                { key: 'files', label: '2. ملفات' },
+                { key: 'media', label: '3. ميديا' },
+                { key: 'direct', label: '4. فردية' },
+                { key: 'groups', label: '5. مجموعات' },
+                { key: 'contacts', label: '6. جهات اتصال' },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setFavTab(t.key as any)}
+                  className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all ${
+                    favTab === t.key
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'bg-slate-900/80 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* محتوى التبويب */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {favoritesList.filter((f) => {
+                if (favTab === 'messages') return f.category === 'message';
+                if (favTab === 'files') return f.category === 'file';
+                if (favTab === 'media') return f.category === 'media';
+                if (favTab === 'direct') return f.category === 'direct_chat';
+                if (favTab === 'groups') return f.category === 'group';
+                return f.category === 'contact';
+              }).length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-slate-500 text-xs">
+                  <Star className="w-8 h-8 stroke-1 text-slate-600 mb-2" />
+                  <span>لا توجد عناصر محفوظة في هذا التبويب حتى الآن</span>
+                </div>
+              ) : (
+                favoritesList
+                  .filter((f) => {
+                    if (favTab === 'messages') return f.category === 'message';
+                    if (favTab === 'files') return f.category === 'file';
+                    if (favTab === 'media') return f.category === 'media';
+                    if (favTab === 'direct') return f.category === 'direct_chat';
+                    if (favTab === 'groups') return f.category === 'group';
+                    return f.category === 'contact';
+                  })
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-2xl bg-slate-900/70 border border-white/5 hover:border-purple-500/40 flex items-start justify-between gap-3 group transition-all"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-xs font-semibold truncate">{item.title}</div>
+                        {item.subtitle && (
+                          <div className="text-[10px] text-slate-400 mt-0.5 truncate">{item.subtitle}</div>
+                        )}
+                        <div className="text-[9px] text-purple-400/80 mt-1">{item.createdAt}</div>
+                      </div>
+                      <button
+                        onClick={() => setFavoritesList((prev) => prev.filter((x) => x.id !== item.id))}
+                        className="text-slate-500 hover:text-rose-400 p-1 opacity-60 group-hover:opacity-100 transition-opacity"
+                        title="إزالة من المفضلة"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
           </div>
         </div>
       )}

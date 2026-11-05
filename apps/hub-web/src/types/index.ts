@@ -50,6 +50,22 @@ export interface ChatMessage {
   status: MessageStatus;
   line_id: string;
   created_at: string;
+  file_name?: string;
+  file_size?: string;
+  is_pinned?: boolean;
+  pinned_duration?: '24h' | '7d' | '30d';
+  is_starred?: boolean;
+  reply_to?: {
+    id: string;
+    sender_name: string;
+    body: string;
+  };
+  poll_data?: {
+    question: string;
+    options: { id: string; text: string; votes: number; userVoted?: boolean }[];
+    totalVotes: number;
+    selectableCount?: number;
+  };
 }
 
 export type ConversationStatus = 'open' | 'in_progress' | 'pending' | 'resolved' | 'snoozed' | 'escalated';
