@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabase';
 
 /**
@@ -42,7 +42,6 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
     let query = supabase
-      .schema('hub')
       .from('contacts')
       .select(`
         id,
@@ -145,7 +144,6 @@ export async function POST(req: NextRequest) {
     // ── فحص عدم التكرار (Deduplication) عبر رقم الهاتف ──
     if (normalizedPhone) {
       const { data: existing } = await supabase
-        .schema('hub')
         .from('contacts')
         .select('id, display_name, source, source_detail')
         .eq('primary_phone', normalizedPhone)
@@ -154,7 +152,6 @@ export async function POST(req: NextRequest) {
       if (existing) {
         // تحديث البيانات بدلاً من إنشاء مكرر
         const { data: updated, error: updateErr } = await supabase
-          .schema('hub')
           .from('contacts')
           .update({
             display_name: display_name || existing.display_name,
@@ -205,7 +202,6 @@ export async function POST(req: NextRequest) {
     };
 
     const { data: newContact, error: insertErr } = await supabase
-      .schema('hub')
       .from('contacts')
       .insert(insertPayload)
       .select()
@@ -220,7 +216,6 @@ export async function POST(req: NextRequest) {
     if (normalizedPhone && newContact) {
       try {
         await supabase
-          .schema('hub')
           .from('contact_phones')
           .insert({
             contact_id: newContact.id,

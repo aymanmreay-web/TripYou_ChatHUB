@@ -13,7 +13,6 @@ export async function GET(
     const supabase = getSupabaseAdmin();
 
     const { data: contact, error } = await supabase
-      .schema('hub')
       .from('contacts')
       .select('*')
       .eq('id', id)
@@ -52,7 +51,6 @@ export async function PUT(
     delete updatePayload.created_at;
 
     const { data: updated, error } = await supabase
-      .schema('hub')
       .from('contacts')
       .update(updatePayload)
       .eq('id', id)
@@ -82,7 +80,6 @@ export async function DELETE(
     const supabase = getSupabaseAdmin();
 
     const { error } = await supabase
-      .schema('hub')
       .from('contacts')
       .delete()
       .eq('id', id);

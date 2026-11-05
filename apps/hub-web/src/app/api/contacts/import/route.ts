@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
 
 function normalizePhoneE164(phone: string): string {
@@ -92,7 +92,6 @@ export async function POST(req: NextRequest) {
         };
 
         const { data: created, error } = await supabase
-          .schema('hub')
           .from('contacts')
           .insert(insertPayload)
           .select('id')
@@ -105,7 +104,6 @@ export async function POST(req: NextRequest) {
           if (phone && created) {
             try {
               await supabase
-                .schema('hub')
                 .from('contact_phones')
                 .insert({
                   contact_id: created.id,

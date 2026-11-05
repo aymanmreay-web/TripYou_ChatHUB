@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
 
 /**
@@ -10,7 +10,6 @@ export async function GET() {
     const supabase = getSupabaseAdmin();
 
     const { data: allContacts, error } = await supabase
-      .schema('hub')
       .from('contacts')
       .select('id, entity_type, commercial_role, source, source_detail, city, created_at');
 
@@ -64,3 +63,4 @@ export async function GET() {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
