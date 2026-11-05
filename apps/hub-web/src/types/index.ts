@@ -53,6 +53,8 @@ export interface ChatMessage {
   created_at: string;
   file_name?: string;
   file_size?: string;
+  thumbnail_url?: string;
+  video_seconds?: number;
   is_pinned?: boolean;
   pinned_duration?: '24h' | '7d' | '30d';
   is_starred?: boolean;

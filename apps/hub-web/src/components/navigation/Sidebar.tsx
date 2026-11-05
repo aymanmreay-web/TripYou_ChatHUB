@@ -9,7 +9,7 @@ import {
   Users2, UserCheck, Shield, PenTool, Contact, Share2,
   FileSpreadsheet, History, Settings, Activity, Megaphone,
   Search, ChevronLeft, ChevronRight, Layers, Sparkles,
-  Tags
+  Tags, Star
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ModuleContract } from '../../types';
@@ -24,6 +24,7 @@ interface SidebarProps {
 const MODULE_ICONS: Record<string, React.ElementType> = {
   inbox: MessageSquare,
   contacts: Users,
+  favorites: Star,
   tasks: CheckSquare,
   meetings: Video,
   my_reports: BarChart2,

@@ -3,16 +3,25 @@
  *
  * وكيل وسائط متطور لفك تشفير وتدفق وسائط WhatsApp الرسمية (Evolution API v2).
  * يدعم:
- * 1. فك التشفير اللحظي لوسائط WhatsApp المشفرة (.enc).
- * 2. دعم Range Requests (HTTP 206 Partial Content) لتمكين التقديم والتأخير (Seeking) بسلاسة في الفيديو والصوت.
- * 3. الحفاظ على أسماء الملفات الأصلية ولاحقاتها (Content-Disposition: inline/attachment).
- * 4. السقوط التلقائي للخط البديل في حال وصول الرسالة على خط آخر.
+ * 1. فك التشفير اللحظي مع تخزين مؤقت محلي (Disk/Memory Cache) لدعم Range Requests للتقديم والتأخير (Seeking) الفوري في الفيديو والصوت.
+ * 2. الحفاظ الكامل على اسم الملف وامتداده الأصليين (RFC 5987 / RFC 6266).
+ * 3. المحاولة التلقائية على الخطوط المتاحة (Sells_2, Master...) في حال كان الخط المحدد غير متصل.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.sslip.io';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'bc6075e9f95967407faae5d0fa9ac875a8d88a94782172db';
+
+const CACHE_DIR = path.join(os.tmpdir(), 'evo_media_cache');
+try {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
+} catch (_) {}
 
 function deduceExtension(mime: string): string {
   if (mime.includes('jpeg') || mime.includes('jpg')) return '.jpg';
@@ -46,13 +55,31 @@ export async function GET(
   let mime = 'application/octet-stream';
   let cleanFileName = rawFileName;
 
-  // 1. الأولوية القصوى: فك التشفير عبر معرّف الرسالة
-  if (messageId) {
-    // قائمة الخطوط للمحاولة: الخط المطلوب أولاً ثم الخطوط البديلة الشائعة
-    const candidateLines = [name, 'Sells_2', 'Master'].filter((v, idx, arr) => arr.indexOf(v) === idx);
+  const binPath = messageId ? path.join(CACHE_DIR, `${messageId}.bin`) : null;
+  const metaPath = messageId ? path.join(CACHE_DIR, `${messageId}.json`) : null;
+
+  // 1. فحص التخزين المؤقت أولاً لتسريع طلبات Range والتحميل المباشر
+  if (binPath && metaPath && fs.existsSync(binPath) && fs.existsSync(metaPath)) {
+    try {
+      buffer = fs.readFileSync(binPath);
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      if (meta.mime) mime = meta.mime;
+      if (!cleanFileName && meta.fileName) cleanFileName = meta.fileName;
+    } catch (e) {
+      buffer = null;
+    }
+  }
+
+  // 2. إذا لم يكن مخزناً مؤقتاً: فك التشفير عبر معرّف الرسالة
+  if (!buffer && messageId) {
+    // نبدأ بالخطوط المتصلة النشطة المعروفة لتجنب التأخير
+    const candidateLines = [name, 'Sells_2', 'Master', 'Sells_1'].filter((v, idx, arr) => arr.indexOf(v) === idx);
 
     for (const inst of candidateLines) {
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+
         const upstream = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${inst}`, {
           method: 'POST',
           headers: {
@@ -63,7 +90,9 @@ export async function GET(
             message: { key: { id: messageId } },
             convertToMp4: false,
           }),
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
 
         if (upstream.ok) {
           const data = await upstream.json();
@@ -73,7 +102,15 @@ export async function GET(
             if (!cleanFileName && data.fileName) {
               cleanFileName = data.fileName;
             }
-            break; // تم النجاح
+
+            // حفظ في التخزين المؤقت للاستخدام اللاحق
+            if (binPath && metaPath) {
+              try {
+                fs.writeFileSync(binPath, buffer);
+                fs.writeFileSync(metaPath, JSON.stringify({ mime, fileName: cleanFileName }));
+              } catch (_) {}
+            }
+            break;
           }
         }
       } catch (err: any) {
@@ -82,7 +119,7 @@ export async function GET(
     }
   }
 
-  // 2. إذا لم ينجح فك التشفير وكان هناك رابط مباشر غير مشفر
+  // 3. إذا لم ينجح فك التشفير وكان هناك رابط مباشر غير مشفر
   if (!buffer && mediaUrl) {
     try {
       const decodedUrl = decodeURIComponent(mediaUrl);
@@ -105,7 +142,7 @@ export async function GET(
     return NextResponse.json({ error: 'Media could not be retrieved or decrypted' }, { status: 404 });
   }
 
-  // تحديد اسم الملف الصحيح مع اللاحقة
+  // تحديد اسم الملف الصحيح واللاحقة
   if (!cleanFileName) {
     const ext = deduceExtension(mime);
     cleanFileName = `media_${messageId || 'file'}${ext}`;
@@ -113,11 +150,12 @@ export async function GET(
     cleanFileName += deduceExtension(mime);
   }
 
+  const safeAscii = cleanFileName.replace(/[^\x20-\x7E]/g, '_');
   const encodedFileName = encodeURIComponent(cleanFileName);
   const dispositionType = asAttachment ? 'attachment' : 'inline';
-  const contentDisposition = `${dispositionType}; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`;
+  const contentDisposition = `${dispositionType}; filename="${safeAscii}"; filename*=UTF-8''${encodedFileName}`;
 
-  // 3. معالجة طلبات Range (HTTP 206 Partial Content) للتقديم والتأخير بسلاسة
+  // 4. معالجة طلبات Range (HTTP 206 Partial Content) للتقديم والتأخير بسلاسة
   const rangeHeader = req.headers.get('range');
   const totalLength = buffer.length;
 
@@ -150,7 +188,7 @@ export async function GET(
     });
   }
 
-  // 4. استجابة كاملة عادية مع دعم Accept-Ranges
+  // 5. استجابة كاملة عادية مع دعم Accept-Ranges
   return new NextResponse(new Uint8Array(buffer), {
     status: 200,
     headers: {

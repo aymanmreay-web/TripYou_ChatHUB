@@ -1829,20 +1829,44 @@ export function NativeChatInbox() {
                     <span className="hidden sm:inline">حفظ جهة اتصال</span>
                   </button>
 
-                  {/* ⭐ زر المفضلة المركزية بحساب الموظف */}
-                  <button
-                    onClick={() => setFavoritesDrawerOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition-all shadow-sm"
-                    title="فتح قائمة المفضلات المركزية (6 تبويبات)"
-                  >
-                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    <span>المفضلة</span>
-                    {favoritesList.length > 0 && (
-                      <span className="bg-amber-500 text-slate-950 font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                        {favoritesList.length}
-                      </span>
-                    )}
-                  </button>
+                  {/* ⭐ زر تمييز المحادثة الحالية كمفضلة (Star Conversation) */}
+                  {activeConversation && (() => {
+                    const isStarred = favoritesList.some((f) => f.id === activeConversation.id);
+                    return (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            handleToggleFavorite(
+                              {
+                                id: activeConversation.id,
+                                title: activeConversation.title,
+                                subtitle: activeConversation.phone_or_jid,
+                                meta: { is_group: activeConversation.is_group }
+                              },
+                              activeConversation.is_group ? 'group' : 'direct_chat'
+                            );
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                            isStarred
+                              ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-amber-950/40'
+                              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
+                          }`}
+                          title={isStarred ? 'إزالة هذه المحادثة من المفضلة' : 'تمييز هذه المحادثة بنجمة صفراء وإضافتها للمفضلة'}
+                        >
+                          <Star className={`w-3.5 h-3.5 ${isStarred ? 'fill-amber-400 text-amber-400 animate-pulse' : 'text-slate-400'}`} />
+                          <span>{isStarred ? 'محادثة مفضلة' : 'إضافة للمفضلة'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => setFavoritesDrawerOpen(true)}
+                          className="px-2 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-purple-300 hover:text-white transition-all text-xs font-mono font-bold"
+                          title="عرض أرشيف المفضلات للموظف"
+                        >
+                          {favoritesList.length}
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -2920,12 +2944,12 @@ export function NativeChatInbox() {
             {/* الـ 6 تبويبات المتخصصة */}
             <div className="grid grid-cols-3 gap-1.5 my-3">
               {[
-                { key: 'messages', label: '1. رسائل' },
-                { key: 'files', label: '2. ملفات' },
-                { key: 'media', label: '3. ميديا' },
-                { key: 'direct', label: '4. فردية' },
-                { key: 'groups', label: '5. مجموعات' },
-                { key: 'contacts', label: '6. جهات اتصال' },
+                { key: 'messages', label: 'الرسائل' },
+                { key: 'files', label: 'المستندات والملفات' },
+                { key: 'media', label: 'الصور والفيديو' },
+                { key: 'direct', label: 'محادثات فردية' },
+                { key: 'groups', label: 'المجموعات' },
+                { key: 'contacts', label: 'جهات الاتصال' },
               ].map((t) => (
                 <button
                   key={t.key}

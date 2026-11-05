@@ -304,6 +304,151 @@ insert into public.line_circuit_breakers (line_id, max_errors)
 select id, 3 from public.lines where instance_name = 'Master'
 on conflict do nothing;
 
+-- -------------------------------------------------------------------------
+-- 13. محرك التوقيع ثلاثي الأجزاء وصلاحيات الأقسام والموظفين
+-- -------------------------------------------------------------------------
+create table if not exists public.signature_settings (
+  id uuid primary key default gen_random_uuid(),
+  scope_type text not null default 'system' check (scope_type in ('system','line','staff')),
+  scope_id uuid, -- null للنظام، أو معرف خط line_id، أو معرف موظف staff_id
+  
+  -- الجزء الأول: اسم الموظف والصفة المهنية
+  part1_enabled boolean not null default true,
+  part1_label_ar text not null default 'اسم الموظف وصفته',
+  part1_template text not null default '{{staff_name}}',
+  part1_editable_by text not null default 'staff' check (part1_editable_by in ('none','staff','admin')),
+  part1_required boolean not null default true, -- هل ظهوره إجباري لا يمكن للموظف إلغاؤه
+
+  -- الجزء الثاني: اسم الخط أو القسم
+  part2_enabled boolean not null default true,
+  part2_label_ar text not null default 'اسم الخط أو القسم',
+  part2_template text not null default '{{line_title}}',
+  part2_editable_by text not null default 'admin' check (part2_editable_by in ('none','staff','admin')),
+  part2_required boolean not null default false,
+
+  -- الجزء الثالث: شعار أو خاتمة الشركة
+  part3_enabled boolean not null default true,
+  part3_label_ar text not null default 'خاتمة المؤسسة والرابط',
+  part3_template text not null default 'TripYou Travel & Tourism',
+  part3_editable_by text not null default 'admin' check (part3_editable_by in ('none','staff','admin')),
+  part3_required boolean not null default false,
+
+  -- سياسة الإرسال
+  send_mode text not null default 'always' check (send_mode in ('always','first_only','manual','disabled')),
+  separator text not null default ' — ',
+  updated_at timestamptz not null default now(),
+  unique(scope_type, scope_id)
+);
+
+-- تجاوزات التوقيع المخصصة لكل موظف وفق صلاحياته
+create table if not exists public.staff_signature_overrides (
+  staff_id uuid not null references public.staff(id) on delete cascade,
+  line_id uuid references public.lines(id) on delete cascade,
+  part1_custom text,
+  part2_custom text,
+  part3_custom text,
+  is_signature_disabled boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (staff_id, line_id)
+);
+
+-- -------------------------------------------------------------------------
+-- 14. وسوم النظام (Hub Tags) وربطها بالمحادثات بألوان حقيقية
+-- -------------------------------------------------------------------------
+create table if not exists public.hub_tags (
+  id uuid primary key default gen_random_uuid(),
+  name text unique not null,
+  color_key text not null default 'purple' check (color_key in ('purple','emerald','blue','amber','rose','cyan','slate')),
+  hex_color text,
+  description text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.conversation_tags (
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  tag_id uuid not null references public.hub_tags(id) on delete cascade,
+  applied_by uuid references public.staff(id) on delete set null,
+  applied_at timestamptz not null default now(),
+  primary key (conversation_id, tag_id)
+);
+
+-- -------------------------------------------------------------------------
+-- 15. تعريفات دورة الحالات الديناميكية (Dynamic Status Definitions)
+-- -------------------------------------------------------------------------
+create table if not exists public.status_definitions (
+  key text primary key check (key in ('open','in_progress','resolved','snoozed','escalated')),
+  title_ar text not null,
+  title_en text not null,
+  description_ar text not null,
+  color_key text not null default 'blue',
+  sla_max_minutes int not null default 10,
+  ordinal int not null default 1,
+  is_active boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+-- إدراج الحالات الخمس الافتراضية
+insert into public.status_definitions (key, title_ar, title_en, description_ar, color_key, sla_max_minutes, ordinal) values
+  ('open', 'مفتوحة (جديدة)', 'OPEN', 'المحادثات الواردة حديثاً التي بانتظار الإسناد أو استجابة الموظف الأولية.', 'blue', 5, 1),
+  ('in_progress', 'قيد المعالجة', 'IN_PROGRESS', 'محادثة مسندة لموظف ويجري التواصل والمتابعة النشطة مع العميل.', 'amber', 10, 2),
+  ('snoozed', 'مؤجلة (انتظار رد)', 'SNOOZED', 'محادثة بانتظار إفادة خارجية من العميل أو جهة معينة في موعد محدد.', 'purple', 1440, 3),
+  ('escalated', 'مصعدة للإشراف', 'ESCALATED', 'حالة حرجة أو شكوى تستدعي تدخل المشرف المباشر أو الإدارة فوراً.', 'rose', 2, 4),
+  ('resolved', 'تم الحل والإغلاق', 'RESOLVED', 'تم تقديم الخدمة بنجاح وإنهاء متطلبات العميل وإقفال المحادثة.', 'emerald', 0, 5)
+on conflict (key) do update set
+  title_ar = excluded.title_ar,
+  title_en = excluded.title_en,
+  description_ar = excluded.description_ar,
+  color_key = excluded.color_key,
+  sla_max_minutes = excluded.sla_max_minutes,
+  ordinal = excluded.ordinal;
+
+-- -------------------------------------------------------------------------
+-- 16. صلاحيات الخطوط وقفل المحادثات (Line Access & Conversation Locks)
+-- -------------------------------------------------------------------------
+create table if not exists public.line_access (
+  staff_id uuid not null references public.staff(id) on delete cascade,
+  line_id uuid not null references public.lines(id) on delete cascade,
+  can_read boolean not null default true,
+  can_send boolean not null default true,
+  can_lock boolean not null default false, -- صلاحية قفل المحادثات التابعة لهذا الخط
+  is_primary boolean not null default false,
+  granted_by uuid references public.staff(id),
+  created_at timestamptz not null default now(),
+  primary key (staff_id, line_id)
+);
+
+create table if not exists public.inbox_access (
+  staff_id uuid not null references public.staff(id) on delete cascade,
+  inbox_key text not null,
+  can_view boolean not null default true,
+  can_reply boolean not null default true,
+  can_assign boolean not null default false,
+  created_at timestamptz not null default now(),
+  primary key (staff_id, inbox_key)
+);
+
+-- المفضلة المركزية للموظف
+create table if not exists public.user_favorites (
+  id uuid primary key default gen_random_uuid(),
+  staff_id uuid not null references public.staff(id) on delete cascade,
+  category text not null check (category in ('messages','files','media','direct','groups','contacts')),
+  title text not null,
+  subtitle text,
+  item_payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+-- إدراج التوقيع الافتراضي للنظام
+insert into public.signature_settings (scope_type, scope_id, part1_enabled, part1_template, part2_enabled, part2_template, part3_enabled, part3_template, send_mode)
+values ('system', null, true, '{{staff_name}}', true, 'واتساب {{line_title}}', true, 'TripYou Travel ✈️', 'always')
+on conflict (scope_type, scope_id) do nothing;
+
+-- ربط Views في مخطط hub
+create or replace view hub.signature_settings as select * from public.signature_settings;
+create or replace view hub.hub_tags as select * from public.hub_tags;
+create or replace view hub.status_definitions as select * from public.status_definitions;
+create or replace view hub.line_access as select * from public.line_access;
+
 -- =========================================================================
 -- اكتمل إعداد قاعدة بيانات Supabase بنجاح!
 -- =========================================================================
