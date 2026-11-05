@@ -1,5 +1,7 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
+
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/contacts/stats
