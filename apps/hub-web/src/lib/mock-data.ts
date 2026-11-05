@@ -5,7 +5,7 @@ import { ModuleContract, StaffMe, WhatsAppLine, RoadmapInfo, ConversationItem, C
  */
 export const RAW_MODULES: ModuleContract[] = [
   { key: 'inbox', area: 'user', title_ar: 'المحادثات', status: 'live', required_permission: 'inbox.view', sort: 10 },
-  { key: 'contacts', area: 'user', title_ar: 'جهات الاتصال', status: 'coming_soon', required_permission: 'contacts.view', sort: 20 },
+  { key: 'contacts', area: 'user', title_ar: 'جهات الاتصال', status: 'live', required_permission: 'contacts.view', sort: 20 },
   { key: 'tasks', area: 'user', title_ar: 'المهام', status: 'coming_soon', required_permission: 'tasks.view', sort: 30 },
   { key: 'meetings', area: 'user', title_ar: 'الاجتماعات', status: 'coming_soon', required_permission: 'meetings.view', sort: 40 },
   { key: 'my_reports', area: 'user', title_ar: 'تقاريري', status: 'coming_soon', required_permission: 'reports.view_own', sort: 50 },
@@ -20,7 +20,7 @@ export const RAW_MODULES: ModuleContract[] = [
   { key: 'staff', area: 'admin', title_ar: 'الموظفون', status: 'coming_soon', required_permission: 'staff.view', sort: 150 },
   { key: 'roles', area: 'admin', title_ar: 'الأدوار والصلاحيات', status: 'coming_soon', required_permission: 'roles.manage', sort: 160 },
   { key: 'signature', area: 'admin', title_ar: 'التوقيع', status: 'coming_soon', required_permission: 'signature.manage', sort: 170 },
-  { key: 'contacts_admin', area: 'admin', title_ar: 'إدارة جهات الاتصال', status: 'coming_soon', required_permission: 'contacts.manage', sort: 180 },
+  { key: 'contacts_admin', area: 'admin', title_ar: 'إدارة جهات الاتصال', status: 'live', required_permission: 'contacts.manage', sort: 180 },
   { key: 'channels', area: 'admin', title_ar: 'قنوات التواصل', status: 'coming_soon', required_permission: 'channels.manage', sort: 190 },
   { key: 'reports', area: 'admin', title_ar: 'التقارير', status: 'coming_soon', required_permission: 'reports.view_all', sort: 200 },
   { key: 'audit', area: 'admin', title_ar: 'سجل التدقيق', status: 'coming_soon', required_permission: 'audit.view', sort: 210 },

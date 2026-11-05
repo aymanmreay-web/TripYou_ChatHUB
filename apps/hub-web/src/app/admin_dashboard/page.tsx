@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useState } from 'react';
 import {
   MessageSquare, Zap, Radio, CheckCircle, TrendingUp,
   Cpu, BatteryCharging, ShieldAlert, AlertTriangle, ArrowUpRight,
-  Phone, Users, RefreshCw, Loader2, ShieldCheck, Server
+  Phone, Users, RefreshCw, Loader2, ShieldCheck, Server, Building2, User, FileSpreadsheet, Smartphone, Layers
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AppShell } from '../../components/layout/AppShell';
@@ -35,6 +35,19 @@ export default function AdminDashboardPage() {
   const [instances, setInstances] = useState<EvolutionInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [contactStats, setContactStats] = useState<any>(null);
+
+  const fetchContactStats = async () => {
+    try {
+      const res = await fetch('/api/contacts/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setContactStats(data);
+      }
+    } catch (e) {
+      console.error('Failed to load contact stats:', e);
+    }
+  };
 
   const fetchInstances = async () => {
     setRefreshing(true);
@@ -277,6 +290,68 @@ export default function AdminDashboardPage() {
 
               <div className="pt-2 text-xs text-[var(--text-muted)] leading-relaxed">
                 يتم إدارة وتوزيع أحمال الرسائل تلقائياً عبر محرك Evolution API مع عزل تام لكل جلسة لمنع أي تأثير متبادل.
+              </div>
+            </div>
+
+            {/* ودجت دليل جهات الاتصال ثلاثي الأبعاد للمدير */}
+            <div className="mt-4 p-6 rounded-3xl bg-[var(--card-bg)] border border-purple-500/30 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-purple-400" />
+                  <h2 className="text-base font-bold text-[var(--text-main)]">دليل جهات الاتصال (3D Contacts)</h2>
+                </div>
+                <a
+                  href="/module/contacts"
+                  className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 font-semibold"
+                >
+                  <span>فتح الدليل</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              {/* توزيع الكيانات */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2.5 rounded-2xl bg-blue-950/40 border border-blue-500/30">
+                  <User className="w-4 h-4 text-blue-400 mx-auto mb-1" />
+                  <span className="text-xs font-bold text-white block">{contactStats?.by_entity_type?.individual || 0}</span>
+                  <span className="text-[10px] text-blue-300">أفراد (B2C)</span>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-purple-950/40 border border-purple-500/30">
+                  <Building2 className="w-4 h-4 text-purple-400 mx-auto mb-1" />
+                  <span className="text-xs font-bold text-white block">{contactStats?.by_entity_type?.organization || 0}</span>
+                  <span className="text-[10px] text-purple-300">منشآت</span>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-amber-950/40 border border-amber-500/30">
+                  <Users className="w-4 h-4 text-amber-400 mx-auto mb-1" />
+                  <span className="text-xs font-bold text-white block">{contactStats?.by_entity_type?.group || 0}</span>
+                  <span className="text-[10px] text-amber-300">مجموعات</span>
+                </div>
+              </div>
+
+              {/* تفصيل مصادر الإضافة وتتبع الأرقام */}
+              <div className="p-3.5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] space-y-2 text-xs">
+                <span className="text-[11px] font-semibold text-[var(--text-muted)] block mb-1">تتبع مصادر جهات الاتصال:</span>
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1 text-[var(--text-secondary)]">
+                    <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                    خطوط واتساب (Evolution):
+                  </span>
+                  <span className="font-mono font-bold text-emerald-400">{contactStats?.by_source?.evolution || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1 text-[var(--text-secondary)]">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400" />
+                    استيراد ملفات إكسل:
+                  </span>
+                  <span className="font-mono font-bold text-teal-400">{contactStats?.by_source?.excel_import || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1 text-[var(--text-secondary)]">
+                    <Cpu className="w-3.5 h-3.5 text-purple-400" />
+                    النظام الداخلي والحجوزات:
+                  </span>
+                  <span className="font-mono font-bold text-purple-400">{contactStats?.by_source?.system || 0}</span>
+                </div>
               </div>
             </div>
           </div>

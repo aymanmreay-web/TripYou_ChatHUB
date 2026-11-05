@@ -64,6 +64,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
     if (m.key === 'inbox') return '/inbox';
     if (m.key === 'profile') return '/profile';
     if (m.key === 'admin_dashboard') return '/admin_dashboard';
+    if (m.key === 'contacts_admin') return '/module/contacts';
     return `/module/${m.key}`;
   };
 

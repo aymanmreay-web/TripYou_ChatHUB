@@ -974,6 +974,35 @@ export function NativeChatInbox() {
     }));
   };
 
+  // ─── حفظ سريع كجهة اتصال ثلاثية الأبعاد مع وسم المصدر ───
+  const handleQuickSaveContact = async () => {
+    if (!activeConversation) return;
+    try {
+      const lineName = lockedLinesMap[activeConversation.chat_jid] || selectedInstanceName;
+      const res = await fetch('/api/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name: activeConversation.title,
+          primary_phone: activeConversation.phone_or_jid,
+          entity_type: activeConversation.is_group ? 'group' : 'individual',
+          commercial_role: 'b2c',
+          source: 'evolution',
+          source_detail: 'evolution:' + lineName,
+        }),
+      });
+
+      if (res.ok) {
+        alert('تم حفظ ' + activeConversation.title + ' بنجاح في دليل جهات الاتصال وربط مصدرها بخط (' + lineName + ')!');
+      } else {
+        const err = await res.json();
+        alert('فشل الحفظ: ' + err.error);
+      }
+    } catch (e: any) {
+      alert('خطأ: ' + e.message);
+    }
+  };
+
   // ─── إدارة المفضلة المركزية (6 تبويبات) ───
   const handleToggleFavorite = (
     item: { id: string; title: string; subtitle?: string; meta?: any },
@@ -1789,6 +1818,16 @@ export function NativeChatInbox() {
                       <span>إعادة الفتح</span>
                     </button>
                   )}
+
+                  {/* 💾 زر حفظ سريع كجهة اتصال مع وسم المصدر */}
+                  <button
+                    onClick={handleQuickSaveContact}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-medium transition-all"
+                    title="حفظ الرقم الحالي في دليل جهات الاتصال مع وسم المصدر"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">حفظ جهة اتصال</span>
+                  </button>
 
                   {/* ⭐ زر المفضلة المركزية بحساب الموظف */}
                   <button
