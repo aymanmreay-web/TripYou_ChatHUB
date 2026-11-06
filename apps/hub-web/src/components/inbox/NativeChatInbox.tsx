@@ -213,38 +213,6 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
   const formatTime = (s: number) =>
     `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-  // ─── التقليب السريع بين صور المحادثة الحالية في Lightbox ───
-  // التقليب السريع بين صور المحادثة الحالية في Lightbox
-  const handleNavigateLightbox = (direction: number) => {
-    if (!lightboxMedia) return;
-    const mediaMessages = messages.filter((m) => m.media_type === 'image' && m.media_url);
-    if (mediaMessages.length === 0) return;
-
-    let currentIdx = -1;
-    for (let i = 0; i < mediaMessages.length; i++) {
-      const u = mediaMessages[i].media_url || '';
-      if (lightboxMedia.src.includes(encodeURIComponent(u)) || lightboxMedia.src === u) {
-        currentIdx = i;
-        break;
-      }
-    }
-
-    let nextIdx = (currentIdx === -1 ? 0 : currentIdx) + direction;
-    if (nextIdx < 0) nextIdx = mediaMessages.length - 1;
-    if (nextIdx >= mediaMessages.length) nextIdx = 0;
-
-    const targetMsg = mediaMessages[nextIdx];
-    if (targetMsg && targetMsg.media_url) {
-      const lineName = targetMsg.line_id || selectedInstanceName;
-      const targetUrl = '/api/evolution/instances/' + lineName + '/media/proxy?url=' + encodeURIComponent(targetMsg.media_url);
-      setLightboxMedia({
-        type: 'image',
-        src: targetUrl,
-        caption: targetMsg.body || undefined,
-      });
-    }
-  };
-
   return (
     <div
       className={`flex items-center gap-2.5 p-2.5 rounded-2xl min-w-[230px] max-w-[320px] border border-white/5 transition-all ${
