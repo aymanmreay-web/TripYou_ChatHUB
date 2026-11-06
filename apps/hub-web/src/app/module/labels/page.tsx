@@ -24,7 +24,10 @@ import {
   ExternalLink 
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
-import { supabase } from '../../../lib/supabase';
+import {
+  fetchTags, createTag, updateTag, deleteTag,
+  fetchStatuses, saveStatus, deleteStatus, reorderStatuses,
+} from '../../../lib/hubDb';
 import { ModernColorPicker } from '../../../components/common/ModernColorPicker';
 
 interface TagItem {
@@ -45,72 +48,12 @@ interface StatusDef {
   is_custom?: boolean;
 }
 
-const INITIAL_STATUS_DEFINITIONS: StatusDef[] = [
-  {
-    key: 'open',
-    title_ar: 'مفتوحة (جديدة)',
-    title_en: 'OPEN',
-    description_ar: 'المحادثات الواردة حديثاً التي بانتظار الإسناد أو استجابة الموظف الأولية.',
-    hex_color: '#3b82f6',
-    sla_max_minutes: 5,
-    ordinal: 1,
-    is_custom: false,
-  },
-  {
-    key: 'in_progress',
-    title_ar: 'قيد المعالجة',
-    title_en: 'IN_PROGRESS',
-    description_ar: 'محادثة مسندة لموظف ويجري التواصل والمتابعة النشطة مع العميل.',
-    hex_color: '#f59e0b',
-    sla_max_minutes: 10,
-    ordinal: 2,
-    is_custom: false,
-  },
-  {
-    key: 'snoozed',
-    title_ar: 'مؤجلة (انتظار رد)',
-    title_en: 'SNOOZED',
-    description_ar: 'محادثة بانتظار رد خارجي من العميل أو إفادة من جهة أخرى في موعد محدد.',
-    hex_color: '#8b5cf6',
-    sla_max_minutes: 1440,
-    ordinal: 3,
-    is_custom: false,
-  },
-  {
-    key: 'escalated',
-    title_ar: 'مصعدة للإشراف',
-    title_en: 'ESCALATED',
-    description_ar: 'حالة حرجة أو شكوى تجاوزت مهلة SLA تستدعي تدخل المشرف المباشر فوراً.',
-    hex_color: '#f43f5e',
-    sla_max_minutes: 2,
-    ordinal: 4,
-    is_custom: false,
-  },
-  {
-    key: 'resolved',
-    title_ar: 'تم الحل والإغلاق',
-    title_en: 'RESOLVED',
-    description_ar: 'تم تقديم الخدمة بنجاح وإنهاء متطلبات العميل وإقفال المحادثة.',
-    hex_color: '#10b981',
-    sla_max_minutes: 0,
-    ordinal: 5,
-    is_custom: false,
-  },
-];
 
-const INITIAL_TAGS: TagItem[] = [
-  { id: 't-1', name: 'عميل VIP', hex_color: '#10b981', count: 18 },
-  { id: 't-2', name: 'استفسار تسعير', hex_color: '#3b82f6', count: 42 },
-  { id: 't-3', name: 'حجز طيران', hex_color: '#8b5cf6', count: 31 },
-  { id: 't-4', name: 'حجز فنادق', hex_color: '#06b6d4', count: 25 },
-  { id: 't-5', name: 'شكوى ملحة', hex_color: '#f43f5e', count: 4 },
-  { id: 't-6', name: 'عرض مخصص', hex_color: '#f59e0b', count: 12 },
-];
 
 export default function LabelsAndTagsPage() {
   const [activeTab, setActiveTab] = useState<'tags' | 'statuses' | 'evolution_labels'>('tags');
-  const [tags, setTags] = useState<TagItem[]>(INITIAL_TAGS);
-  const [statuses, setStatuses] = useState<StatusDef[]>(INITIAL_STATUS_DEFINITIONS);
+  const [tags, setTags] = useState<TagItem[]>([]);
+  const [statuses, setStatuses] = useState<StatusDef[]>([]);
 
   // New & Edit Tag
   const [newTagName, setNewTagName] = useState('');
@@ -126,171 +69,126 @@ export default function LabelsAndTagsPage() {
   const [loadingEvoLabels, setLoadingEvoLabels] = useState(false);
   const [evoLabels, setEvoLabels] = useState<any[]>([]);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
-
-  // Load from Supabase or Cache
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const { data: dbTags } = await supabase.from('hub_tags').select('*');
-        if (dbTags && dbTags.length > 0) {
-          setTags(dbTags.map((t: any) => ({
-            id: t.id,
-            name: t.name,
-            hex_color: t.hex_color || '#8b5cf6',
-            count: 0
-          })));
-        } else {
-          const cached = localStorage.getItem('hub_tags_v2');
-          if (cached) setTags(JSON.parse(cached));
-        }
-
-        const { data: dbStatuses } = await supabase.from('status_definitions').select('*').order('ordinal');
-        if (dbStatuses && dbStatuses.length > 0) {
-          setStatuses(dbStatuses.map((s: any) => ({
-            key: s.key,
-            title_ar: s.title_ar,
-            title_en: s.title_en || s.key.toUpperCase(),
-            description_ar: s.description_ar,
-            hex_color: s.color_key?.startsWith('#') ? s.color_key : '#3b82f6',
-            sla_max_minutes: s.sla_max_minutes,
-            ordinal: s.ordinal,
-            is_custom: s.is_custom ?? true
-          })));
-        } else {
-          const cachedSt = localStorage.getItem('hub_statuses_v2');
-          if (cachedSt) setStatuses(JSON.parse(cachedSt));
-        }
-      } catch (e) {
-        console.warn('Load DB skipped, using local data', e);
-      }
-    }
-    loadData();
-    fetchEvolutionLabels();
-  }, []);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const showNotification = (msg: string) => {
+    setSaveError(null);
     setSaveSuccess(msg);
     setTimeout(() => setSaveSuccess(null), 3000);
   };
 
+  const showError = (msg: string) => {
+    setSaveSuccess(null);
+    setSaveError(msg);
+    setTimeout(() => setSaveError(null), 8000);
+  };
+
+  const reloadTags = async () => setTags(await fetchTags());
+  const reloadStatuses = async () => setStatuses(await fetchStatuses());
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await Promise.all([reloadTags(), reloadStatuses()]);
+      } catch (e: any) {
+        showError(`تعذّر تحميل البيانات: ${e.message}`);
+      }
+    })();
+    fetchEvolutionLabels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Add Tag
   const handleAddTag = async () => {
     if (!newTagName.trim()) return;
-    const newTag: TagItem = {
-      id: `t-${Date.now()}`,
-      name: newTagName.trim(),
-      hex_color: newTagHex,
-      count: 0,
-    };
-    const updated = [newTag, ...tags];
-    setTags(updated);
-    setNewTagName('');
-    localStorage.setItem('hub_tags_v2', JSON.stringify(updated));
-
     try {
-      await supabase.from('hub_tags').insert({
-        name: newTag.name,
-        hex_color: newTag.hex_color,
-      });
-    } catch (e) {}
-    showNotification('تمت إضافة الوسم بنجاح');
+      await createTag(newTagName, newTagHex, tags.length + 1);
+      setNewTagName('');
+      await reloadTags();
+      showNotification('تمت إضافة الوسم');
+    } catch (e: any) {
+      showError(`تعذّر إضافة الوسم: ${e.message}`);
+    }
   };
 
   // Save Edit Tag
   const handleSaveEditTag = async () => {
     if (!editingTag || !editingTag.name.trim()) return;
-    const updated = tags.map(t => t.id === editingTag.id ? editingTag : t);
-    setTags(updated);
-    localStorage.setItem('hub_tags_v2', JSON.stringify(updated));
-
     try {
-      await supabase.from('hub_tags').update({
-        name: editingTag.name,
-        hex_color: editingTag.hex_color,
-      }).eq('id', editingTag.id);
-    } catch (e) {}
-    setEditingTag(null);
-    showNotification('تم تعديل الوسم بنجاح');
+      await updateTag(editingTag.id, editingTag.name, editingTag.hex_color);
+      setEditingTag(null);
+      await reloadTags();
+      showNotification('تم تعديل الوسم');
+    } catch (e: any) {
+      showError(`تعذّر تعديل الوسم: ${e.message}`);
+    }
   };
 
   // Delete Tag
   const handleDeleteTag = async (id: string) => {
-    const updated = tags.filter((t) => t.id !== id);
-    setTags(updated);
-    localStorage.setItem('hub_tags_v2', JSON.stringify(updated));
     try {
-      await supabase.from('hub_tags').delete().eq('id', id);
-    } catch (e) {}
-    showNotification('تم حذف الوسم');
+      await deleteTag(id);
+      await reloadTags();
+      showNotification('تم حذف الوسم');
+    } catch (e: any) {
+      showError(`تعذّر حذف الوسم: ${e.message}`);
+    }
   };
 
   // Save or Create Status
   const handleSaveStatus = async () => {
     if (!editingStatus || !editingStatus.title_ar.trim()) return;
-    let updated: StatusDef[];
-
-    if (isCreatingStatus) {
-      const generatedKey = editingStatus.title_en?.trim()
-        ? editingStatus.title_en.toLowerCase().replace(/[^a-z0-9]/g, '_')
-        : `status_${Date.now()}`;
-      
-      const newStatusObj: StatusDef = {
-        ...editingStatus,
-        key: generatedKey,
-        title_en: editingStatus.title_en || generatedKey.toUpperCase(),
-        ordinal: statuses.length + 1,
-        is_custom: true
-      };
-      updated = [...statuses, newStatusObj];
-    } else {
-      updated = statuses.map(s => s.key === editingStatus.key ? editingStatus : s);
-    }
-
-    setStatuses(updated);
-    localStorage.setItem('hub_statuses_v2', JSON.stringify(updated));
-
     try {
-      await supabase.from('status_definitions').upsert({
-        key: editingStatus.key,
-        title_ar: editingStatus.title_ar,
-        title_en: editingStatus.title_en,
-        description_ar: editingStatus.description_ar,
-        color_key: editingStatus.hex_color,
-        sla_max_minutes: editingStatus.sla_max_minutes,
-        ordinal: editingStatus.ordinal,
-        updated_at: new Date().toISOString()
-      });
-    } catch (e) {}
-
-    setEditingStatus(null);
-    setIsCreatingStatus(false);
-    showNotification(`تم حفظ حالة "${editingStatus.title_ar}" بنجاح`);
+      if (isCreatingStatus) {
+        const baseKey = editingStatus.title_en?.trim()
+          ? editingStatus.title_en.toLowerCase().replace(/[^a-z0-9]/g, '_')
+          : `status_${Date.now().toString(36)}`;
+        const key = statuses.some((s) => s.key === baseKey)
+          ? `${baseKey}_${Date.now().toString(36)}`
+          : baseKey;
+        await saveStatus(
+          { ...editingStatus, key, title_en: key.toUpperCase(), ordinal: statuses.length + 1, is_custom: true },
+          true
+        );
+      } else {
+        await saveStatus({ ...editingStatus, is_custom: !!editingStatus.is_custom }, false);
+      }
+      const savedTitle = editingStatus.title_ar;
+      setEditingStatus(null);
+      setIsCreatingStatus(false);
+      await reloadStatuses();
+      showNotification(`تم حفظ حالة "${savedTitle}"`);
+    } catch (e: any) {
+      showError(`تعذّر حفظ الحالة: ${e.message}`);
+    }
   };
 
   // Delete Custom Status
   const handleDeleteCustomStatus = async (key: string) => {
-    const updated = statuses.filter(s => s.key !== key);
-    setStatuses(updated);
-    localStorage.setItem('hub_statuses_v2', JSON.stringify(updated));
     try {
-      await supabase.from('status_definitions').delete().eq('key', key);
-    } catch (e) {}
-    showNotification('تم حذف الحالة');
+      await deleteStatus(key);
+      await reloadStatuses();
+      showNotification('تم حذف الحالة');
+    } catch (e: any) {
+      showError(`تعذّر حذف الحالة: ${e.message}`);
+    }
   };
 
   // Reorder Statuses
-  const handleMoveStatus = (index: number, direction: 'up' | 'down') => {
+  const handleMoveStatus = async (index: number, direction: 'up' | 'down') => {
     const newIdx = direction === 'up' ? index - 1 : index + 1;
     if (newIdx < 0 || newIdx >= statuses.length) return;
 
     const copy = [...statuses];
-    const temp = copy[index];
-    copy[index] = copy[newIdx];
-    copy[newIdx] = temp;
-
+    [copy[index], copy[newIdx]] = [copy[newIdx], copy[index]];
     const reordered = copy.map((s, idx) => ({ ...s, ordinal: idx + 1 }));
     setStatuses(reordered);
-    localStorage.setItem('hub_statuses_v2', JSON.stringify(reordered));
+    try {
+      await reorderStatuses(reordered.map((s) => ({ ...s, is_custom: !!s.is_custom })));
+    } catch (e: any) {
+      showError(`تعذّر حفظ الترتيب: ${e.message}`);
+      await reloadStatuses();
+    }
   };
 
   // Fetch WhatsApp Labels
@@ -326,15 +224,18 @@ export default function LabelsAndTagsPage() {
               </div>
               الوسوم والحالات
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-              تصنيف المحادثات، دورة الحالات التفاعلية، وتحديد مهل الاستجابة (SLA)
-            </p>
           </div>
 
           {saveSuccess && (
             <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold animate-in fade-in">
               <CheckCircle2 className="w-4 h-4" />
               {saveSuccess}
+            </div>
+          )}
+          {saveError && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold max-w-md">
+              <X className="w-4 h-4 shrink-0" />
+              {saveError}
             </div>
           )}
         </div>

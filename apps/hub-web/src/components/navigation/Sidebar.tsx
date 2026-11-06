@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ModuleContract } from '../../types';
+import { fetchCompany } from '../../lib/hubDb';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -60,23 +61,33 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
     platform_title: string;
     logo_url: string | null;
   }>({
-    company_name: 'TripYou للسياحة والسفر',
+    company_name: '',
     platform_title: 'TripYou_ChatHUB',
     logo_url: null,
   });
 
   // Load dynamic branding
   useEffect(() => {
-    function loadBranding() {
+    function applyBranding(parsed: any) {
+      setCompanyBranding({
+        company_name: parsed.company_name || '',
+        platform_title: parsed.platform_title || 'TripYou_ChatHUB',
+        logo_url: parsed.logo_url || null,
+      });
+    }
+    async function loadBranding() {
+      // الكاش المحلي أولاً لعرض فوري، ثم القاعدة هي المرجع
       try {
         const cached = localStorage.getItem('hub_company_branding');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          setCompanyBranding({
-            company_name: parsed.company_name || 'TripYou للسياحة والسفر',
-            platform_title: parsed.platform_title || 'TripYou_ChatHUB',
-            logo_url: parsed.logo_url || null,
-          });
+        if (cached) applyBranding(JSON.parse(cached));
+      } catch (e) {}
+      try {
+        const fresh = await fetchCompany();
+        if (fresh) {
+          applyBranding(fresh);
+          try {
+            localStorage.setItem('hub_company_branding', JSON.stringify(fresh));
+          } catch (e) {}
         }
       } catch (e) {}
     }

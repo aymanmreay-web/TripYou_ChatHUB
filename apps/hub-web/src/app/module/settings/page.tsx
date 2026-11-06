@@ -15,7 +15,7 @@ import {
   RefreshCw 
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
-import { supabase } from '../../../lib/supabase';
+import { fetchCompany, saveCompany, uploadLogo } from '../../../lib/hubDb';
 
 interface CompanySettings {
   company_name: string;
@@ -26,81 +26,63 @@ interface CompanySettings {
 }
 
 const DEFAULT_SETTINGS: CompanySettings = {
-  company_name: 'TripYou للسياحة والسفر',
+  company_name: '',
   platform_title: 'TripYou_ChatHUB',
   logo_url: null,
-  support_email: 'support@resvbar.com',
-  support_phone: '+963 962 128 616',
+  support_email: '',
+  support_phone: '',
 };
 
 export default function CompanySettingsPage() {
   const [settings, setSettings] = useState<CompanySettings>(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   useEffect(() => {
-    async function loadSettings() {
+    (async () => {
       try {
-        const { data } = await supabase.from('company_settings').select('*').maybeSingle();
+        const data = await fetchCompany();
         if (data) {
-          setSettings({
-            company_name: data.company_name || DEFAULT_SETTINGS.company_name,
-            platform_title: data.platform_title || DEFAULT_SETTINGS.platform_title,
-            logo_url: data.logo_url || null,
-            support_email: data.support_email || DEFAULT_SETTINGS.support_email,
-            support_phone: data.support_phone || DEFAULT_SETTINGS.support_phone,
-          });
-          setLogoPreview(data.logo_url || null);
-        } else {
-          const cached = localStorage.getItem('hub_company_branding');
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            setSettings(parsed);
-            setLogoPreview(parsed.logo_url);
-          }
+          setSettings(data);
+          setLogoPreview(data.logo_url);
         }
-      } catch (e) {
-        console.warn('Load company settings fallback to cache', e);
+      } catch (e: any) {
+        setSaveError(`تعذّر تحميل البيانات: ${e.message}`);
       }
-    }
-    loadSettings();
+    })();
   }, []);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setLogoPreview(base64String);
-        setSettings((prev) => ({ ...prev, logo_url: base64String }));
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
   };
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
-      localStorage.setItem('hub_company_branding', JSON.stringify(settings));
-      
-      await supabase.from('company_settings').upsert({
-        company_name: settings.company_name,
-        platform_title: settings.platform_title,
-        logo_url: settings.logo_url,
-        support_email: settings.support_email,
-        support_phone: settings.support_phone,
-        updated_at: new Date().toISOString()
-      });
-
-      // Dispatch event to update sidebar branding across components
+      let logoUrl = settings.logo_url;
+      if (logoFile) logoUrl = await uploadLogo(logoFile);
+      const next: CompanySettings = { ...settings, logo_url: logoUrl };
+      await saveCompany(next);
+      setSettings(next);
+      setLogoFile(null);
+      setLogoPreview(logoUrl);
+      try {
+        localStorage.setItem('hub_company_branding', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
       window.dispatchEvent(new Event('branding-updated'));
-
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (e) {
-      console.warn('DB company settings save notice', e);
+    } catch (e: any) {
+      setSaveError(`تعذّر الحفظ: ${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -119,9 +101,6 @@ export default function CompanySettingsPage() {
               </div>
               هوية ومعلومات الشركة
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-              تخصيص اسم الشركة وشعارها الرسمي ليظهر في القائمة الجانبية وكافة واجهات النظام
-            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -129,6 +108,11 @@ export default function CompanySettingsPage() {
               <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/30 animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4" />
                 تم حفظ هوية الشركة بنجاح!
+              </span>
+            )}
+            {saveError && (
+              <span className="flex items-center gap-1.5 text-xs text-rose-300 font-bold bg-rose-500/10 px-3 py-1.5 rounded-xl border border-rose-500/30 max-w-md">
+                {saveError}
               </span>
             )}
             <button
@@ -175,15 +159,13 @@ export default function CompanySettingsPage() {
             </div>
 
             <div className="space-y-1 text-center sm:text-right">
-              <h3 className="font-bold text-sm text-white">شعار الشركة (Company Logo)</h3>
-              <p className="text-xs text-slate-400 max-w-md leading-relaxed">
-                ارفع صورة شعار الشركة (PNG أو SVG بخلفية شفافة). سيحل الشعار فوراً بدلاً من الأيقونة الافتراضية في شريط التنقل والقائمة الجانبية.
-              </p>
+              <h3 className="font-bold text-sm text-white">شعار الشركة</h3>
               {logoPreview && (
                 <button
                   type="button"
                   onClick={() => {
                     setLogoPreview(null);
+                    setLogoFile(null);
                     setSettings((prev) => ({ ...prev, logo_url: null }));
                   }}
                   className="text-[11px] text-rose-400 hover:underline pt-1 block"
@@ -197,7 +179,7 @@ export default function CompanySettingsPage() {
           {/* Form Fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">اسم الشركة (المالكة للنظام):</label>
+              <label className="text-xs font-semibold text-slate-300">اسم الشركة:</label>
               <input
                 type="text"
                 value={settings.company_name}
@@ -205,22 +187,20 @@ export default function CompanySettingsPage() {
                 placeholder="مثال: شركة المسافر العربي للسياحة"
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-purple-500 focus:outline-none"
               />
-              <span className="text-[10px] text-slate-400">يظهر تحت اسم المنصة في القائمة الجانبية</span>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">اسم المنصة الأساسي:</label>
+              <label className="text-xs font-semibold text-slate-300">اسم المنصة:</label>
               <input
                 type="text"
                 value={settings.platform_title}
                 onChange={(e) => setSettings({ ...settings, platform_title: e.target.value })}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:border-purple-500 focus:outline-none"
               />
-              <span className="text-[10px] text-slate-400">العنوان الرئيسي لأعلى شريط التنقل</span>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">بريد الدعم الفني والإشعارات:</label>
+              <label className="text-xs font-semibold text-slate-300">بريد الدعم:</label>
               <input
                 type="email"
                 value={settings.support_email}
@@ -230,7 +210,7 @@ export default function CompanySettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">رقم هاتف الدعم والإدارة:</label>
+              <label className="text-xs font-semibold text-slate-300">هاتف الدعم:</label>
               <input
                 type="text"
                 value={settings.support_phone}

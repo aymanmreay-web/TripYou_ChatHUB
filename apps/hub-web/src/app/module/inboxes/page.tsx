@@ -21,6 +21,7 @@ import {
 import { AppShell } from '../../../components/layout/AppShell';
 import { supabase } from '../../../lib/supabase';
 import { ModernColorPicker } from '../../../components/common/ModernColorPicker';
+import { fetchInboxes, fetchLines, saveInbox, deleteInbox, LineOption } from '../../../lib/hubDb';
 
 interface InboxItem {
   id: string;
@@ -32,122 +33,101 @@ interface InboxItem {
   staff_count: number;
 }
 
-const AVAILABLE_LINES = [
-  'الخط الرئيسي (Master)',
-  'خط المبيعات 1 (Sells_1)',
-  'خط المبيعات 2 (Sells_2)',
-];
 
 const FILTER_LABELS = { all: 'الكل (فردية ومجموعات)', dm: 'محادثات فردية فقط', groups: 'مجموعات فقط' };
 
-const INITIAL_INBOXES: InboxItem[] = [
-  {
-    id: 'inbox-01',
-    name_ar: 'صندوق مجموعات الشركات',
-    description: 'يجمع كل مجموعات الواتساب الخاصة بشركات وموردي YouTrip عبر جميع الخطوط المتصلة',
-    assigned_lines: ['الخط الرئيسي (Master)', 'خط المبيعات 2 (Sells_2)'],
-    filter_type: 'groups',
-    staff_count: 4,
-    color_hex: '#10b981',
-  },
-  {
-    id: 'inbox-02',
-    name_ar: 'صندوق محادثات العملاء',
-    description: 'محادثات العملاء الفردية المباشرة — تسند تلقائياً لصاحب الخط المعتمد',
-    assigned_lines: ['الخط الرئيسي (Master)', 'خط المبيعات 1 (Sells_1)', 'خط المبيعات 2 (Sells_2)'],
-    filter_type: 'dm',
-    staff_count: 3,
-    color_hex: '#3b82f6',
-  },
-  {
-    id: 'inbox-03',
-    name_ar: 'صندوق إدارة العمليات',
-    description: 'كافة المحادثات والمجموعات التشغيلية على الخط الرئيسي الخاص بالإدارة العليا',
-    assigned_lines: ['الخط الرئيسي (Master)'],
-    filter_type: 'all',
-    staff_count: 2,
-    color_hex: '#8b5cf6',
-  },
-];
 
 export default function InboxesPage() {
-  const [inboxes, setInboxes] = useState<InboxItem[]>(INITIAL_INBOXES);
+  const [inboxes, setInboxes] = useState<InboxItem[]>([]);
+  const [lines, setLines] = useState<LineOption[]>([]);
   const [editingInbox, setEditingInbox] = useState<InboxItem | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saveNotification, setSaveNotification] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Load from Supabase or Cache
-  useEffect(() => {
-    async function loadInboxes() {
-      try {
-        const { data, error } = await supabase.from('inboxes').select('*');
-        if (data && data.length > 0) {
-          setInboxes(data.map((item: any) => ({
-            id: item.id,
-            name_ar: item.name_ar,
-            description: item.description || '',
-            assigned_lines: Array.isArray(item.assigned_lines) ? item.assigned_lines : [],
-            filter_type: item.filter_type || 'all',
-            color_hex: item.color_hex || '#8b5cf6',
-            staff_count: 3
-          })));
-        } else {
-          const cached = localStorage.getItem('hub_inboxes_v2');
-          if (cached) setInboxes(JSON.parse(cached));
-        }
-      } catch (e) {
-        console.warn('Load inboxes DB notice', e);
-      }
-    }
-    loadInboxes();
-  }, []);
+  const AVAILABLE_LINES = lines.map((l) => l.name);
 
   const showNotification = (msg: string) => {
+    setSaveError(null);
     setSaveNotification(msg);
     setTimeout(() => setSaveNotification(null), 3500);
   };
 
+  const showError = (msg: string) => {
+    setSaveNotification(null);
+    setSaveError(msg);
+    setTimeout(() => setSaveError(null), 8000);
+  };
+
+  const reload = async () => {
+    try {
+      const [rows, ls] = await Promise.all([fetchInboxes(), fetchLines()]);
+      setLines(ls);
+      setInboxes(
+        rows.map((r) => ({
+          id: r.id,
+          name_ar: r.name_ar,
+          description: r.description,
+          assigned_lines: r.line_ids
+            .map((id) => ls.find((l) => l.id === id)?.name)
+            .filter(Boolean) as string[],
+          filter_type: r.filter_type,
+          color_hex: r.color_hex,
+          staff_count: r.staff_count,
+        }))
+      );
+    } catch (e: any) {
+      showError(e.message);
+    }
+  };
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Save Modal (Create or Edit)
   const handleSaveModal = async () => {
-    if (!editingInbox || !editingInbox.name_ar.trim()) return;
-
-    let updatedList: InboxItem[];
-    if (isCreating) {
-      updatedList = [editingInbox, ...inboxes];
-    } else {
-      updatedList = inboxes.map(i => i.id === editingInbox.id ? editingInbox : i);
-    }
-
-    setInboxes(updatedList);
-    localStorage.setItem('hub_inboxes_v2', JSON.stringify(updatedList));
-
+    if (!editingInbox || !editingInbox.name_ar.trim() || saving) return;
+    setSaving(true);
     try {
-      await supabase.from('inboxes').upsert({
-        id: editingInbox.id.startsWith('inbox-') ? undefined : editingInbox.id,
-        name_ar: editingInbox.name_ar,
-        description: editingInbox.description,
-        assigned_lines: editingInbox.assigned_lines,
-        filter_type: editingInbox.filter_type,
-        color_hex: editingInbox.color_hex,
-        updated_at: new Date().toISOString()
-      });
-    } catch (e) {}
-
-    setEditingInbox(null);
-    setIsCreating(false);
-    showNotification(`تم حفظ صندوق "${editingInbox.name_ar}" بنجاح!`);
+      await saveInbox(
+        {
+          id: editingInbox.id,
+          name_ar: editingInbox.name_ar,
+          description: editingInbox.description,
+          color_hex: editingInbox.color_hex,
+          filter_type: editingInbox.filter_type,
+          line_ids: editingInbox.assigned_lines
+            .map((n) => lines.find((l) => l.name === n)?.id)
+            .filter(Boolean) as string[],
+          staff_count: 0,
+        },
+        isCreating,
+        inboxes.length + 1
+      );
+      const savedName = editingInbox.name_ar;
+      setEditingInbox(null);
+      setIsCreating(false);
+      await reload();
+      showNotification(`تم حفظ صندوق "${savedName}" بنجاح!`);
+    } catch (e: any) {
+      showError(`تعذّر حفظ الصندوق: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Delete Inbox
   const handleDeleteInbox = async (id: string) => {
-    const updated = inboxes.filter(i => i.id !== id);
-    setInboxes(updated);
-    localStorage.setItem('hub_inboxes_v2', JSON.stringify(updated));
-
     try {
-      await supabase.from('inboxes').delete().eq('id', id);
-    } catch (e) {}
-    showNotification('تم حذف الصندوق');
+      await deleteInbox(id);
+      await reload();
+      showNotification('تم حذف الصندوق');
+    } catch (e: any) {
+      showError(`تعذّر حذف الصندوق: ${e.message}`);
+    }
   };
 
   return (
@@ -169,6 +149,13 @@ export default function InboxesPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {saveError && (
+              <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold max-w-md">
+                <X className="w-4 h-4 shrink-0" />
+                {saveError}
+              </div>
+            )}
+
             {saveNotification && (
               <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4" />
@@ -182,7 +169,7 @@ export default function InboxesPage() {
                   id: `inbox-${Date.now()}`,
                   name_ar: '',
                   description: '',
-                  assigned_lines: ['الخط الرئيسي (Master)'],
+                  assigned_lines: [],
                   filter_type: 'all',
                   color_hex: '#6366f1',
                   staff_count: 1
