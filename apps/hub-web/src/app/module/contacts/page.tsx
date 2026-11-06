@@ -457,10 +457,10 @@ export default function ContactsPage() {
         <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[var(--border-subtle)]">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-main)]">
-              دليل جهات الاتصال ثلاثي الأبعاد (3D Contacts Hub)
+              دليل جهات الاتصال
             </h1>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              إدارة وتصنيف العملاء والمنشآت والمجموعات مع تتبع دقيق لمصدر كل جهة اتصال (Evolution / إكسل / النظام)
+              إدارة وتصنيف بيانات العملاء والشركات والمجموعات
             </p>
           </div>
 

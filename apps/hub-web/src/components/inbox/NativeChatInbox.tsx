@@ -213,6 +213,38 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
   const formatTime = (s: number) =>
     `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
+  // ─── التقليب السريع بين صور المحادثة الحالية في Lightbox ───
+  // التقليب السريع بين صور المحادثة الحالية في Lightbox
+  const handleNavigateLightbox = (direction: number) => {
+    if (!lightboxMedia) return;
+    const mediaMessages = messages.filter((m) => m.media_type === 'image' && m.media_url);
+    if (mediaMessages.length === 0) return;
+
+    let currentIdx = -1;
+    for (let i = 0; i < mediaMessages.length; i++) {
+      const u = mediaMessages[i].media_url || '';
+      if (lightboxMedia.src.includes(encodeURIComponent(u)) || lightboxMedia.src === u) {
+        currentIdx = i;
+        break;
+      }
+    }
+
+    let nextIdx = (currentIdx === -1 ? 0 : currentIdx) + direction;
+    if (nextIdx < 0) nextIdx = mediaMessages.length - 1;
+    if (nextIdx >= mediaMessages.length) nextIdx = 0;
+
+    const targetMsg = mediaMessages[nextIdx];
+    if (targetMsg && targetMsg.media_url) {
+      const lineName = targetMsg.line_id || selectedInstanceName;
+      const targetUrl = '/api/evolution/instances/' + lineName + '/media/proxy?url=' + encodeURIComponent(targetMsg.media_url);
+      setLightboxMedia({
+        type: 'image',
+        src: targetUrl,
+        caption: targetMsg.body || undefined,
+      });
+    }
+  };
+
   return (
     <div
       className={`flex items-center gap-2.5 p-2.5 rounded-2xl min-w-[230px] max-w-[320px] border border-white/5 transition-all ${
@@ -2638,7 +2670,7 @@ export function NativeChatInbox() {
             onClick={(e) => e.stopPropagation()}
           >
             <span className="text-sm font-semibold text-white/90">
-              {lightboxMedia.type === 'video' ? '🎥 عرض مقطع الفيديو' : '📷 عرض الصورة بالدقة الكاملة'}
+              {lightboxMedia.type === 'video' ? 'عرض مقطع الفيديو' : 'معاينة الصورة'}
             </span>
             <div className="flex items-center gap-3">
               <a
@@ -2648,7 +2680,7 @@ export function NativeChatInbox() {
                 title="تنزيل الملف باسمه الأصلي"
               >
                 <Download className="w-4 h-4" />
-                <span>تنزيل (تحميل)</span>
+                <span>حفظ إلى الجهاز المحلي</span>
               </a>
               <button
                 onClick={() => setLightboxMedia(null)}
@@ -2754,7 +2786,8 @@ export function NativeChatInbox() {
               ))}
             </div>
 
-            {/* تبديل الجودة HD vs Standard */}
+            {/* تبديل الجودة HD يظهر فقط إذا كانت المرفقات تحتوي على صور */}
+            {batchAttachments.some((b) => b.mediaType === 'image') && (
             <div className="flex items-center justify-between bg-slate-900/60 p-3 rounded-2xl border border-purple-900/40">
               <span className="text-xs text-slate-300 font-medium">جودة إرسال الصور:</span>
               <div className="flex items-center gap-2">
@@ -2782,6 +2815,7 @@ export function NativeChatInbox() {
                 </button>
               </div>
             </div>
+            )}
 
             {/* الوصف المصاحب */}
             <div className="space-y-1.5">
@@ -2881,7 +2915,7 @@ export function NativeChatInbox() {
          ════════════════════════════════════════════════════════ */}
       {forwardModalMsg && (
         <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-4 text-right">
+          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
                 <Share2 className="w-4 h-4" />

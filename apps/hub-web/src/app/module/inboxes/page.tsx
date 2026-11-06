@@ -1,172 +1,394 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Inbox, Plus, Edit2, Trash2, PhoneCall, Users, ChevronDown, ChevronUp, Layers, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Inbox, 
+  Plus, 
+  Edit2, 
+  Trash2, 
+  PhoneCall, 
+  Users, 
+  ChevronDown, 
+  ChevronUp, 
+  Layers, 
+  CheckCircle2, 
+  Check, 
+  Save, 
+  X, 
+  Filter, 
+  Palette 
+} from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
-
-interface InboxLine {
-  instanceName: string;
-  title: string;
-  phone: string;
-}
+import { supabase } from '../../../lib/supabase';
+import { ModernColorPicker } from '../../../components/common/ModernColorPicker';
 
 interface InboxItem {
   id: string;
   name_ar: string;
   description: string;
-  lines: InboxLine[];
-  filter: 'all' | 'dm' | 'groups';
+  assigned_lines: string[];
+  filter_type: 'all' | 'dm' | 'groups';
+  color_hex: string;
   staff_count: number;
-  color: string;
 }
 
-const FILTER_LABELS = { all: 'الكل', dm: 'محادثات فردية', groups: 'مجموعات فقط' };
+const AVAILABLE_LINES = [
+  'الخط الرئيسي (Master)',
+  'خط المبيعات 1 (Sells_1)',
+  'خط المبيعات 2 (Sells_2)',
+];
 
-const MOCK_INBOXES: InboxItem[] = [
+const FILTER_LABELS = { all: 'الكل (فردية ومجموعات)', dm: 'محادثات فردية فقط', groups: 'مجموعات فقط' };
+
+const INITIAL_INBOXES: InboxItem[] = [
   {
     id: 'inbox-01',
     name_ar: 'صندوق مجموعات الشركات',
     description: 'يجمع كل مجموعات الواتساب الخاصة بشركات وموردي YouTrip عبر جميع الخطوط المتصلة',
-    lines: [
-      { instanceName: 'Master', title: 'الخط الرئيسي', phone: '+966554125782' },
-      { instanceName: 'Sells_2', title: 'خط المبيعات 2', phone: '+966548540410' },
-    ],
-    filter: 'groups',
+    assigned_lines: ['الخط الرئيسي (Master)', 'خط المبيعات 2 (Sells_2)'],
+    filter_type: 'groups',
     staff_count: 4,
-    color: 'emerald',
+    color_hex: '#10b981',
   },
   {
     id: 'inbox-02',
     name_ar: 'صندوق محادثات العملاء',
-    description: 'محادثات العملاء الفردية المباشرة — تسند تلقائياً لصاحب الخط',
-    lines: [
-      { instanceName: 'Master', title: 'الخط الرئيسي', phone: '+966554125782' },
-      { instanceName: 'Sells_1', title: 'خط المبيعات 1', phone: '+966500000000' },
-      { instanceName: 'Sells_2', title: 'خط المبيعات 2', phone: '+966548540410' },
-    ],
-    filter: 'dm',
+    description: 'محادثات العملاء الفردية المباشرة — تسند تلقائياً لصاحب الخط المعتمد',
+    assigned_lines: ['الخط الرئيسي (Master)', 'خط المبيعات 1 (Sells_1)', 'خط المبيعات 2 (Sells_2)'],
+    filter_type: 'dm',
     staff_count: 3,
-    color: 'blue',
+    color_hex: '#3b82f6',
   },
   {
     id: 'inbox-03',
     name_ar: 'صندوق إدارة العمليات',
-    description: 'كافة المحادثات والمجموعات التشغيلية على الخط الرئيسي الخاص بالإدارة',
-    lines: [
-      { instanceName: 'Master', title: 'الخط الرئيسي', phone: '+966554125782' },
-    ],
-    filter: 'all',
+    description: 'كافة المحادثات والمجموعات التشغيلية على الخط الرئيسي الخاص بالإدارة العليا',
+    assigned_lines: ['الخط الرئيسي (Master)'],
+    filter_type: 'all',
     staff_count: 2,
-    color: 'purple',
+    color_hex: '#8b5cf6',
   },
 ];
 
-const COLOR_MAP: Record<string, string> = {
-  emerald: 'from-emerald-600 to-teal-500',
-  blue: 'from-blue-600 to-indigo-500',
-  purple: 'from-purple-600 to-violet-500',
-  amber: 'from-amber-600 to-orange-500',
-};
-
 export default function InboxesPage() {
-  const [inboxes, setInboxes] = useState<InboxItem[]>(MOCK_INBOXES);
-  const [expandedId, setExpandedId] = useState<string | null>('inbox-01');
+  const [inboxes, setInboxes] = useState<InboxItem[]>(INITIAL_INBOXES);
+  const [editingInbox, setEditingInbox] = useState<InboxItem | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [saveNotification, setSaveNotification] = useState<string | null>(null);
+
+  // Load from Supabase or Cache
+  useEffect(() => {
+    async function loadInboxes() {
+      try {
+        const { data, error } = await supabase.from('inboxes').select('*');
+        if (data && data.length > 0) {
+          setInboxes(data.map((item: any) => ({
+            id: item.id,
+            name_ar: item.name_ar,
+            description: item.description || '',
+            assigned_lines: Array.isArray(item.assigned_lines) ? item.assigned_lines : [],
+            filter_type: item.filter_type || 'all',
+            color_hex: item.color_hex || '#8b5cf6',
+            staff_count: 3
+          })));
+        } else {
+          const cached = localStorage.getItem('hub_inboxes_v2');
+          if (cached) setInboxes(JSON.parse(cached));
+        }
+      } catch (e) {
+        console.warn('Load inboxes DB notice', e);
+      }
+    }
+    loadInboxes();
+  }, []);
+
+  const showNotification = (msg: string) => {
+    setSaveNotification(msg);
+    setTimeout(() => setSaveNotification(null), 3500);
+  };
+
+  // Save Modal (Create or Edit)
+  const handleSaveModal = async () => {
+    if (!editingInbox || !editingInbox.name_ar.trim()) return;
+
+    let updatedList: InboxItem[];
+    if (isCreating) {
+      updatedList = [editingInbox, ...inboxes];
+    } else {
+      updatedList = inboxes.map(i => i.id === editingInbox.id ? editingInbox : i);
+    }
+
+    setInboxes(updatedList);
+    localStorage.setItem('hub_inboxes_v2', JSON.stringify(updatedList));
+
+    try {
+      await supabase.from('inboxes').upsert({
+        id: editingInbox.id.startsWith('inbox-') ? undefined : editingInbox.id,
+        name_ar: editingInbox.name_ar,
+        description: editingInbox.description,
+        assigned_lines: editingInbox.assigned_lines,
+        filter_type: editingInbox.filter_type,
+        color_hex: editingInbox.color_hex,
+        updated_at: new Date().toISOString()
+      });
+    } catch (e) {}
+
+    setEditingInbox(null);
+    setIsCreating(false);
+    showNotification(`تم حفظ صندوق "${editingInbox.name_ar}" بنجاح!`);
+  };
+
+  // Delete Inbox
+  const handleDeleteInbox = async (id: string) => {
+    const updated = inboxes.filter(i => i.id !== id);
+    setInboxes(updated);
+    localStorage.setItem('hub_inboxes_v2', JSON.stringify(updated));
+
+    try {
+      await supabase.from('inboxes').delete().eq('id', id);
+    } catch (e) {}
+    showNotification('تم حذف الصندوق');
+  };
 
   return (
     <AppShell>
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+      <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
+
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-subtle)]">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                <Inbox className="w-5 h-5 text-blue-400" />
+            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-main)] flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-lg">
+                <Inbox className="w-5 h-5" />
               </div>
-              إدارة الصناديق (Inboxes)
+              إدارة الصناديق
             </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              تنظيم وتوزيع محادثات ومجموعات الخطوط على فرق العمل والصناديق الموحدة
+            <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
+              تجميع المحادثات وتصنيفها حسب الأقسام والخطوط وسياسات الفلترة
             </p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-medium transition-colors w-fit">
-            <Plus className="w-4 h-4" />
-            إنشاء صندوق جديد
-          </button>
-        </div>
 
-        {/* Info card */}
-        <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs sm:text-sm flex items-start gap-3">
-          <Layers className="w-5 h-5 shrink-0 text-blue-400 mt-0.5" />
-          <div className="leading-relaxed">
-            <strong>آلية الصناديق في YouTrip ChatHUB:</strong> كل صندوق يمكن أن يربط عدة خطوط ومجموعات. يظهر للموظف فقط ما يخص صلاحياته، وعند محاولة الرد في مجموعة لا يتواجد رقمه فيها يطلب منه النظام الانضمام أو التحويل لخط رئيسي.
+          <div className="flex items-center gap-3">
+            {saveNotification && (
+              <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4" />
+                {saveNotification}
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setEditingInbox({
+                  id: `inbox-${Date.now()}`,
+                  name_ar: '',
+                  description: '',
+                  assigned_lines: ['الخط الرئيسي (Master)'],
+                  filter_type: 'all',
+                  color_hex: '#6366f1',
+                  staff_count: 1
+                });
+                setIsCreating(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-purple-950/40 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              إنشاء صندوق جديد
+            </button>
           </div>
         </div>
 
-        {/* Inboxes List */}
-        <div className="space-y-3">
-          {inboxes.map((inbox) => {
-            const isExpanded = expandedId === inbox.id;
-            return (
-              <div key={inbox.id} className="rounded-2xl bg-slate-900/70 border border-slate-800 overflow-hidden transition-all">
-                <div
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-900 transition-colors"
-                  onClick={() => setExpandedId(isExpanded ? null : inbox.id)}
-                >
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${COLOR_MAP[inbox.color] || COLOR_MAP.emerald} flex items-center justify-center shrink-0 shadow-md`}>
-                      <Inbox className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white text-sm sm:text-base">{inbox.name_ar}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">{inbox.description}</div>
-                    </div>
+        {/* شبكة الصناديق التفاعلية */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {inboxes.map((ibx) => (
+            <div
+              key={ibx.id}
+              className="p-5 rounded-3xl border border-white/5 bg-[var(--card-elevated)] space-y-4 shadow-xl hover:border-purple-500/50 transition-all flex flex-col justify-between"
+              style={{ borderTopWidth: '4px', borderTopColor: ibx.color_hex }}
+            >
+              <div className="space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      className="w-3.5 h-3.5 rounded-xl shadow-sm"
+                      style={{ backgroundColor: ibx.color_hex }}
+                    />
+                    <h3 className="font-bold text-white text-base">{ibx.name_ar}</h3>
                   </div>
 
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="hidden sm:flex items-center gap-3 text-xs text-slate-400">
-                      <span className="flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/60">
-                        <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
-                        {inbox.lines.length} خطوط
-                      </span>
-                      <span className="flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/60">
-                        <Users className="w-3.5 h-3.5 text-purple-400" />
-                        {inbox.staff_count} موظفين
-                      </span>
-                      <span className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium">
-                        {FILTER_LABELS[inbox.filter]}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                    </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        setEditingInbox(ibx);
+                        setIsCreating(false);
+                      }}
+                      className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                      title="تعديل الصندوق"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteInbox(ibx.id)}
+                      className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                      title="حذف الصندوق"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
-                {isExpanded && (
-                  <div className="border-t border-slate-800/80 p-4 bg-slate-950/40 space-y-3">
-                    <div className="text-xs font-semibold text-slate-300">الخطوط المشمولة داخل هذا الصندوق:</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {inbox.lines.map((line) => (
-                        <div key={line.instanceName} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
-                          <div className="flex items-center gap-3">
-                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
-                            <div>
-                              <div className="text-xs sm:text-sm text-white font-medium">{line.title}</div>
-                              <div className="text-xs text-slate-400 font-mono mt-0.5">{line.phone}</div>
-                            </div>
-                          </div>
-                          <span className="text-[11px] font-mono text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                            {line.instanceName}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <p className="text-xs text-slate-300 leading-relaxed min-h-[40px]">
+                  {ibx.description || 'لا يوجد شرح مدخل لهذا الصندوق'}
+                </p>
+
+                {/* نوع الفلترة */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400">نوع المحادثات:</span>
+                  <span className="px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-800 text-[10px] font-bold text-purple-300">
+                    {FILTER_LABELS[ibx.filter_type]}
+                  </span>
+                </div>
               </div>
-            );
-          })}
+
+              {/* الخطوط المرتبطة */}
+              <div className="pt-3 border-t border-purple-900/30 space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+                  <PhoneCall className="w-3 h-3 text-emerald-400" />
+                  الخطوط التابعة ({ibx.assigned_lines.length}):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {ibx.assigned_lines.map((ln, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-semibold"
+                    >
+                      {ln}
+                    </span>
+                  ))}
+                  {ibx.assigned_lines.length === 0 && (
+                    <span className="text-[10px] text-slate-500">لا توجد خطوط مسندة بعد</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
+
+        {/* Modal إنشاء وتعديل الصندوق */}
+        {editingInbox && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 space-y-5 text-right shadow-2xl">
+              
+              <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
+                <h4 className="font-bold text-white text-base flex items-center gap-2">
+                  <Inbox className="w-5 h-5 text-purple-400" />
+                  {isCreating ? 'إنشاء صندوق محادثات جديد' : `تعديل: ${editingInbox.name_ar}`}
+                </h4>
+                <button onClick={() => setEditingInbox(null)} className="text-slate-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* الاسم والوصف */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">اسم الصندوق:</label>
+                <input
+                  type="text"
+                  placeholder="مثال: صندوق عملاء الخليج، استفسارات الطيران..."
+                  value={editingInbox.name_ar}
+                  onChange={(e) => setEditingInbox({ ...editingInbox, name_ar: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">وصف الصندوق والهدف منه:</label>
+                <textarea
+                  rows={2}
+                  placeholder="شرح موجز لنوع المحادثات التابعة له..."
+                  value={editingInbox.description}
+                  onChange={(e) => setEditingInbox({ ...editingInbox, description: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
+                />
+              </div>
+
+              {/* نوع الفلترة واللون */}
+              <div className="grid grid-cols-2 gap-3 items-end">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">نوع المحادثات المشمولة:</label>
+                  <select
+                    value={editingInbox.filter_type}
+                    onChange={(e) => setEditingInbox({ ...editingInbox, filter_type: e.target.value as any })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  >
+                    <option value="all">الكل (فردية ومجموعات)</option>
+                    <option value="dm">محادثات فردية فقط</option>
+                    <option value="groups">مجموعات فقط</option>
+                  </select>
+                </div>
+
+                <div>
+                  <ModernColorPicker
+                    value={editingInbox.color_hex}
+                    onChange={(hex) => setEditingInbox({ ...editingInbox, color_hex: hex })}
+                    label="لون الصندوق المميز:"
+                  />
+                </div>
+              </div>
+
+              {/* تحديد الخطوط المسندة */}
+              <div className="space-y-2 pt-2 border-t border-purple-900/30">
+                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
+                  الخطوط التابعة لهذا الصندوق:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {AVAILABLE_LINES.map((ln) => {
+                    const isChecked = editingInbox.assigned_lines.includes(ln);
+                    return (
+                      <button
+                        key={ln}
+                        type="button"
+                        onClick={() => {
+                          const next = isChecked
+                            ? editingInbox.assigned_lines.filter(l => l !== ln)
+                            : [...editingInbox.assigned_lines, ln];
+                          setEditingInbox({ ...editingInbox, assigned_lines: next });
+                        }}
+                        className={`p-2.5 rounded-xl border text-xs font-semibold text-right transition-all flex items-center justify-between ${
+                          isChecked
+                            ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/50 shadow'
+                            : 'bg-slate-900/80 text-slate-400 border-slate-800'
+                        }`}
+                      >
+                        <span>{ln}</span>
+                        {isChecked && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* أزرار الإجراء */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-purple-900/30">
+                <button
+                  onClick={() => setEditingInbox(null)}
+                  className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:bg-white/5"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleSaveModal}
+                  className="px-6 py-2 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/40 flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  حفظ الصندوق
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
       </div>
     </AppShell>
   );

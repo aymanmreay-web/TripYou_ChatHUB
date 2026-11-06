@@ -1,7 +1,8 @@
-Date: 2026-11-05 · Phase: Native Multi-Line Hub & Security Expansion
-- Signature Engine (/module/signature): Full 3-part engine created (Staff, Line, Company) with per-staff custom edit & send enforcement.
-- Statuses & Labels (/module/labels): Real color mapping applied, full edit/reorder on 5 golden statuses, SLA minutes control, English code labels (e.g. OPEN), and WhatsApp labels sync.
-- Starred Chats & Favorites: Header star converted to 1-click conversation toggle, clean tabbed categories.
-- Staff & Google Auth (/module/staff & /pending-approval): Google OAuth pending queue with manager licensing modal (roles, line access, inboxes, conversation locking).
-- Lines & Inboxes (/module/lines, /module/inboxes): Updated to live status with Baileys/Evolution management.
-- DB: Updated supabase_master_setup.sql with signature_settings, hub_tags, status_definitions, line_access, inbox_access, user_favorites.
+Date: 2026-11-06 · Phase: Enterprise White-label Branding & Modern UX Overhaul
+- Inboxes (/module/inboxes): Full CRUD table created in DB & UI (create, edit, delete, assigned lines, filter types, modern color picker).
+- Modern Color Picker: Created reusable ModernColorPicker component with modern swatches, hex input, and color-wheel.
+- Labels & Statuses (/module/labels): Added custom status creator (seasonal, custom contracts), real color integration, cleaned button titles.
+- White-label Branding (/module/settings & Sidebar): Company profile page, logo upload replacing static TY icon, removed '2026' text, preserved scroll position on sidebar navigation.
+- Chat UI Cleanups & Media: Removed verbose technical phrases (Evolution/3D/Baileys), fixed multi-file upload HD toggle (images only), Lightbox gallery navigation with direct download label.
+- Login (/login): Redesigned to sleek full-screen no-scroll layout, removed mock cards, direct login + Google OAuth flow with error diagnostics.
+- DB: Updated supabase_master_setup.sql with public.inboxes and public.company_settings.

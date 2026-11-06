@@ -104,10 +104,10 @@ export default function LinesPage() {
               <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
                 <PhoneCall className="w-5 h-5 text-emerald-400" />
               </div>
-              إدارة خطوط واتساب الرسمية
+              إدارة خطوط واتساب
             </h1>
             <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-              مراقبة وإدارة جلسات Baileys الحية المربوطة عبر محرك Evolution API
+              متابعة حالة الخطوط النشطة وربط الأجهزة عبر رمز الاستجابة السريع
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -124,7 +124,7 @@ export default function LinesPage() {
 
         {error && (
           <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm">
-            <strong>خطأ في قراءة الخطوط من خادم Evolution API:</strong> {error}
+            <strong>تعذر جلب حالة الخطوط:</strong> {error}
           </div>
         )}
 
@@ -258,7 +258,7 @@ export default function LinesPage() {
         {instances.length === 0 && !loading && !error && (
           <div className="text-center py-16 text-[var(--text-muted)]">
             <PhoneCall className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>لا توجد خطوط مسجلة في Evolution API</p>
+            <p>لا توجد خطوط مسجلة حالياً</p>
           </div>
         )}
       </div>

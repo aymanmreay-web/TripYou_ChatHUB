@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -9,7 +9,7 @@ import {
   Users2, UserCheck, Shield, PenTool, Contact, Share2,
   FileSpreadsheet, History, Settings, Activity, Megaphone,
   Search, ChevronLeft, ChevronRight, Layers, Sparkles,
-  Tags, Star
+  Tags, Star, Building2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ModuleContract } from '../../types';
@@ -43,7 +43,7 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   channels: Share2,
   reports: FileSpreadsheet,
   audit: History,
-  settings: Settings,
+  settings: Building2,
   health: Activity,
   campaigns_admin: Megaphone,
 };
@@ -52,6 +52,52 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   const pathname = usePathname();
   const { user, userModules, adminModules, selectedLine } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Company branding dynamic state
+  const [companyBranding, setCompanyBranding] = useState<{
+    company_name: string;
+    platform_title: string;
+    logo_url: string | null;
+  }>({
+    company_name: 'TripYou للسياحة والسفر',
+    platform_title: 'TripYou_ChatHUB',
+    logo_url: null,
+  });
+
+  // Load dynamic branding
+  useEffect(() => {
+    function loadBranding() {
+      try {
+        const cached = localStorage.getItem('hub_company_branding');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setCompanyBranding({
+            company_name: parsed.company_name || 'TripYou للسياحة والسفر',
+            platform_title: parsed.platform_title || 'TripYou_ChatHUB',
+            logo_url: parsed.logo_url || null,
+          });
+        }
+      } catch (e) {}
+    }
+    loadBranding();
+    window.addEventListener('branding-updated', loadBranding);
+    return () => window.removeEventListener('branding-updated', loadBranding);
+  }, []);
+
+  // Preserve scroll position to eliminate scroll jumping when navigating admin modules
+  useEffect(() => {
+    const savedPos = sessionStorage.getItem('sidebar_scroll_top');
+    if (savedPos && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = parseInt(savedPos, 10);
+    }
+  }, [pathname]);
+
+  const handleScroll = () => {
+    if (scrollContainerRef.current) {
+      sessionStorage.setItem('sidebar_scroll_top', scrollContainerRef.current.scrollTop.toString());
+    }
+  };
 
   const filterModules = (list: ModuleContract[]) => {
     if (!searchTerm.trim()) return list;
@@ -63,6 +109,8 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
   const getModuleHref = (m: ModuleContract) => {
     if (m.key === 'inbox') return '/inbox';
+    // المفضلة تفتح داخل المحادثات مباشرة بتصفية المفضلة الأنيقة
+    if (m.key === 'favorites') return '/inbox?filter=favorites';
     if (m.key === 'profile') return '/profile';
     if (m.key === 'admin_dashboard') return '/admin_dashboard';
     if (m.key === 'contacts_admin') return '/module/contacts';
@@ -77,7 +125,6 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
   return (
     <>
-      {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
@@ -85,7 +132,6 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
         />
       )}
 
-      {/* Sidebar container with Glassmorphism */}
       <aside
         className={`fixed top-0 bottom-0 right-0 z-40 bg-[var(--card-bg)]/95 backdrop-blur-xl border-l border-[var(--border-subtle)] transition-all duration-300 flex flex-col ${
           collapsed ? 'w-20' : 'w-72'
@@ -93,23 +139,39 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           mobileOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
         }`}
       >
-        {/* Brand Header */}
+        {/* Brand Header - عرض اسم الشركة وشعارها الديناميكي المرفوع */}
         <div className="h-16 border-b border-[var(--border-subtle)] px-4 flex items-center justify-between shrink-0">
           {!collapsed ? (
-            <Link href="/inbox" className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-md text-white font-black text-lg">
-                TY
-              </div>
-              <div className="flex flex-col">
-                <span className="font-extrabold text-sm tracking-tight text-[var(--text-main)]">TripYou_ChatHUB</span>
-                <span className="text-[10px] text-[var(--text-muted)] font-medium">إدارة المحادثات 2026</span>
+            <Link href="/inbox" className="flex items-center gap-2.5 overflow-hidden">
+              {companyBranding.logo_url ? (
+                <div className="w-10 h-10 rounded-2xl bg-slate-900 border border-purple-500/30 flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-md">
+                  <img src={companyBranding.logo_url} alt="Logo" className="w-full h-full object-contain" />
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-md text-white font-black text-lg shrink-0">
+                  {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="flex flex-col min-w-0">
+                <span className="font-extrabold text-sm tracking-tight text-[var(--text-main)] truncate">
+                  {companyBranding.platform_title}
+                </span>
+                <span className="text-[10px] text-purple-300/80 font-semibold truncate">
+                  {companyBranding.company_name}
+                </span>
               </div>
             </Link>
           ) : (
             <Link href="/inbox" className="mx-auto">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-black text-base shadow-md">
-                TY
-              </div>
+              {companyBranding.logo_url ? (
+                <div className="w-10 h-10 rounded-2xl bg-slate-900 border border-purple-500/30 flex items-center justify-center p-1 overflow-hidden shadow-md">
+                  <img src={companyBranding.logo_url} alt="Logo" className="w-full h-full object-contain" />
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-black text-base shadow-md">
+                  {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                </div>
+              )}
             </Link>
           )}
 
@@ -129,7 +191,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
               <Search className="w-4 h-4 text-[var(--text-muted)] absolute right-3 top-2.5" />
               <input
                 type="text"
-                placeholder="بحث في الأقسام والصلاحيات..."
+                placeholder="بحث في الأقسام..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-2xl pr-9 pl-3 py-1.5 text-xs text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none focus:border-purple-500 transition-colors"
@@ -138,10 +200,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           </div>
         )}
 
-        {/* Navigation Sections */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-6">
+        {/* Navigation Sections with Scroll Preservation */}
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-3 space-y-6"
+        >
           
-          {/* User Workspace Section */}
+          {/* مساحة الموظف */}
           <div>
             {!collapsed && (
               <div className="px-3 pb-2 text-[10px] font-bold text-[var(--text-muted)] tracking-wider uppercase">
@@ -160,7 +226,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                     onClick={onCloseMobile}
                     className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                       active
-                        ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold'
+                        ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold shadow-sm'
                         : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
                     } ${collapsed ? 'justify-center px-2' : ''}`}
                     title={collapsed ? m.title_ar : undefined}
@@ -175,11 +241,6 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                         {m.status === 'live' && (
                           <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
                         )}
-                        {m.status === 'coming_soon' && (
-                          <span className="badge-glass px-2 py-0.5 rounded-lg text-[9px] text-[var(--text-muted)]">
-                            قريباً
-                          </span>
-                        )}
                       </div>
                     )}
                   </Link>
@@ -188,9 +249,9 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
             </nav>
           </div>
 
-          {/* Admin Section (Based on RBAC permissions) */}
+          {/* لوحة الإدارة والإشراف - قسم مستقل مفصول */}
           {filteredAdminModules.length > 0 && (
-            <div>
+            <div className="pt-2 border-t border-[var(--border-subtle)]/60">
               {!collapsed && (
                 <div className="px-3 pb-2 text-[10px] font-bold text-[var(--text-muted)] tracking-wider uppercase">
                   لوحة الإدارة والإشراف
@@ -208,7 +269,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                       onClick={onCloseMobile}
                       className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                         active
-                          ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold'
+                          ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold shadow-sm'
                           : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
                       } ${collapsed ? 'justify-center px-2' : ''}`}
                       title={collapsed ? m.title_ar : undefined}
@@ -220,18 +281,8 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
                       {!collapsed && (
                         <div>
-                          {m.status === 'beta' && (
-                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                              تجريبي
-                            </span>
-                          )}
                           {m.status === 'live' && (
                             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                          )}
-                          {m.status === 'coming_soon' && (
-                            <span className="badge-glass px-2 py-0.5 rounded-lg text-[9px] text-[var(--text-muted)]">
-                              قريباً
-                            </span>
                           )}
                         </div>
                       )}
@@ -244,7 +295,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
         </div>
 
-        {/* Footer info: Connected Line with Emerald status */}
+        {/* Footer info: Connected Line */}
         <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--card-elevated)]/40">
           {!collapsed ? (
             <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
@@ -252,7 +303,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-semibold text-[var(--text-main)]">{selectedLine.title_ar}</span>
               </div>
-              <span className="text-[10px] text-emerald-400 font-mono">نشط</span>
+              <span className="text-[10px] text-emerald-400 font-mono">متصل</span>
             </div>
           ) : (
             <div className="flex justify-center">

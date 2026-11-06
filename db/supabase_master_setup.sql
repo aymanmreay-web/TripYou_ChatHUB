@@ -449,6 +449,47 @@ create or replace view hub.hub_tags as select * from public.hub_tags;
 create or replace view hub.status_definitions as select * from public.status_definitions;
 create or replace view hub.line_access as select * from public.line_access;
 
+-- -------------------------------------------------------------------------
+-- 17. إدارة الصناديق ومعلومات الشركة وهوية النظام (Inboxes & Company Branding)
+-- -------------------------------------------------------------------------
+create table if not exists public.inboxes (
+  id uuid primary key default gen_random_uuid(),
+  name_ar text not null,
+  description text,
+  assigned_lines text[] not null default '{}',
+  filter_type text not null default 'all' check (filter_type in ('all','dm','groups')),
+  color_hex text not null default '#8b5cf6',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- إدراج الصناديق الافتراضية
+insert into public.inboxes (name_ar, description, assigned_lines, filter_type, color_hex) values
+  ('صندوق مجموعات الشركات', 'يجمع كل مجموعات الواتساب الخاصة بشركات وموردي YouTrip عبر جميع الخطوط المتصلة', ARRAY['الخط الرئيسي (Master)', 'خط المبيعات 2 (Sells_2)'], 'groups', '#10b981'),
+  ('صندوق محادثات العملاء', 'محادثات العملاء الفردية المباشرة — تسند تلقائياً لصاحب الخط', ARRAY['الخط الرئيسي (Master)', 'خط المبيعات 1 (Sells_1)', 'خط المبيعات 2 (Sells_2)'], 'dm', '#3b82f6'),
+  ('صندوق إدارة العمليات', 'كافة المحادثات والمجموعات التشغيلية على الخط الرئيسي الخاص بالإدارة', ARRAY['الخط الرئيسي (Master)'], 'all', '#8b5cf6')
+on conflict do nothing;
+
+-- جدول معلومات وهوية الشركة التي اشترت النظام (Multi-Tenant Company Profile)
+create table if not exists public.company_settings (
+  id uuid primary key default gen_random_uuid(),
+  company_name text not null default 'TripYou للسياحة والسفر',
+  platform_title text not null default 'TripYou_ChatHUB',
+  logo_url text,
+  primary_color text default '#8b5cf6',
+  support_email text default 'support@resvbar.com',
+  support_phone text default '+963 962 128 616',
+  updated_at timestamptz not null default now()
+);
+
+insert into public.company_settings (company_name, platform_title, logo_url)
+values ('TripYou للسياحة والسفر', 'TripYou_ChatHUB', null)
+on conflict do nothing;
+
+create or replace view hub.inboxes as select * from public.inboxes;
+create or replace view hub.company_settings as select * from public.company_settings;
+
 -- =========================================================================
 -- اكتمل إعداد قاعدة بيانات Supabase بنجاح!
 -- =========================================================================
