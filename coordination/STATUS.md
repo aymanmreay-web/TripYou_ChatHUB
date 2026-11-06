@@ -1,8 +1,26 @@
-Date: 2026-11-06 · Phase: Enterprise White-label Branding & Modern UX Overhaul
-- Inboxes (/module/inboxes): Full CRUD table created in DB & UI (create, edit, delete, assigned lines, filter types, modern color picker).
-- Modern Color Picker: Created reusable ModernColorPicker component with modern swatches, hex input, and color-wheel.
-- Labels & Statuses (/module/labels): Added custom status creator (seasonal, custom contracts), real color integration, cleaned button titles.
-- White-label Branding (/module/settings & Sidebar): Company profile page, logo upload replacing static TY icon, removed '2026' text, preserved scroll position on sidebar navigation.
-- Chat UI Cleanups & Media: Removed verbose technical phrases (Evolution/3D/Baileys), fixed multi-file upload HD toggle (images only), Lightbox gallery navigation with direct download label.
-- Login (/login): Redesigned to sleek full-screen no-scroll layout, removed mock cards, direct login + Google OAuth flow with error diagnostics.
-- DB: Updated supabase_master_setup.sql with public.inboxes and public.company_settings.
+# 📊 تقرير المزامنة والحالة التشغيلية المباشرة (Live Operational Status)
+> **تاريخ التحديث:** 2026-11-07  
+> **الفرع الحالي:** `main` (مدمج ومحدث بالكامل مع `wip/antigravity-continue`)  
+> **الـ Commit المستقر الأخير:** `8b2b6ad` (تم الرفع لـ origin و resvbar-hub)  
+> **حالة البناء المحلي:** ✅ نجاح كامل `npm run build` (21 Static/Dynamic Pages بدون أي أخطاء)  
+> **حالة المنصة الحية:** ✅ متصلة وتعمل بنجاح: `https://hub.69.62.122.89.sslip.io`  
+
+---
+
+### 1. ملخص التكامل البرمجي
+- **نظام المصادقة والصلاحيات:** تم التحول بنجاح 100% إلى نظام حقيقي عبر Supabase (`authDb.ts` + `hubDb.ts`)، مع 40 صلاحية موزعة على 5 أدوار وربط جدول `hub.staff`.
+- **لوحة الموظفين:** التحكم الحقيقي في الصلاحيات والأدوار وحالة الموظف (نشط / معلق / موقوف) والخطوط والصناديق.
+- **إدارة الصناديق وهويّة الشركة:** دعم الـ White-Label وتخصيص الشعار واسم المنصة من جدول `company_settings`.
+- **نظام الألوان الحديث:** مكون `ModernColorPicker` يوفر طيفاً واسعاً من الألوان الراقية بدلاً من القوائم القديمة.
+- **تنظيف الواجهات:** تم التخلص من المصطلحات التقنية المسربة (Evolution API، محرك Baileys، 3D Hub، وإدارة المحادثات 2026).
+
+---
+
+### 2. البنية التحتية
+| المكون | الحالة | الرابط / المنفذ |
+|---|---|---|
+| **Hub Web App** | ✅ متصل ويعمل | `https://hub.69.62.122.89.sslip.io` (Port 3000) |
+| **Evolution API** | ✅ متصل ويعمل | `https://evo.69.62.122.89.sslip.io` (Port 8085) |
+| **Traefik + n8n** | ✅ متصل ويعمل | `https://69.62.122.89.sslip.io` (Port 5678) |
+| **Chatwoot** | 🛑 متوقف بالكامل | تم إيقافه لتوفير موارد السيرفر (HUB-009) |
+| **Supabase Cloud** | ✅ متصل ومفحوص | `eu-west-1` Ireland |
