@@ -254,3 +254,106 @@ export async function reorderStatuses(list: StatusRow[]): Promise<void> {
   const failed = results.find((r) => r.error);
   if (failed) throw new Error(errMsg(failed.error));
 }
+
+/* ───────────────────────── الموظفون والأدوار ───────────────────────── */
+
+export interface RoleRow {
+  id: string;
+  key: string;
+  title_ar: string;
+}
+
+export interface StaffRow {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  role_title_ar: string;
+  status: 'active' | 'suspended' | 'pending';
+  line_ids: string[];
+  inbox_ids: string[];
+  can_lock_conversations: boolean;
+  permissions_count: number;
+}
+
+export async function fetchRoles(): Promise<RoleRow[]> {
+  const rows = check(await supabase.from('roles').select('id, key, title_ar').order('created_at')) as any[];
+  return rows ?? [];
+}
+
+export async function fetchStaffAll(): Promise<StaffRow[]> {
+  const [st, rl, rp, la, ia] = await Promise.all([
+    supabase.from('staff').select('id, full_name, email, phone, status, role_id, can_lock_conversations').order('created_at'),
+    supabase.from('roles').select('id, key, title_ar'),
+    supabase.from('role_permissions').select('role_id'),
+    supabase.from('line_access').select('staff_id, line_id'),
+    supabase.from('inbox_access').select('staff_id, inbox_id'),
+  ]);
+  const staff = check(st) as any[];
+  const roles = (check(rl) as any[]) ?? [];
+  const perms = (check(rp) as any[]) ?? [];
+  const lines = (check(la) as any[]) ?? [];
+  const inboxes = (check(ia) as any[]) ?? [];
+  return (staff ?? []).map((s) => {
+    const role = roles.find((r) => r.id === s.role_id);
+    return {
+      id: s.id,
+      name: s.full_name || s.email?.split('@')[0] || 'موظف',
+      email: s.email || '',
+      phone: s.phone || '',
+      role: role?.key || 'observer',
+      role_title_ar: role?.title_ar || '',
+      status: (s.status === 'active' || s.status === 'pending' ? s.status : 'suspended') as StaffRow['status'],
+      line_ids: lines.filter((x) => x.staff_id === s.id).map((x) => x.line_id),
+      inbox_ids: inboxes.filter((x) => x.staff_id === s.id).map((x) => x.inbox_id),
+      can_lock_conversations: !!s.can_lock_conversations,
+      permissions_count: perms.filter((p) => p.role_id === s.role_id).length,
+    };
+  });
+}
+
+export async function setStaffStatus(id: string, status: StaffRow['status']): Promise<void> {
+  const rows = check(await supabase.from('staff').update({ status }).eq('id', id).select('id')) as any[];
+  if (!rows || rows.length === 0) throw new Error('لم يتم تحديث الموظف');
+}
+
+export async function saveStaffMember(m: StaffRow, isNew: boolean): Promise<void> {
+  const roles = await fetchRoles();
+  const role = roles.find((r) => r.key === m.role);
+  if (!role) throw new Error('الدور غير موجود');
+  const payload = {
+    email: m.email.trim(),
+    full_name: m.name.trim(),
+    phone: m.phone || null,
+    status: m.status,
+    role_id: role.id,
+    can_lock_conversations: m.can_lock_conversations,
+  };
+  let id = m.id;
+  if (isNew) {
+    const row = check(await supabase.from('staff').insert(payload).select('id').single()) as any;
+    id = row.id;
+  } else {
+    const rows = check(await supabase.from('staff').update(payload).eq('id', id).select('id')) as any[];
+    if (!rows || rows.length === 0) throw new Error('لم يتم العثور على الموظف');
+  }
+  check(await supabase.from('line_access').delete().eq('staff_id', id).select('staff_id'));
+  if (m.line_ids.length > 0) {
+    check(
+      await supabase
+        .from('line_access')
+        .insert(m.line_ids.map((line_id) => ({ staff_id: id, line_id, can_read: true, can_send: true })))
+        .select('staff_id')
+    );
+  }
+  check(await supabase.from('inbox_access').delete().eq('staff_id', id).select('staff_id'));
+  if (m.inbox_ids.length > 0) {
+    check(
+      await supabase
+        .from('inbox_access')
+        .insert(m.inbox_ids.map((inbox_id) => ({ staff_id: id, inbox_id, can_reply: true, can_assign: false })))
+        .select('staff_id')
+    );
+  }
+}

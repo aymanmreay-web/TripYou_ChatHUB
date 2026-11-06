@@ -2,10 +2,9 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Menu, Bell, UserCheck, LogOut, Check, ChevronDown, Sun, Moon } from 'lucide-react';
+import { Menu, Bell, LogOut, Check, ChevronDown, Sun, Moon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Button, Avatar, Badge } from '@tripyou/ui';
-import { MOCK_USERS } from '../../lib/mock-data';
 
 interface HeaderProps {
   onOpenMobile: () => void;
@@ -14,8 +13,6 @@ interface HeaderProps {
 export function Header({ onOpenMobile }: HeaderProps) {
   const {
     user,
-    userKey,
-    setUserKey,
     selectedLine,
     selectedLineId,
     setSelectedLineId,
@@ -145,54 +142,6 @@ export function Header({ onOpenMobile }: HeaderProps) {
             <Moon className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
           )}
         </button>
-
-        {/* Dynamic Role Switcher */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              setRoleDropdownOpen(!roleDropdownOpen);
-              setLineDropdownOpen(false);
-              setNotificationsOpen(false);
-            }}
-            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-all text-xs font-bold"
-            title="تبديل الصلاحية لمعاينة ديناميكية الأقسام"
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">{user.role_title_ar.split(' ')[0]}</span>
-            <ChevronDown className="w-3 h-3" />
-          </button>
-
-          {roleDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-80 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 glass-panel">
-              <div className="text-xs font-bold text-[var(--text-muted)] px-3 py-1.5 mb-1 border-b border-[var(--border-subtle)]">
-                تبديل الدور التجريبي (لاختبار إخفاء/إظهار الأقسام)
-              </div>
-              {Object.entries(MOCK_USERS).map(([key, u]) => (
-                <button
-                  key={key}
-                  onClick={() => {
-                    setUserKey(key);
-                    setRoleDropdownOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors mb-1 ${
-                    key === userKey
-                      ? 'bg-amber-500/15 text-amber-400 font-bold border border-amber-500/30'
-                      : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
-                  }`}
-                >
-                  <div className="text-right">
-                    <div className="font-bold text-[var(--text-main)]">{u.full_name}</div>
-                    <div className="text-[11px] text-[var(--text-muted)]">{u.role_title_ar}</div>
-                    <div className="text-[10px] text-[var(--text-muted)] opacity-70 mt-0.5">
-                      {u.permissions.length} صلاحية مفعلة
-                    </div>
-                  </div>
-                  {key === userKey && <Check className="w-4 h-4 text-amber-400" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
 
         {/* Notifications Icon with Popover */}
         <div className="relative">

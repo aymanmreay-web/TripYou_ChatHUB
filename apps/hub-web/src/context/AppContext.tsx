@@ -2,15 +2,17 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { StaffMe, WhatsAppLine, ModuleContract } from '../types';
-import { MOCK_USERS, MOCK_LINES, RAW_MODULES, filterModulesForUser } from '../lib/mock-data';
+import { MOCK_LINES, RAW_MODULES, filterModulesForUser } from '../lib/mock-data';
+import { loadAuthState, signOut, AuthStatus } from '../lib/authDb';
+import { supabase } from '../lib/supabase';
 
 export type AppTheme = 'theme-purple' | 'theme-blue';
 export type AppMode = 'dark' | 'light';
 
 interface AppContextType {
   user: StaffMe;
-  userKey: string;
-  setUserKey: (key: string) => void;
+  authStatus: AuthStatus;
+  refreshAuth: () => Promise<void>;
   selectedLine: WhatsAppLine;
   selectedLineId: string;
   setSelectedLineId: (id: string) => void;
@@ -19,8 +21,7 @@ interface AppContextType {
   userModules: ModuleContract[];
   adminModules: ModuleContract[];
   isLoggedIn: boolean;
-  login: (roleKey: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   // Dynamic Multi-Theming Engine States
   theme: AppTheme;
   setTheme: (theme: AppTheme) => void;
@@ -32,31 +33,22 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [userKey, setUserKey] = useState<string>('super_admin');
+  const [me, setMe] = useState<StaffMe | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [selectedLineId, setSelectedLineId] = useState<string>('line-01');
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
   const [theme, setThemeState] = useState<AppTheme>('theme-purple');
   const [mode, setModeState] = useState<AppMode>('dark');
 
   // Load user and theme from localStorage if present
   useEffect(() => {
     try {
-      const savedUser = localStorage.getItem('tripyou_hub_user_key');
       const savedLine = localStorage.getItem('tripyou_hub_line_id');
-      const savedAuth = localStorage.getItem('tripyou_hub_auth');
       const savedTheme = (localStorage.getItem('tripyou_theme') as AppTheme) || 'theme-purple';
       const savedMode = (localStorage.getItem('tripyou_mode') as AppMode) || 'dark';
 
-      if (savedUser && MOCK_USERS[savedUser]) {
-        setUserKey(savedUser);
-      }
       if (savedLine && MOCK_LINES.some((l) => l.id === savedLine)) {
         setSelectedLineId(savedLine);
       }
-      if (savedAuth !== null) {
-        setIsLoggedIn(savedAuth === 'true');
-      }
-
       setThemeState(savedTheme);
       setModeState(savedMode);
 
@@ -98,17 +90,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMode(nextMode);
   };
 
-  const handleSetUserKey = (key: string) => {
-    if (MOCK_USERS[key]) {
-      setUserKey(key);
-      try {
-        localStorage.setItem('tripyou_hub_user_key', key);
-      } catch {
-        // ignore
-      }
-    }
-  };
-
   const handleSetLineId = (id: string) => {
     setSelectedLineId(id);
     try {
@@ -118,26 +99,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = (roleKey: string) => {
-    handleSetUserKey(roleKey);
-    setIsLoggedIn(true);
+  const refreshAuth = async () => {
     try {
-      localStorage.setItem('tripyou_hub_auth', 'true');
+      const st = await loadAuthState();
+      setMe(st.me);
+      setAuthStatus(st.status);
     } catch {
-      // ignore
+      setMe(null);
+      setAuthStatus('anonymous');
     }
   };
 
-  const logout = () => {
-    setIsLoggedIn(false);
-    try {
-      localStorage.setItem('tripyou_hub_auth', 'false');
-    } catch {
-      // ignore
-    }
+  useEffect(() => {
+    refreshAuth();
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') refreshAuth();
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  const logout = async () => {
+    await signOut();
+    setMe(null);
+    setAuthStatus('anonymous');
   };
 
-  const user = useMemo(() => MOCK_USERS[userKey] || MOCK_USERS.super_admin, [userKey]);
+  const isLoggedIn = authStatus !== 'anonymous';
+
+  const user = useMemo<StaffMe>(
+    () =>
+      me || {
+        id: '',
+        full_name: '',
+        role: '',
+        role_title_ar: '',
+        email_masked: '',
+        phone_masked: '',
+        permissions: [],
+        default_line_id: null,
+      },
+    [me]
+  );
 
   const selectedLine = useMemo(() => {
     return MOCK_LINES.find((l) => l.id === selectedLineId) || MOCK_LINES[0];
@@ -159,8 +161,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         user,
-        userKey,
-        setUserKey: handleSetUserKey,
+        authStatus,
+        refreshAuth,
         selectedLine,
         selectedLineId,
         setSelectedLineId: handleSetLineId,
@@ -169,7 +171,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         userModules,
         adminModules,
         isLoggedIn,
-        login,
         logout,
         theme,
         setTheme,

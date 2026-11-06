@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useApp } from '../../context/AppContext';
 import { Sidebar } from '../navigation/Sidebar';
 import { Header } from '../navigation/Header';
 import { MobileNav } from '../navigation/MobileNav';
@@ -8,6 +10,17 @@ import { MobileNav } from '../navigation/MobileNav';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const router = useRouter();
+  const { authStatus } = useApp();
+
+  useEffect(() => {
+    if (authStatus === 'anonymous') router.replace('/login');
+    else if (authStatus === 'pending' || authStatus === 'blocked') router.replace('/pending-approval');
+  }, [authStatus, router]);
+
+  if (authStatus !== 'active') {
+    return <div className="min-h-screen bg-[var(--bg-main)]" />;
+  }
 
   return (
     <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] flex flex-col font-sans transition-colors duration-200">

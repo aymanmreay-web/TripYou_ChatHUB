@@ -25,153 +25,39 @@ import {
   Check
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
-import { supabase } from '../../../lib/supabase';
+import { fetchStaffAll, fetchRoles, fetchLines, fetchInboxes, saveStaffMember, setStaffStatus, StaffRow, RoleRow, LineOption, InboxRow } from '../../../lib/hubDb';
 
-interface StaffMember {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  role_title_ar: string;
-  department: string;
-  status: 'active' | 'suspended' | 'pending';
-  default_line: string;
-  assigned_lines: string[];
-  assigned_inboxes: string[];
-  can_lock_conversations: boolean;
-  permissions_count: number;
-}
-
-const ALL_AVAILABLE_LINES = [
-  { id: 'line-master', name: 'الخط الرئيسي (Master)' },
-  { id: 'line-sells1', name: 'خط المبيعات 1 (Sells_1)' },
-  { id: 'line-sells2', name: 'خط المبيعات 2 (Sells_2)' },
-];
-
-const ALL_AVAILABLE_INBOXES = [
-  { id: 'inbox-general', name: 'صندوق المحادثات العامة' },
-  { id: 'inbox-groups', name: 'صندوق مجموعات الشركات' },
-  { id: 'inbox-vip', name: 'صندوق عملاء VIP' },
-  { id: 'inbox-ops', name: 'صندوق إدارة العمليات والحجوزات' },
-];
-
-const AVAILABLE_ROLES = [
-  { key: 'super_admin', title_ar: 'مسؤول النظام الأعلى (Super Admin)', desc: 'وصول شامل لكافة الإعدادات والخطوط والموظفين' },
-  { key: 'sales_lead', title_ar: 'مدير المبيعات (Sales Lead)', desc: 'إشراف على خطوط المبيعات، إعادة الإسناد، ومتابعة SLA' },
-  { key: 'support_agent', title_ar: 'ممثل خدمة العملاء (Support Agent)', desc: 'الرد على المحادثات المسندة وإدارتها' },
-  { key: 'observer', title_ar: 'مراقب جودة (Observer)', desc: 'رؤية المحادثات والتقارير دون إمكانية الإرسال' },
-];
-
-const INITIAL_STAFF: StaffMember[] = [
-  {
-    id: 'staff-1',
-    name: 'م. أيمن مريعي',
-    email: 'AymanMreay@gmail.com',
-    phone: '+963 962 128 616',
-    role: 'super_admin',
-    role_title_ar: 'مسؤول النظام الأعلى (Super Admin)',
-    department: 'الإدارة العامة',
-    status: 'active',
-    default_line: 'الخط الرئيسي (Master)',
-    assigned_lines: ['الخط الرئيسي (Master)', 'خط المبيعات 1 (Sells_1)', 'خط المبيعات 2 (Sells_2)'],
-    assigned_inboxes: ['صندوق المحادثات العامة', 'صندوق مجموعات الشركات', 'صندوق إدارة العمليات والحجوزات'],
-    can_lock_conversations: true,
-    permissions_count: 35,
-  },
-  {
-    id: 'staff-2',
-    name: 'سارة خالد',
-    email: 'sara.sales@youtrip.com',
-    phone: '+966 55 123 4567',
-    role: 'sales_lead',
-    role_title_ar: 'مدير المبيعات (Sales Lead)',
-    department: 'قسم المبيعات',
-    status: 'active',
-    default_line: 'خط المبيعات 2 (Sells_2)',
-    assigned_lines: ['خط المبيعات 2 (Sells_2)'],
-    assigned_inboxes: ['صندوق مجموعات الشركات'],
-    can_lock_conversations: true,
-    permissions_count: 18,
-  },
-  {
-    id: 'staff-3',
-    name: 'محمد العمر',
-    email: 'mohammed.care@youtrip.com',
-    phone: '+966 56 987 6543',
-    role: 'support_agent',
-    role_title_ar: 'ممثل خدمة العملاء',
-    department: 'خدمة العملاء',
-    status: 'active',
-    default_line: 'خط المبيعات 1 (Sells_1)',
-    assigned_lines: ['خط المبيعات 1 (Sells_1)'],
-    assigned_inboxes: ['صندوق المحادثات العامة'],
-    can_lock_conversations: false,
-    permissions_count: 10,
-  },
-  {
-    id: 'staff-pending-1',
-    name: 'أحمد السعيد (Google Sign-In)',
-    email: 'ahmed.alsaed.trip@gmail.com',
-    phone: '+966 50 443 2211',
-    role: 'support_agent',
-    role_title_ar: 'طلب انضمام جديد',
-    department: 'قسم المبيعات',
-    status: 'pending',
-    default_line: 'خط المبيعات 1 (Sells_1)',
-    assigned_lines: ['خط المبيعات 1 (Sells_1)'],
-    assigned_inboxes: ['صندوق المحادثات العامة'],
-    can_lock_conversations: false,
-    permissions_count: 8,
-  },
-];
+type StaffMember = StaffRow;
 
 export default function StaffManagementPage() {
-  const [staff, setStaff] = useState<StaffMember[]>(INITIAL_STAFF);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [roles, setRoles] = useState<RoleRow[]>([]);
+  const [lines, setLines] = useState<LineOption[]>([]);
+  const [inboxes, setInboxes] = useState<InboxRow[]>([]);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  // Modal State for Editing / Granting License
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [isNewModal, setIsNewModal] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  // Load staff from Supabase
-  useEffect(() => {
-    async function loadStaff() {
-      try {
-        const { data: dbStaff } = await supabase
-          .from('staff')
-          .select('id, full_name, email, phone, status, roles(key, title_ar)');
-
-        if (dbStaff && dbStaff.length > 0) {
-          // Merge with initial data
-          const mapped = dbStaff.map((s: any) => ({
-            id: s.id,
-            name: s.full_name || 'موظف',
-            email: s.email,
-            phone: s.phone || 'غير مسجل',
-            role: s.roles?.key || 'support_agent',
-            role_title_ar: s.roles?.title_ar || 'ممثل خدمة عملاء',
-            department: 'المبيعات',
-            status: (s.status as any) || 'active',
-            default_line: 'الخط الرئيسي (Master)',
-            assigned_lines: ['الخط الرئيسي (Master)'],
-            assigned_inboxes: ['صندوق المحادثات العامة'],
-            can_lock_conversations: s.roles?.key === 'super_admin',
-            permissions_count: 12,
-          }));
-          setStaff(mapped);
-        } else {
-          const cached = localStorage.getItem('hub_staff_cache');
-          if (cached) setStaff(JSON.parse(cached));
-        }
-      } catch (e) {
-        console.warn('Error fetching staff from DB', e);
-      }
+  const reload = async () => {
+    try {
+      const [st, rl, ln, ib] = await Promise.all([fetchStaffAll(), fetchRoles(), fetchLines(), fetchInboxes()]);
+      setStaff(st);
+      setRoles(rl);
+      setLines(ln);
+      setInboxes(ib);
+    } catch (e: any) {
+      setSaveError(`تعذّر تحميل البيانات: ${e.message}`);
     }
-    loadStaff();
+  };
+
+  useEffect(() => {
+    reload();
   }, []);
 
   const showNotification = (msg: string) => {
@@ -179,55 +65,40 @@ export default function StaffManagementPage() {
     setTimeout(() => setActionSuccess(null), 3500);
   };
 
-  // Grant Approval for Pending Staff
   const handleApproveStaff = (st: StaffMember) => {
     setEditingStaff({ ...st, status: 'active' });
+    setIsNewModal(false);
   };
 
-  // Toggle Suspend / Active
-  const handleToggleSuspend = (id: string) => {
-    const updated = staff.map((s) => {
-      if (s.id === id) {
-        const nextStatus = s.status === 'active' ? 'suspended' : 'active';
-        return { ...s, status: nextStatus as any };
-      }
-      return s;
-    });
-    setStaff(updated);
-    localStorage.setItem('hub_staff_cache', JSON.stringify(updated));
-    showNotification('تم تحديث حالة الموظف بنجاح!');
+  const handleToggleSuspend = async (id: string) => {
+    const cur = staff.find((s) => s.id === id);
+    if (!cur) return;
+    setSaveError(null);
+    try {
+      await setStaffStatus(id, cur.status === 'active' ? 'suspended' : 'active');
+      await reload();
+      showNotification('تم تحديث حالة الموظف');
+    } catch (e: any) {
+      setSaveError(`تعذّر التحديث: ${e.message}`);
+    }
   };
 
-  // Save Modal
   const handleSaveStaffModal = async () => {
     if (!editingStaff) return;
-
-    let updated: StaffMember[];
-    if (isNewModal) {
-      updated = [editingStaff, ...staff];
-    } else {
-      updated = staff.map((s) => (s.id === editingStaff.id ? editingStaff : s));
-    }
-
-    setStaff(updated);
-    localStorage.setItem('hub_staff_cache', JSON.stringify(updated));
-
-    // Sync to Supabase
+    setSaving(true);
+    setSaveError(null);
     try {
-      await supabase.from('staff').upsert({
-        id: editingStaff.id.startsWith('staff-') ? undefined : editingStaff.id,
-        email: editingStaff.email,
-        full_name: editingStaff.name,
-        phone: editingStaff.phone,
-        status: editingStaff.status,
-      });
-    } catch (e) {
-      console.warn('DB upsert staff skipped', e);
+      await saveStaffMember(editingStaff, isNewModal);
+      await reload();
+      const name = editingStaff.name;
+      setEditingStaff(null);
+      setIsNewModal(false);
+      showNotification(`تم حفظ "${name}"`);
+    } catch (e: any) {
+      setSaveError(`تعذّر الحفظ: ${e.message}`);
+    } finally {
+      setSaving(false);
     }
-
-    setEditingStaff(null);
-    setIsNewModal(false);
-    showNotification(`تم حفظ وترخيص بيانات "${editingStaff.name}" بنجاح!`);
   };
 
   const pendingApprovals = staff.filter((s) => s.status === 'pending');
@@ -262,6 +133,11 @@ export default function StaffManagementPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {saveError && (
+              <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold max-w-md">
+                {saveError}
+              </div>
+            )}
             {actionSuccess && (
               <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4" />
@@ -272,19 +148,17 @@ export default function StaffManagementPage() {
             <button
               onClick={() => {
                 setEditingStaff({
-                  id: `staff-${Date.now()}`,
+                  id: '',
                   name: '',
                   email: '',
                   phone: '',
                   role: 'support_agent',
-                  role_title_ar: 'ممثل خدمة العملاء',
-                  department: 'قسم المبيعات',
+                  role_title_ar: '',
                   status: 'active',
-                  default_line: 'خط المبيعات 1 (Sells_1)',
-                  assigned_lines: ['خط المبيعات 1 (Sells_1)'],
-                  assigned_inboxes: ['صندوق المحادثات العامة'],
+                  line_ids: [],
+                  inbox_ids: [],
                   can_lock_conversations: false,
-                  permissions_count: 10,
+                  permissions_count: 0,
                 });
                 setIsNewModal(true);
               }}
@@ -371,7 +245,7 @@ export default function StaffManagementPage() {
               className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none"
             >
               <option value="all">كافة الأدوار</option>
-              {AVAILABLE_ROLES.map((r) => (
+              {roles.map((r) => (
                 <option key={r.key} value={r.key}>{r.title_ar}</option>
               ))}
             </select>
@@ -420,19 +294,18 @@ export default function StaffManagementPage() {
                     <span className="inline-block px-2.5 py-1 rounded-xl text-xs font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30">
                       {st.role_title_ar}
                     </span>
-                    <div className="text-[10px] text-slate-400 mt-1">{st.department}</div>
                   </td>
 
                   {/* الخطوط المسموحة */}
                   <td className="p-4">
                     <div className="flex flex-wrap gap-1.5 max-w-xs">
-                      {st.assigned_lines.map((ln, idx) => (
+                      {st.line_ids.map((lid, idx) => (
                         <span
                           key={idx}
                           className="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold flex items-center gap-1"
                         >
                           <PhoneCall className="w-2.5 h-2.5" />
-                          {ln}
+                          {lines.find((l) => l.id === lid)?.name || '—'}
                         </span>
                       ))}
                     </div>
@@ -441,13 +314,13 @@ export default function StaffManagementPage() {
                   {/* الصناديق */}
                   <td className="p-4">
                     <div className="flex flex-wrap gap-1.5 max-w-xs">
-                      {st.assigned_inboxes.map((ibx, idx) => (
+                      {st.inbox_ids.map((iid, idx) => (
                         <span
                           key={idx}
                           className="px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/30 text-[10px] font-semibold flex items-center gap-1"
                         >
                           <Inbox className="w-2.5 h-2.5" />
-                          {ibx}
+                          {inboxes.find((i) => i.id === iid)?.name_ar || '—'}
                         </span>
                       ))}
                     </div>
@@ -563,13 +436,13 @@ export default function StaffManagementPage() {
               </div>
 
               {/* اختيار الدور والقسم */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-300">الدور الوظيفي في النظام:</label>
                   <select
                     value={editingStaff.role}
                     onChange={(e) => {
-                      const r = AVAILABLE_ROLES.find(role => role.key === e.target.value);
+                      const r = roles.find(role => role.key === e.target.value);
                       setEditingStaff({
                         ...editingStaff,
                         role: e.target.value,
@@ -578,23 +451,9 @@ export default function StaffManagementPage() {
                     }}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
                   >
-                    {AVAILABLE_ROLES.map((r) => (
+                    {roles.map((r) => (
                       <option key={r.key} value={r.key}>{r.title_ar}</option>
                     ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">القسم الداخلي:</label>
-                  <select
-                    value={editingStaff.department}
-                    onChange={(e) => setEditingStaff({ ...editingStaff, department: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
-                  >
-                    <option value="الإدارة العامة">الإدارة العامة</option>
-                    <option value="قسم المبيعات">قسم المبيعات والحجوزات</option>
-                    <option value="خدمة العملاء">خدمة العملاء والدعم الفني</option>
-                    <option value="التسويق والحملات">التسويق والحملات</option>
                   </select>
                 </div>
               </div>
@@ -606,17 +465,17 @@ export default function StaffManagementPage() {
                   الخطوط المسموح للموظف القراءة والإرسال منها:
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {ALL_AVAILABLE_LINES.map((ln) => {
-                    const isAssigned = editingStaff.assigned_lines.includes(ln.name);
+                  {lines.map((ln) => {
+                    const isAssigned = editingStaff.line_ids.includes(ln.id);
                     return (
                       <button
                         key={ln.id}
                         type="button"
                         onClick={() => {
                           const nextLines = isAssigned
-                            ? editingStaff.assigned_lines.filter(l => l !== ln.name)
-                            : [...editingStaff.assigned_lines, ln.name];
-                          setEditingStaff({ ...editingStaff, assigned_lines: nextLines });
+                            ? editingStaff.line_ids.filter(l => l !== ln.id)
+                            : [...editingStaff.line_ids, ln.id];
+                          setEditingStaff({ ...editingStaff, line_ids: nextLines });
                         }}
                         className={`p-2.5 rounded-xl border text-xs font-semibold text-right transition-all flex items-center justify-between ${
                           isAssigned
@@ -639,17 +498,17 @@ export default function StaffManagementPage() {
                   الصناديق المسندة للموظف:
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {ALL_AVAILABLE_INBOXES.map((ibx) => {
-                    const isAssigned = editingStaff.assigned_inboxes.includes(ibx.name);
+                  {inboxes.map((ibx) => {
+                    const isAssigned = editingStaff.inbox_ids.includes(ibx.id);
                     return (
                       <button
                         key={ibx.id}
                         type="button"
                         onClick={() => {
                           const nextInboxes = isAssigned
-                            ? editingStaff.assigned_inboxes.filter(i => i !== ibx.name)
-                            : [...editingStaff.assigned_inboxes, ibx.name];
-                          setEditingStaff({ ...editingStaff, assigned_inboxes: nextInboxes });
+                            ? editingStaff.inbox_ids.filter(i => i !== ibx.id)
+                            : [...editingStaff.inbox_ids, ibx.id];
+                          setEditingStaff({ ...editingStaff, inbox_ids: nextInboxes });
                         }}
                         className={`p-2.5 rounded-xl border text-xs font-semibold text-right transition-all flex items-center justify-between ${
                           isAssigned
@@ -657,7 +516,7 @@ export default function StaffManagementPage() {
                             : 'bg-slate-900/80 text-slate-400 border-slate-800'
                         }`}
                       >
-                        <span>{ibx.name}</span>
+                        <span>{ibx.name_ar}</span>
                         {isAssigned && <Check className="w-3.5 h-3.5 text-blue-400" />}
                       </button>
                     );
