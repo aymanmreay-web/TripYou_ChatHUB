@@ -76,13 +76,13 @@ export default function PendingApprovalPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070314] text-white flex items-center justify-center p-4 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-[var(--bg-main)] text-white flex items-center justify-center p-4 relative overflow-hidden font-sans">
       
       {/* Background glow effects */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 right-10 w-64 h-64 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
 
-      <div className="max-w-md w-full bg-[#120B24]/90 backdrop-blur-xl border border-purple-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6 relative z-10">
+      <div className="max-w-md w-full bg-[var(--card-bg)]/90 backdrop-blur-xl border border-purple-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6 relative z-10">
         
         {/* Top Icon */}
         <div className="w-16 h-16 rounded-3xl bg-amber-500/15 border-2 border-amber-500/40 flex items-center justify-center mx-auto text-amber-400 shadow-lg shadow-amber-950/50">

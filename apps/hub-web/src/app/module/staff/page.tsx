@@ -395,7 +395,7 @@ export default function StaffManagementPage() {
            ═════════════════════════════════════════════════════════ */}
         {editingStaff && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#120B24] border border-purple-500/50 rounded-3xl max-w-xl w-full p-6 space-y-5 text-right shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-[var(--card-bg)] border border-purple-500/50 rounded-3xl max-w-xl w-full p-6 space-y-5 text-right shadow-2xl max-h-[90vh] overflow-y-auto">
               
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                 <div className="flex items-center gap-2">

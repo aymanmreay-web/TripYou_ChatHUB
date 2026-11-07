@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -33,16 +31,27 @@
 
     /* Purple Shades (50 - 950) */
     --brand-50: #FAF5FF;
+    --brand-50-rgb: 250 245 255;
     --brand-100: #F3E8FF;
+    --brand-100-rgb: 243 232 255;
     --brand-200: #E9D5FF;
+    --brand-200-rgb: 233 213 255;
     --brand-300: #D8B4FE;
+    --brand-300-rgb: 216 180 254;
     --brand-400: #C084FC;
+    --brand-400-rgb: 192 132 252;
     --brand-500: #A855F7;
+    --brand-500-rgb: 168 85 247;
     --brand-600: #9333EA;
+    --brand-600-rgb: 147 51 234;
     --brand-700: #7E22CE;
+    --brand-700-rgb: 126 34 206;
     --brand-800: #6B21A8;
+    --brand-800-rgb: 107 33 168;
     --brand-900: #581C87;
+    --brand-900-rgb: 88 28 135;
     --brand-950: #2E0B55;
+    --brand-950-rgb: 46 11 85;
 
     /* Chat Bubbles (Dribbble Trends) */
     --bubble-user-bg: linear-gradient(135deg, #7C3AED 0%, #9333EA 60%, #A855F7 100%);
@@ -73,16 +82,28 @@
     --primary-glow: rgba(147, 51, 234, 0.18);
 
     --brand-50: #FAF5FF;
+
+    --brand-50-rgb: 250 245 255;
     --brand-100: #F3E8FF;
+    --brand-100-rgb: 243 232 255;
     --brand-200: #E9D5FF;
+    --brand-200-rgb: 233 213 255;
     --brand-300: #D8B4FE;
+    --brand-300-rgb: 216 180 254;
     --brand-400: #C084FC;
+    --brand-400-rgb: 192 132 252;
     --brand-500: #A855F7;
+    --brand-500-rgb: 168 85 247;
     --brand-600: #7C3AED;
+    --brand-600-rgb: 124 58 237;
     --brand-700: #6D28D9;
+    --brand-700-rgb: 109 40 217;
     --brand-800: #5B21B6;
+    --brand-800-rgb: 91 33 182;
     --brand-900: #4C1D95;
+    --brand-900-rgb: 76 29 149;
     --brand-950: #2E0B55;
+    --brand-950-rgb: 46 11 85;
 
     --bubble-user-bg: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
     --bubble-user-text: #FFFFFF;
@@ -112,16 +133,27 @@
 
     /* Blue Shades (50 - 950) */
     --brand-50: #F0F9FF;
+    --brand-50-rgb: 240 249 255;
     --brand-100: #E0F2FE;
+    --brand-100-rgb: 224 242 254;
     --brand-200: #BAE6FD;
+    --brand-200-rgb: 186 230 253;
     --brand-300: #7DD3FC;
+    --brand-300-rgb: 125 211 252;
     --brand-400: #38BDF8;
+    --brand-400-rgb: 56 189 248;
     --brand-500: #0EA5E9;
+    --brand-500-rgb: 14 165 233;
     --brand-600: #0284C7;
+    --brand-600-rgb: 2 132 199;
     --brand-700: #0369A1;
+    --brand-700-rgb: 3 105 161;
     --brand-800: #075985;
+    --brand-800-rgb: 7 89 133;
     --brand-900: #0C4A6E;
+    --brand-900-rgb: 12 74 110;
     --brand-950: #042137;
+    --brand-950-rgb: 4 33 55;
 
     --bubble-user-bg: linear-gradient(135deg, #0284C7 0%, #0EA5E9 60%, #38BDF8 100%);
     --bubble-user-text: #FFFFFF;
@@ -150,16 +182,28 @@
     --primary-glow: rgba(14, 165, 233, 0.18);
 
     --brand-50: #F0F9FF;
+
+    --brand-50-rgb: 240 249 255;
     --brand-100: #E0F2FE;
+    --brand-100-rgb: 224 242 254;
     --brand-200: #BAE6FD;
+    --brand-200-rgb: 186 230 253;
     --brand-300: #7DD3FC;
+    --brand-300-rgb: 125 211 252;
     --brand-400: #38BDF8;
+    --brand-400-rgb: 56 189 248;
     --brand-500: #0EA5E9;
+    --brand-500-rgb: 14 165 233;
     --brand-600: #0284C7;
+    --brand-600-rgb: 2 132 199;
     --brand-700: #0369A1;
+    --brand-700-rgb: 3 105 161;
     --brand-800: #075985;
+    --brand-800-rgb: 7 89 133;
     --brand-900: #0C4A6E;
+    --brand-900-rgb: 12 74 110;
     --brand-950: #082F49;
+    --brand-950-rgb: 8 47 73;
 
     --bubble-user-bg: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
     --bubble-user-text: #FFFFFF;
@@ -168,10 +212,91 @@
     --bubble-peer-text: #0B192C;
   }
 
+  /* ==========================================================================
+     Google Glass Theme (theme-google) — الثيم الجديد: زجاج + ألوان جوجل المتحركة
+     يستخدم نفس أسماء المتغيرات القديمة، فتتبعه كل المكونات تلقائياً.
+     ========================================================================== */
+  html.theme-google {
+    --font-ui: 'Readex Pro Variable', 'IBM Plex Sans Arabic', 'Alexandria Variable', system-ui, sans-serif;
+    --font-head: 'Readex Pro Variable', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+    --g-blue: #4285F4; --g-red: #EA4335; --g-yellow: #FBBC04; --g-green: #34A853;
+    --radius-ui: 22px;
+    --glass-blur: 30px;
+  }
+
+  html.theme-google.light {
+    --bg-main: #EEF2FA; --background: #EEF2FA;
+    --foreground: #1A1F2C; --text-main: #1A1F2C; --text-muted: #5B6376; --text-secondary: #1A73E8;
+    --card-bg: #FFFFFF; --card-elevated: #F6F8FD; --card-surface: #EAEFFA;
+    --card-border: rgba(24, 38, 80, 0.10); --border-subtle: rgba(24, 38, 80, 0.10); --border-glow: rgba(26, 115, 232, 0.35);
+    --primary: #1A73E8; --primary-glow: rgba(26, 115, 232, 0.18);
+    --brand-50: #E8F0FE;
+    --brand-50-rgb: 232 240 254;
+    --brand-100: #D2E3FC;
+    --brand-100-rgb: 210 227 252;
+    --brand-200: #AECBFA;
+    --brand-200-rgb: 174 203 250;
+    --brand-300: #8AB4F8;
+    --brand-300-rgb: 138 180 248;
+    --brand-400: #669DF6;
+    --brand-400-rgb: 102 157 246;
+    --brand-500: #4285F4;
+    --brand-500-rgb: 66 133 244;
+    --brand-600: #1A73E8;
+    --brand-600-rgb: 26 115 232;
+    --brand-700: #1967D2;
+    --brand-700-rgb: 25 103 210;
+    --brand-800: #185ABC;
+    --brand-800-rgb: 24 90 188;
+    --brand-900: #174EA6;
+    --brand-900-rgb: 23 78 166;
+    --brand-950: #0B2A6B;
+    --brand-950-rgb: 11 42 107;
+    --bubble-user-bg: #1A73E8; --bubble-user-text: #FFFFFF;
+    --bubble-peer-bg: #FFFFFF; --bubble-peer-border: rgba(24, 38, 80, 0.10); --bubble-peer-text: #1A1F2C;
+  }
+
+  html.theme-google.dark {
+    --bg-main: #0A0C13; --background: #0A0C13;
+    --foreground: #EDF0F7; --text-main: #EDF0F7; --text-muted: #A0A8BC; --text-secondary: #8AB4F8;
+    --card-bg: #121623; --card-elevated: #171B28; --card-surface: #1F2436;
+    --card-border: rgba(255, 255, 255, 0.10); --border-subtle: rgba(255, 255, 255, 0.10); --border-glow: rgba(138, 180, 248, 0.45);
+    --primary: #8AB4F8; --primary-glow: rgba(138, 180, 248, 0.30);
+    --brand-50: #E8F0FE;
+    --brand-50-rgb: 232 240 254;
+    --brand-100: #D2E3FC;
+    --brand-100-rgb: 210 227 252;
+    --brand-200: #AECBFA;
+    --brand-200-rgb: 174 203 250;
+    --brand-300: #8AB4F8;
+    --brand-300-rgb: 138 180 248;
+    --brand-400: #669DF6;
+    --brand-400-rgb: 102 157 246;
+    --brand-500: #4285F4;
+    --brand-500-rgb: 66 133 244;
+    --brand-600: #1A73E8;
+    --brand-600-rgb: 26 115 232;
+    --brand-700: #1967D2;
+    --brand-700-rgb: 25 103 210;
+    --brand-800: #185ABC;
+    --brand-800-rgb: 24 90 188;
+    --brand-900: #174EA6;
+    --brand-900-rgb: 23 78 166;
+    --brand-950: #0B2A6B;
+    --brand-950-rgb: 11 42 107;
+    --bubble-user-bg: #8AB4F8; --bubble-user-text: #10131C;
+    --bubble-peer-bg: #232839; --bubble-peer-border: rgba(255, 255, 255, 0.10); --bubble-peer-text: #EDF0F7;
+  }
+
+  :root {
+    --font-ui: 'Alexandria Variable', 'Cairo Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-head: var(--font-ui);
+  }
+
   body {
     background-color: var(--bg-main);
     color: var(--text-main);
-    font-family: 'Alexandria', 'Cairo', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-ui);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -185,24 +310,33 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Broadcast Luxury Scrollbar */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+/* Refined scrollbar — خطّ رفيع، يظهر فقط عند التمرير أو المرور بالمؤشر */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
-
-::-webkit-scrollbar-track {
-  background: transparent;
+*:hover,
+*:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-main) 26%, transparent) transparent;
 }
-
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; margin: 10px; }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-glow);
   border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  background-color: transparent;
+  transition: background-color 0.3s;
 }
-
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--text-main) 24%, transparent);
+}
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--brand-500);
+  background-color: color-mix(in srgb, var(--brand-500) 70%, transparent) !important;
+  border-width: 2px;
 }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* Luxury Glassmorphism Panels */
 .glass-panel {
@@ -281,4 +415,47 @@ select[dir="rtl"] {
 input[dir="rtl"]::placeholder,
 textarea[dir="rtl"]::placeholder {
   text-align: right;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Google Glass — عناصر الهوية الجديدة (تعمل في كل الثيمات)
+   ═══════════════════════════════════════════════════════ */
+@property --ring-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes ring-spin { to { --ring-angle: 360deg; } }
+@keyframes gbar-slide { to { background-position: -300% 0; } }
+
+/* شريط ألوان جوجل المتحرك (أعلى الصفحة أو الحاوية) */
+.gbar {
+  height: 3px;
+  background: linear-gradient(90deg, var(--g-blue, #4285F4), var(--g-red, #EA4335), var(--g-yellow, #FBBC04), var(--g-green, #34A853), var(--g-blue, #4285F4));
+  background-size: 300% 100%;
+  animation: gbar-slide 9s linear infinite;
+}
+
+/* حلقة ألوان جوجل الدوّارة حول الأفاتار */
+.avatar-ring {
+  background: conic-gradient(from var(--ring-angle), var(--g-blue, #4285F4), var(--g-red, #EA4335), var(--g-yellow, #FBBC04), var(--g-green, #34A853), var(--g-blue, #4285F4));
+  animation: ring-spin 6s linear infinite;
+}
+
+/* هالات الخلفية المتحركة (aurora) */
+.aurora { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.aurora i {
+  position: absolute; width: 46vmax; height: 46vmax; border-radius: 50%;
+  filter: blur(90px); opacity: 0.28; animation: aurora-drift 26s ease-in-out infinite alternate;
+}
+.aurora i:nth-child(1) { background: var(--g-blue, #4285F4); top: -18%; right: -10%; }
+.aurora i:nth-child(2) { background: var(--g-red, #EA4335); bottom: -22%; right: 18%; animation-duration: 31s; }
+.aurora i:nth-child(3) { background: var(--g-yellow, #FBBC04); top: 6%; left: -14%; animation-duration: 35s; }
+.aurora i:nth-child(4) { background: var(--g-green, #34A853); bottom: -16%; left: 10%; animation-duration: 28s; }
+@keyframes aurora-drift { to { transform: translate(8vmax, -6vmax) scale(1.18); } }
+
+/* احترام تفضيل تقليل الحركة */
+@media (prefers-reduced-motion: reduce) {
+  .gbar, .avatar-ring, .aurora i { animation: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
 }

@@ -266,7 +266,7 @@ export default function LinesPage() {
       {/* --- نافذة مسح رمز الـ QR Code لربط الخط --- */}
       {qrModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
+          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <QrCode className="w-5 h-5 text-purple-400" />

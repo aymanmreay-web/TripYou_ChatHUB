@@ -873,7 +873,7 @@ export default function ContactsPage() {
            ════════════════════════════════════════════════════════ */}
         {addModalOpen && (
           <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
+            <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                 <h3 className="font-bold text-base text-white">
                   {editContact ? '✏️ تعديل بيانات جهة الاتصال' : '➕ إضافة جهة اتصال جديدة ثلاثية الأبعاد'}
@@ -893,7 +893,7 @@ export default function ContactsPage() {
                       value={formData.display_name}
                       onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                       placeholder="مثال: فندق صفوة المدينة أو أ. عبدالله"
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
 
@@ -905,7 +905,7 @@ export default function ContactsPage() {
                       value={formData.primary_phone}
                       onChange={(e) => setFormData({ ...formData, primary_phone: e.target.value })}
                       placeholder="+9665xxxxxxxx أو 05xxxxxxxx"
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left font-mono"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left font-mono"
                     />
                   </div>
                 </div>
@@ -916,7 +916,7 @@ export default function ContactsPage() {
                     <select
                       value={formData.entity_type}
                       onChange={(e) => setFormData({ ...formData, entity_type: e.target.value as any })}
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     >
                       <option value="individual">🧑 فرد</option>
                       <option value="organization">🏢 منشأة / شركة</option>
@@ -929,7 +929,7 @@ export default function ContactsPage() {
                     <select
                       value={formData.commercial_role}
                       onChange={(e) => setFormData({ ...formData, commercial_role: e.target.value as any })}
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     >
                       <option value="b2c">عميل مباشر (B2C)</option>
                       <option value="b2b">شركة (B2B)</option>
@@ -944,7 +944,7 @@ export default function ContactsPage() {
                     <select
                       value={formData.source}
                       onChange={(e) => setFormData({ ...formData, source: e.target.value as any })}
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-emerald-400 font-medium"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-emerald-400 font-medium"
                     >
                       <option value="manual">✍️ إدخال يدوي</option>
                       <option value="evolution">📱 خط واتساب (Evolution)</option>
@@ -963,7 +963,7 @@ export default function ContactsPage() {
                       value={formData.source_detail}
                       onChange={(e) => setFormData({ ...formData, source_detail: e.target.value })}
                       placeholder="مثال: evolution:Sells_2 أو حجاج_1446.xlsx"
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
 
@@ -974,7 +974,7 @@ export default function ContactsPage() {
                       value={formData.company}
                       onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                       placeholder="مثال: شركة ريزف بار للسياحة"
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
                 </div>
@@ -987,7 +987,7 @@ export default function ContactsPage() {
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       placeholder="email@example.com"
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left"
                     />
                   </div>
 
@@ -998,7 +998,7 @@ export default function ContactsPage() {
                       value={formData.city}
                       onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                       placeholder="مكة المكرمة"
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
 
@@ -1009,7 +1009,7 @@ export default function ContactsPage() {
                       value={formData.district}
                       onChange={(e) => setFormData({ ...formData, district: e.target.value })}
                       placeholder="حي العزيزية"
-                      className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1021,7 +1021,7 @@ export default function ContactsPage() {
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     placeholder="ملاحظات حول جهة الاتصال والاتفاقات..."
-                    className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none resize-none"
+                    className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none resize-none"
                   />
                 </div>
 
@@ -1051,7 +1051,7 @@ export default function ContactsPage() {
            ════════════════════════════════════════════════════════ */}
         {importModalOpen && (
           <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
+            <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                 <div className="flex items-center gap-2">
                   <Upload className="w-5 h-5 text-purple-400" />
@@ -1072,7 +1072,7 @@ export default function ContactsPage() {
                       className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
                         importSourceType === 'excel_import'
                           ? 'bg-emerald-950/50 border-emerald-500/60 text-emerald-300 font-bold'
-                          : 'bg-[#1A1235] border-purple-900/40 text-slate-400'
+                          : 'bg-[var(--card-elevated)] border-purple-900/40 text-slate-400'
                       }`}
                     >
                       <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
@@ -1084,7 +1084,7 @@ export default function ContactsPage() {
                       className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
                         importSourceType === 'contacts_file'
                           ? 'bg-sky-950/50 border-sky-500/60 text-sky-300 font-bold'
-                          : 'bg-[#1A1235] border-purple-900/40 text-slate-400'
+                          : 'bg-[var(--card-elevated)] border-purple-900/40 text-slate-400'
                       }`}
                     >
                       <FileText className="w-5 h-5 text-sky-400" />
@@ -1096,7 +1096,7 @@ export default function ContactsPage() {
                       className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
                         importSourceType === 'evolution'
                           ? 'bg-purple-950/50 border-purple-500/60 text-purple-300 font-bold'
-                          : 'bg-[#1A1235] border-purple-900/40 text-slate-400'
+                          : 'bg-[var(--card-elevated)] border-purple-900/40 text-slate-400'
                       }`}
                     >
                       <Smartphone className="w-5 h-5 text-purple-400" />
@@ -1114,7 +1114,7 @@ export default function ContactsPage() {
                     value={importSourceDetail}
                     onChange={(e) => setImportSourceDetail(e.target.value)}
                     placeholder="مثال: ملف_حجاج_1446.xlsx أو خط واتساب Sells_2"
-                    className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                    className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                   />
                 </div>
 
@@ -1128,7 +1128,7 @@ export default function ContactsPage() {
                     value={importRawText}
                     onChange={(e) => setImportRawText(e.target.value)}
                     placeholder={"فندق الصفوة, +966500123456, شركة الحج والعمرة\nأحمد علي, 0551234567\n+966548540410"}
-                    className="w-full bg-[#1A1235] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none font-mono text-left resize-none"
+                    className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none font-mono text-left resize-none"
                   />
                 </div>
 

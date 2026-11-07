@@ -60,10 +60,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#070314] text-white flex items-center justify-center p-4 relative">
+    <div className="h-screen w-screen overflow-hidden bg-[var(--bg-main)] text-white flex items-center justify-center p-4 relative">
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-gradient-to-tr from-purple-700/20 via-indigo-600/15 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-      <div className="max-w-sm w-full bg-[#120B24]/95 backdrop-blur-2xl border border-purple-500/30 rounded-3xl p-7 shadow-2xl relative z-10">
+      <div className="max-w-sm w-full bg-[var(--card-bg)]/95 backdrop-blur-2xl border border-purple-500/30 rounded-3xl p-7 shadow-2xl relative z-10">
         <div className="text-center mb-6 space-y-3">
           {brand.logo ? (
             <img src={brand.logo} alt="" className="w-16 h-16 object-contain mx-auto" />
@@ -118,7 +118,7 @@ export default function LoginPage() {
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-purple-900/40" />
           </div>
-          <span className="relative bg-[#120B24] px-3 text-[10px] text-slate-500">أو</span>
+          <span className="relative bg-[var(--card-bg)] px-3 text-[10px] text-slate-500">أو</span>
         </div>
 
         <button

@@ -375,7 +375,7 @@ export default function LabelsAndTagsPage() {
             {/* Modal تعديل الوسم مع منتقي الألوان العصري */}
             {editingTag && (
               <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-sm w-full p-5 space-y-4 text-right shadow-2xl">
+                <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-sm w-full p-5 space-y-4 text-right shadow-2xl">
                   <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                     <h4 className="font-bold text-white text-sm">تعديل الوسم</h4>
                     <button onClick={() => setEditingTag(null)} className="text-slate-400 hover:text-white">
@@ -547,7 +547,7 @@ export default function LabelsAndTagsPage() {
             {/* Modal تعديل أو إضافة حالة مع منتقي الألوان العصري */}
             {editingStatus && (
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 space-y-4 text-right shadow-2xl">
+                <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 space-y-4 text-right shadow-2xl">
                   <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                     <h4 className="font-bold text-white text-sm flex items-center gap-2">
                       <SlidersHorizontal className="w-4 h-4 text-purple-400" />

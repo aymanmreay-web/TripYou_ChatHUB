@@ -83,7 +83,7 @@ export function ModernColorPicker({ value, onChange, label }: ModernColorPickerP
 
       {/* Popover */}
       {isOpen && (
-        <div className="absolute z-50 mt-2 right-0 w-64 p-3.5 rounded-2xl bg-[#120B24] border border-purple-500/40 shadow-2xl space-y-3 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute z-50 mt-2 right-0 w-64 p-3.5 rounded-2xl bg-[var(--card-bg)] border border-purple-500/40 shadow-2xl space-y-3 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
           <div className="text-[11px] font-bold text-slate-300 pb-1 border-b border-purple-900/40 flex items-center justify-between">
             <span>اختر لوناً عصرياً</span>
             <span

@@ -263,7 +263,7 @@ export default function InboxesPage() {
         {/* Modal إنشاء وتعديل الصندوق */}
         {editingInbox && (
           <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 space-y-5 text-right shadow-2xl">
+            <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 space-y-5 text-right shadow-2xl">
               
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                 <h4 className="font-bold text-white text-base flex items-center gap-2">

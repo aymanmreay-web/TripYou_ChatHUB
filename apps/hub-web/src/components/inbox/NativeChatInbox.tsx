@@ -2264,7 +2264,7 @@ export function NativeChatInbox() {
                         <div
                           className={`absolute -top-3 ${
                             isOut ? 'left-2' : 'right-2'
-                          } hidden group-hover/msg:flex items-center gap-1 bg-[#150D2A] border border-purple-500/40 rounded-xl px-2 py-0.5 shadow-2xl z-30 backdrop-blur-md transition-all`}
+                          } hidden group-hover/msg:flex items-center gap-1 bg-[var(--card-bg)] border border-purple-500/40 rounded-xl px-2 py-0.5 shadow-2xl z-30 backdrop-blur-md transition-all`}
                         >
                           <button
                             type="button"
@@ -2739,7 +2739,7 @@ export function NativeChatInbox() {
                             className="fixed inset-0 z-40"
                             onClick={() => setShowEmojiPicker(false)}
                           />
-                          <div className="absolute bottom-12 right-0 z-50 bg-[#120B24] border border-purple-500/40 rounded-2xl p-3 shadow-2xl w-72 grid grid-cols-8 gap-1.5 text-xl backdrop-blur-md">
+                          <div className="absolute bottom-12 right-0 z-50 bg-[var(--card-bg)] border border-purple-500/40 rounded-2xl p-3 shadow-2xl w-72 grid grid-cols-8 gap-1.5 text-xl backdrop-blur-md">
                             {['😀','😂','🤣','😍','🥰','😘','😜','😎','🥳','🤔','🤫','🙄','😬','😴','👍','👎','👏','🙌','🙏','🤝','🔥','❤️','🎉','✨','🇸🇦','🌹','✈️','🏨','💼','📞','💬','✅','❌','⚠️','💯','👌','🤲','👋','💪','🎯'].map((em) => (
                               <button
                                 key={em}
@@ -2809,7 +2809,7 @@ export function NativeChatInbox() {
       {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء --- */}
       {quietConfirmOpen && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#120B24] border border-amber-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
+          <div className="bg-[var(--card-bg)] border border-amber-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
                 <Moon className="w-6 h-6 animate-pulse" />
@@ -2824,7 +2824,7 @@ export function NativeChatInbox() {
               أنت على وشك إرسال رسالة إلى العميل في وقت متأخر. قد يتسبب ذلك في إزعاج العميل أو تلقي بلاغات سبام قد تؤدي لحظر رقمك على واتساب.
             </p>
 
-            <div className="p-3 bg-[#080512] rounded-xl border border-purple-900/40 text-xs text-purple-200 font-mono">
+            <div className="p-3 bg-[var(--bg-main)] rounded-xl border border-purple-900/40 text-xs text-purple-200 font-mono">
               &quot;{pendingSendText}&quot;
             </div>
 
@@ -2852,7 +2852,7 @@ export function NativeChatInbox() {
       {/* --- نافذة معاينة وإرسال المرفقات --- */}
       {attachmentModalOpen && selectedAttachment && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-right">
+          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
@@ -2910,7 +2910,7 @@ export function NativeChatInbox() {
                   setSelectedAttachment((prev) => (prev ? { ...prev, caption: e.target.value } : null))
                 }
                 placeholder="اكتب تعليقاً على المرفق (اختياري)..."
-                className="w-full bg-[#080512] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
+                className="w-full bg-[var(--bg-main)] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
               />
             </div>
 
@@ -3036,7 +3036,7 @@ export function NativeChatInbox() {
          ════════════════════════════════════════════════════════ */}
       {multiSendModalOpen && batchAttachments.length > 0 && (
         <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 text-right">
+          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
@@ -3130,7 +3130,7 @@ export function NativeChatInbox() {
                 value={batchCaption}
                 onChange={(e) => setBatchCaption(e.target.value)}
                 placeholder="اكتب وصفاً للدفعة (اختياري)..."
-                className="w-full bg-[#080512] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
+                className="w-full bg-[var(--bg-main)] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
               />
             </div>
 
@@ -3175,7 +3175,7 @@ export function NativeChatInbox() {
          ════════════════════════════════════════════════════════ */}
       {pinModalMsg && (
         <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#120B24] border border-amber-500/40 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 text-right">
+          <div className="bg-[var(--card-bg)] border border-amber-500/40 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
                 <Pin className="w-4 h-4 rotate-45" />
@@ -3220,7 +3220,7 @@ export function NativeChatInbox() {
          ════════════════════════════════════════════════════════ */}
       {forwardModalMsg && (
         <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#120B24] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
+          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
                 <Share2 className="w-4 h-4" />
@@ -3237,7 +3237,7 @@ export function NativeChatInbox() {
                 value={forwardSearch}
                 onChange={(e) => setForwardSearch(e.target.value)}
                 placeholder="ابحث عن اسم العميل أو المجموعة..."
-                className="w-full bg-[#080512] pr-9 pl-3 py-2 text-xs rounded-xl border border-white/10 text-white outline-none focus:border-purple-500"
+                className="w-full bg-[var(--bg-main)] pr-9 pl-3 py-2 text-xs rounded-xl border border-white/10 text-white outline-none focus:border-purple-500"
               />
             </div>
             <div className="max-h-60 overflow-y-auto space-y-1.5">
@@ -3266,7 +3266,7 @@ export function NativeChatInbox() {
          ════════════════════════════════════════════════════════ */}
       {favoritesDrawerOpen && (
         <div className="fixed inset-0 z-[170] bg-black/60 backdrop-blur-sm flex justify-start">
-          <div className="w-full max-w-md bg-[#100922] border-l border-purple-500/30 h-full p-5 flex flex-col shadow-2xl text-right animate-in slide-in-from-left duration-200">
+          <div className="w-full max-w-md bg-[var(--card-bg)] border-l border-purple-500/30 h-full p-5 flex flex-col shadow-2xl text-right animate-in slide-in-from-left duration-200">
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
