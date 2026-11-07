@@ -356,7 +356,7 @@ export function NativeChatInbox() {
 
   // UI & Input Controls
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [filterTab, setFilterTab] = useState<'all' | 'mine' | 'unread' | 'groups' | 'escalated'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'mine' | 'unassigned' | 'unread' | 'rescue' | 'direct' | 'groups' | 'escalated'>('all');
   const [inputText, setInputText] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
@@ -471,6 +471,8 @@ export function NativeChatInbox() {
   const [pinError, setPinError] = useState<string>('');
   const [requestAccessModalOpen, setRequestAccessModalOpen] = useState<boolean>(false);
   const [requestAccessSent, setRequestAccessSent] = useState<boolean>(false);
+  const [requestAccessType, setRequestAccessType] = useState<'read' | 'reply' | 'reassign'>('read');
+  const [requestAccessReason, setRequestAccessReason] = useState<string>('');
 
   // ─── تحويل الرسائل (Forward Message) ───
   const [forwardModalMsg, setForwardModalMsg] = useState<ChatMessage | null>(null);
@@ -826,6 +828,7 @@ export function NativeChatInbox() {
 
   // Filter conversations based on search and tabs
   const filteredConversations = useMemo(() => {
+    const now = Date.now();
     return conversations.filter((c) => {
       const matchSearch =
         c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -834,20 +837,50 @@ export function NativeChatInbox() {
 
       if (!matchSearch) return false;
       if (filterTab === 'mine') return c.assigned_staff_name === user?.full_name;
+      if (filterTab === 'unassigned') return !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند';
       if (filterTab === 'unread') return c.unread_count > 0;
+      if (filterTab === 'rescue') {
+        // رادار الاقتناص السريع: تأخر الرد أكثر من 15 دقيقة (900000ms)
+        const delay = now - (c.last_customer_message_timestamp || 0);
+        return delay >= 15 * 60 * 1000;
+      }
+      if (filterTab === 'direct') return !c.is_group;
       if (filterTab === 'groups') return c.is_group;
       if (filterTab === 'escalated') return c.status === 'escalated';
       return true;
     });
   }, [conversations, searchQuery, filterTab, user]);
 
+  // مؤقت ذكي لتصفير قراءة الرسائل بعد ثانيتين (2s) في المحادثة وإرسالها لـ Evolution API
+  useEffect(() => {
+    if (!activeConvId) return;
+    const active = conversations.find((c) => c.id === activeConvId);
+    if (!active || active.unread_count === 0) return;
+
+    const timer = setTimeout(async () => {
+      // 1. تصفير العداد محلياً
+      setConversations((prev) =>
+        prev.map((c) => (c.id === activeConvId ? { ...c, unread_count: 0 } : c))
+      );
+      // 2. إرسال أمر markMessageAsRead لخادم Evolution API ليعكس القراءة على واتساب والجوال
+      const instance = active.line_id || selectedInstanceName;
+      try {
+        await fetch(`/api/evolution/instances/${instance}/read`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatJid: active.chat_jid }),
+        });
+      } catch (e) {
+        console.warn('Silent read status update failed:', e);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [activeConvId, conversations, selectedInstanceName]);
+
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);
     setShowMobileChat(true);
-
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, unread_count: 0 } : c))
-    );
   };
 
   // --- Supabase: حفظ حالة المحادثة (upsert) ---
@@ -1668,8 +1701,8 @@ export function NativeChatInbox() {
               />
             </div>
 
-            {/* Filter Tabs - مع تبويبات دورة الإسناد */}
-            <div className="flex items-center gap-1 text-[11px] overflow-x-auto pb-1 scrollbar-none">
+            {/* Filter Tabs - مع تبويبات دورة الإسناد والرادار والمجموعات */}
+            <div className="flex items-center gap-1.5 text-[11px] overflow-x-auto pb-1 scrollbar-none" dir="rtl">
               <button
                 onClick={() => setFilterTab('all')}
                 className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
@@ -1691,8 +1724,18 @@ export function NativeChatInbox() {
                 المسندة لي
               </button>
               <button
+                onClick={() => setFilterTab('unassigned')}
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                  filterTab === 'unassigned'
+                    ? 'bg-amber-600/30 text-amber-300 font-bold border border-amber-500/50'
+                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                }`}
+              >
+                غير مسندة ({conversations.filter((c) => !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند').length})
+              </button>
+              <button
                 onClick={() => setFilterTab('unread')}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
                   filterTab === 'unread'
                     ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
@@ -1701,24 +1744,45 @@ export function NativeChatInbox() {
                 غير مقروء ({conversations.filter((c) => c.unread_count > 0).length})
               </button>
               <button
-                onClick={() => setFilterTab('escalated')}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
-                  filterTab === 'escalated'
-                    ? 'bg-rose-600/30 text-rose-300 font-semibold border border-rose-500/50'
+                onClick={() => setFilterTab('rescue')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                  filterTab === 'rescue'
+                    ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white font-bold shadow-md shadow-amber-900/40 border border-amber-400/60 animate-pulse'
+                    : 'text-amber-400 hover:text-amber-300 bg-amber-950/30 border border-amber-800/40'
+                }`}
+                title="محادثات تأخر الرد عليها أكثر من 15 دقيقة تنتظر الإسعاف والاقتناص"
+              >
+                <span>🎯 رادار الاقتناص السريع</span>
+              </button>
+              <button
+                onClick={() => setFilterTab('direct')}
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                  filterTab === 'direct'
+                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
-                المصعدة ({conversations.filter((c) => c.status === 'escalated').length})
+                العملاء
               </button>
               <button
                 onClick={() => setFilterTab('groups')}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
                   filterTab === 'groups'
                     ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
                 المجموعات
+              </button>
+              <button
+                onClick={() => setFilterTab('escalated')}
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                  filterTab === 'escalated'
+                    ? 'bg-rose-600/30 text-rose-300 font-semibold border border-rose-500/50'
+                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                }`}
+              >
+                المصعدة ({conversations.filter((c) => c.status === 'escalated').length})
               </button>
             </div>
           </div>
@@ -2116,7 +2180,7 @@ export function NativeChatInbox() {
                     <div className="max-w-md space-y-1">
                       <h3 className="text-base font-bold text-white">هذه المحادثة مشفرة ومقفلة برمز أمان PIN</h3>
                       <p className="text-xs text-[var(--text-muted)]">
-                        تم قفل محتوى هذه المحادثة لحماية خصوصية البيانات. يُرجى إدخال الرمز السري أو إرسال طلب ترخيص للمشرف.
+                        تم قفل محتوى هذه المحادثة لحماية خصوصية البيانات. طلب فتح القفل يذهب حصراً للموظف الذي قام بقفلها، أو يمكنك إدخال الرمز السري إذا كنت تملكه.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -2135,12 +2199,41 @@ export function NativeChatInbox() {
                       <button
                         onClick={() => {
                           setRequestAccessSent(false);
+                          setRequestAccessReason('');
+                          setRequestAccessType('read');
                           setRequestAccessModalOpen(true);
                         }}
                         className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-all"
                       >
                         <ShieldAlert className="w-4 h-4 text-amber-400" />
-                        <span>طلب ترخيص من المشرف</span>
+                        <span>طلب فك القفل من صاحب القفل</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : activeConversation && activeConversation.assigned_staff_name && activeConversation.assigned_staff_name !== 'غير مسند' && user?.full_name && activeConversation.assigned_staff_name !== user.full_name && !unlockedSessionChats[activeConversation.id] ? (
+                  /* 🛡️ حالة: المحادثة مسندة لزميل آخر في الصندوق - المحتوى محجوب لحماية العمل */
+                  <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-6 space-y-4">
+                    <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                      <ShieldAlert className="w-8 h-8" />
+                    </div>
+                    <div className="max-w-md space-y-2">
+                      <h3 className="text-base font-bold text-white">المحادثة قيد المتابعة بواسطة زميل</h3>
+                      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                        هذه المحادثة مسندة حالياً للموظف <strong className="text-amber-300 font-semibold">{activeConversation.assigned_staff_name}</strong>. محتوى الرسائل محجوب لمنع تضارب الردود، ولكن يمكنك تقديم طلب رسمي للمشرف للاطلاع أو الاستلام.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                      <button
+                        onClick={() => {
+                          setRequestAccessSent(false);
+                          setRequestAccessReason('');
+                          setRequestAccessType('read');
+                          setRequestAccessModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-900/40 transition-all"
+                      >
+                        <ShieldAlert className="w-4 h-4" />
+                        <span>تقديم طلب وصول / إسناد للمشرف</span>
                       </button>
                     </div>
                   </div>
@@ -3347,18 +3440,22 @@ export function NativeChatInbox() {
         </div>
       )}
 
-      {/* 🛡️ نافذة طلب ترخيص الوصول من المشرف */}
+      {/* 🛡️ نافذة طلب ترخيص الوصول والإسناد من المشرف أو صاحب القفل */}
       {requestAccessModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl" dir="rtl">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl text-right" dir="rtl">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">طلب ترخيص وصول</h4>
-                  <p className="text-[11px] text-slate-400">إرسال تنبيه للمشرف لفك قفل المحادثة</p>
+                  <h4 className="text-sm font-bold text-white">
+                    {activeConversation && lockedChatsPinMap[activeConversation.id] ? 'طلب فك قفل المحادثة' : 'طلب ترخيص وصول / إسناد'}
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    {activeConversation && lockedChatsPinMap[activeConversation.id] ? 'يذهب الطلب حصراً لصاحب القفل' : 'يذهب الطلب للمشرف العام لاعتماده'}
+                  </p>
                 </div>
               </div>
               <button
@@ -3370,20 +3467,86 @@ export function NativeChatInbox() {
             </div>
 
             {requestAccessSent ? (
-              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-center space-y-1">
-                <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-400" />
-                <p className="text-xs font-bold">تم إرسال طلب الترخيص بنجاح!</p>
-                <p className="text-[10px] text-slate-400">سيصلك إشعار فوري فور اعتماد المشرف لطلبك.</p>
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-center space-y-2">
+                <CheckCircle2 className="w-7 h-7 mx-auto text-emerald-400" />
+                <p className="text-xs font-bold">تم إرسال طلب الترخيص والمبررات بنجاح!</p>
+                <p className="text-[11px] text-slate-400">
+                  تم إشعار الجهة المسؤولة بالطلب وسيتم فتح المحادثة تلقائياً فور اعتمادها.
+                </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  هل ترغب في إرسال طلب استئذان فوري للمشرف العام للاطلاع على محادثة: <strong className="text-white font-mono">{activeConversation?.title}</strong>؟
+                  المحادثة المستهدفة: <strong className="text-white font-mono">{activeConversation?.title}</strong>
                 </p>
-                <textarea
-                  placeholder="سبب طلب الوصول (اختياري)..."
-                  className="w-full text-xs p-3 bg-slate-950 border border-white/10 rounded-xl text-white outline-none focus:border-purple-400 resize-none h-20"
-                />
+
+                {/* خيارات نوع الطلب الثلاثية */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-purple-300">حدد نوع الصلاحية المطلوبة:</label>
+                  <div className="grid grid-cols-1 gap-1.5 text-xs">
+                    <label className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      requestAccessType === 'read' ? 'bg-purple-950/60 border-purple-500 text-white' : 'bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="accessType"
+                        value="read"
+                        checked={requestAccessType === 'read'}
+                        onChange={() => setRequestAccessType('read')}
+                        className="text-purple-600 focus:ring-0"
+                      />
+                      <div>
+                        <span className="font-bold block">1. طلب قراءة فقط (Read-Only)</span>
+                        <span className="text-[10px] text-slate-400">للاطلاع على السياق وسجل المحادثة دون إرسال</span>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      requestAccessType === 'reply' ? 'bg-purple-950/60 border-purple-500 text-white' : 'bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="accessType"
+                        value="reply"
+                        checked={requestAccessType === 'reply'}
+                        onChange={() => setRequestAccessType('reply')}
+                        className="text-purple-600 focus:ring-0"
+                      />
+                      <div>
+                        <span className="font-bold block">2. طلب قراءة وتعديل مؤقت (Read & Reply)</span>
+                        <span className="text-[10px] text-slate-400">للتدخل السريع والرد على استفسار عاجل</span>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      requestAccessType === 'reassign' ? 'bg-purple-950/60 border-purple-500 text-white' : 'bg-slate-950/50 border-white/5 text-slate-400 hover:text-slate-200'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="accessType"
+                        value="reassign"
+                        checked={requestAccessType === 'reassign'}
+                        onChange={() => setRequestAccessType('reassign')}
+                        className="text-purple-600 focus:ring-0"
+                      />
+                      <div>
+                        <span className="font-bold block">3. طلب إسناد كامل ودائم (Full Re-assignment)</span>
+                        <span className="text-[10px] text-slate-400">نقل مسؤولية العميل والمتابعة بالكامل إليك</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* حقل كتابة المبررات وسبب الطلب */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-amber-300">سبب ومبررات الطلب (مهم لاعتماد المشرف):</label>
+                  <textarea
+                    value={requestAccessReason}
+                    onChange={(e) => setRequestAccessReason(e.target.value)}
+                    placeholder="اكتب هنا سبب طلبك بالتفصيل ليتمكن المشرف أو صاحب القفل من الموافقة..."
+                    className="w-full text-xs p-3 bg-slate-950 border border-white/10 rounded-xl text-white outline-none focus:border-purple-400 resize-none h-20 placeholder:text-slate-600"
+                  />
+                </div>
               </div>
             )}
 
@@ -3391,9 +3554,9 @@ export function NativeChatInbox() {
               {!requestAccessSent ? (
                 <button
                   onClick={() => setRequestAccessSent(true)}
-                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md shadow-amber-900/30"
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-900/40"
                 >
-                  إرسال الطلب الآن
+                  إرسال الطلب والمبررات الآن
                 </button>
               ) : (
                 <button
