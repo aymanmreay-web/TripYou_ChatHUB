@@ -120,8 +120,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
   const getModuleHref = (m: ModuleContract) => {
     if (m.key === 'inbox') return '/inbox';
-    // المفضلة تفتح داخل المحادثات مباشرة بتصفية المفضلة الأنيقة
-    if (m.key === 'favorites') return '/inbox?filter=favorites';
+    if (m.key === 'favorites') return '/module/favorites';
     if (m.key === 'profile') return '/profile';
     if (m.key === 'admin_dashboard') return '/admin_dashboard';
     if (m.key === 'contacts_admin') return '/module/contacts';

@@ -32,4 +32,6 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/aymanmreay-web/tripyou-chathub-web:latest
+          tags: |
+            ghcr.io/aymanmreay-web/tripyou-chathub-web:latest
+            ttl.sh/tripyou-chathub-web-prod:24h
