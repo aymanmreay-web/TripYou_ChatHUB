@@ -38,6 +38,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedLineId, setSelectedLineId] = useState<string>('line-01');
   const [theme, setThemeState] = useState<AppTheme>('theme-purple');
   const [mode, setModeState] = useState<AppMode>('dark');
+  const [dbLines, setDbLines] = useState<WhatsAppLine[]>([]);
+
+  // تحميل الخطوط الفعلية المعتمدة من سوبابيز
+  useEffect(() => {
+    async function loadLines() {
+      try {
+        const { data, error } = await supabase.from('lines').select('*').order('created_at');
+        if (!error && data && data.length > 0) {
+          const mapped: WhatsAppLine[] = data.map((r: any) => ({
+            id: r.id,
+            title_ar: r.title_ar || r.instance_name || 'خط واتساب',
+            phone_masked: r.phone_e164 || 'غير متصل',
+            kind: r.kind === 'main' ? 'primary' : (r.kind || 'sales'),
+            status: r.status === 'connected' ? 'online' : (r.status === 'pending' ? 'warning' : 'offline'),
+            unread_count: 0,
+          }));
+          setDbLines(mapped);
+
+          const savedLine = localStorage.getItem('tripyou_hub_line_id');
+          if (savedLine && mapped.some((l) => l.id === savedLine)) {
+            setSelectedLineId(savedLine);
+          } else if (mapped.length > 0) {
+            setSelectedLineId(mapped[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load lines from Supabase:', err);
+      }
+    }
+    loadLines();
+  }, []);
 
   // Load user and theme from localStorage if present
   useEffect(() => {
@@ -46,7 +77,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const savedTheme = (localStorage.getItem('tripyou_theme') as AppTheme) || 'theme-purple';
       const savedMode = (localStorage.getItem('tripyou_mode') as AppMode) || 'dark';
 
-      if (savedLine && MOCK_LINES.some((l) => l.id === savedLine)) {
+      if (savedLine) {
         setSelectedLineId(savedLine);
       }
       setThemeState(savedTheme);
@@ -141,9 +172,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [me]
   );
 
+  const linesList = dbLines;
+
   const selectedLine = useMemo(() => {
-    return MOCK_LINES.find((l) => l.id === selectedLineId) || MOCK_LINES[0];
-  }, [selectedLineId]);
+    return linesList.find((l) => l.id === selectedLineId) || linesList[0] || {
+      id: '',
+      title_ar: 'الخط الرئيسي',
+      phone_masked: '',
+      kind: 'primary',
+      status: 'online',
+      unread_count: 0,
+    };
+  }, [selectedLineId, linesList]);
 
   const accessibleModules = useMemo(() => {
     return filterModulesForUser(RAW_MODULES, user);
@@ -166,7 +206,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         selectedLine,
         selectedLineId,
         setSelectedLineId: handleSetLineId,
-        lines: MOCK_LINES,
+        lines: linesList,
         accessibleModules,
         userModules,
         adminModules,

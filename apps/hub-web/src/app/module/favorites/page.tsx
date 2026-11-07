@@ -17,9 +17,9 @@ import {
   Trash2,
   Bookmark,
   Sparkles,
-  ArrowRight,
   Filter,
 } from 'lucide-react';
+import { AppShell } from '../../../components/layout/AppShell';
 
 interface FavoriteItem {
   id: string;
@@ -59,10 +59,15 @@ export default function FavoritesPage() {
 
   useEffect(() => {
     fetchFavorites();
-  }, [activeTab, search]);
+  }, [activeTab]);
 
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchFavorites();
+  };
+
+  // حذف عنصر من المفضلة
   const handleRemove = async (id: string) => {
-    if (!confirm('هل أنت متأكد من إزالة هذا العنصر من المفضلة؟')) return;
     try {
       const res = await fetch(`/api/favorites?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -93,191 +98,196 @@ export default function FavoritesPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#07040E] text-slate-100 p-6 md:p-8 dir-rtl space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-purple-900/30">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-yellow-500/10 border border-amber-500/30 text-amber-400">
-              <Star className="w-7 h-7 fill-amber-400" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                قائمة المفضلات الشخصية
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
-                  {favorites.length} عنصر
-                </span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                الوصول السريع إلى الرسائل، الملفات، الميديا، المحادثات، وجهات الاتصال المميزة بنجمة
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link
-            href="/inbox"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-semibold transition-all"
-          >
-            <span>العودة لصندوق الوارد</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </div>
-
-      {/* Tabs & Search */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        {/* Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-purple-900/20 scrollbar-none">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                  active
-                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/30'
-                    : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/5'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${active ? 'text-amber-300' : 'text-slate-400'}`} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Search input */}
-        <div className="relative min-w-[280px]">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث في العناصر المفضلة..."
-            className="w-full bg-[#120B24] border border-purple-900/40 rounded-xl pr-9 pl-4 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500 transition-colors"
-          />
-        </div>
-      </div>
-
-      {/* Main Content Grid */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
-          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs">جاري تحميل المفضلة...</span>
-        </div>
-      ) : favorites.length === 0 ? (
-        <div className="text-center py-20 border border-dashed border-purple-900/40 rounded-3xl bg-[#100922]/50 p-8 space-y-3">
-          <div className="w-14 h-14 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
-            <Star className="w-7 h-7" />
-          </div>
-          <h3 className="font-bold text-base text-white">لا توجد عناصر في هذا التبويب</h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            يمكنك تمييز أي رسالة، مستند، ميديا، أو جهة اتصال بنجمة من شريط أدوات المحادثة لتظهر هنا مباشرة.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {favorites.map((fav) => {
-            const isMedia = fav.category === 'media';
-            const isFile = fav.category === 'file';
-            const isChat = fav.category === 'direct_chat' || fav.category === 'group';
-
-            return (
-              <div
-                key={fav.id}
-                className="group relative bg-[#130C26] border border-purple-900/40 hover:border-purple-500/60 rounded-2xl p-4 transition-all duration-200 hover:shadow-xl hover:shadow-purple-950/40 flex flex-col justify-between space-y-3"
-              >
-                {/* Header card info */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 rounded-xl bg-purple-900/30 border border-purple-500/20 text-purple-300 shrink-0">
-                      {fav.category === 'message' && <MessageSquare className="w-5 h-5 text-purple-400" />}
-                      {fav.category === 'file' && <FileSpreadsheet className="w-5 h-5 text-emerald-400" />}
-                      {fav.category === 'media' && <ImageIcon className="w-5 h-5 text-pink-400" />}
-                      {fav.category === 'direct_chat' && <User className="w-5 h-5 text-blue-400" />}
-                      {fav.category === 'group' && <Users className="w-5 h-5 text-amber-400" />}
-                      {fav.category === 'contact' && <Bookmark className="w-5 h-5 text-teal-400" />}
-                    </div>
-                    <div>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-400 font-medium">
-                        {fav.category === 'message' && 'رسالة'}
-                        {fav.category === 'file' && 'مستند / ملف'}
-                        {fav.category === 'media' && 'ميديا'}
-                        {fav.category === 'direct_chat' && 'محادثة فردية'}
-                        {fav.category === 'group' && 'مجموعة'}
-                        {fav.category === 'contact' && 'جهة اتصال'}
-                      </span>
-                      <h4 className="font-bold text-sm text-white mt-1 line-clamp-1">{fav.title}</h4>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(fav.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                    title="إزالة من المفضلة"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Subtitle / Preview */}
-                {fav.subtitle && (
-                  <p className="text-xs text-slate-300 line-clamp-2 bg-black/30 p-2.5 rounded-xl border border-white/5">
-                    {fav.subtitle}
-                  </p>
-                )}
-
-                {/* Media thumbnail if exists */}
-                {isMedia && fav.meta?.url && (
-                  <div className="w-full h-36 rounded-xl overflow-hidden bg-black/40 border border-white/10 relative">
-                    {fav.meta?.type === 'video' ? (
-                      <video src={fav.meta.url} className="w-full h-full object-cover" muted />
-                    ) : (
-                      <img src={fav.meta.url} alt={fav.title} className="w-full h-full object-cover" />
-                    )}
-                  </div>
-                )}
-
-                {/* Footer Actions */}
-                <div className="flex items-center justify-between pt-2 border-t border-purple-900/20 text-[11px] text-slate-400">
-                  <span className="font-mono">{new Date(fav.created_at).toLocaleDateString('ar-SA')}</span>
-
-                  <div className="flex items-center gap-2">
-                    {fav.meta?.url && (
-                      <a
-                        href={fav.meta.url}
-                        download
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
-                        title="تحميل"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>تحميل</span>
-                      </a>
-                    )}
-
-                    {fav.meta?.chat_jid && (
-                      <Link
-                        href={`/inbox?chat=${encodeURIComponent(fav.meta.chat_jid)}`}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/30 transition-colors"
-                      >
-                        <span>فتح في المحادثة</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </Link>
-                    )}
-                  </div>
-                </div>
+    <AppShell>
+      <div className="space-y-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-purple-900/30">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-yellow-500/10 border border-amber-500/30 text-amber-400">
+                <Star className="w-7 h-7 fill-amber-400" />
               </div>
-            );
-          })}
+              <div>
+                <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                  قائمة المفضلات الشخصية
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                    {favorites.length} عنصر
+                  </span>
+                </h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  الوصول السريع إلى الرسائل، الملفات، الميديا، المحادثات، وجهات الاتصال المميزة بنجمة
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
-    </div>
+
+        {/* Tabs & Search */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          {/* Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-purple-900/20 scrollbar-none">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key as any)}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                    active
+                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/50 scale-[1.02]'
+                      : 'bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${active ? 'text-white' : 'text-slate-400'}`} />
+                  <span>{tab.label}</span>
+                  {tab.key !== 'all' && (counts as any)[tab.key] > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/10 font-mono">
+                      {(counts as any)[tab.key]}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search bar */}
+          <form onSubmit={handleSearchSubmit} className="relative min-w-[240px]">
+            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+            <input
+              type="text"
+              placeholder="بحث في العناصر المفضلة..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-slate-900/80 border border-purple-900/40 rounded-xl pr-9 pl-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+            />
+          </form>
+        </div>
+
+        {/* Content Area */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+            <Sparkles className="w-8 h-8 text-purple-400 animate-spin mb-3" />
+            <span className="text-sm">جاري تحميل عناصر المفضلة...</span>
+          </div>
+        ) : favorites.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 px-4 rounded-3xl border border-dashed border-purple-900/40 bg-slate-950/40 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-4">
+              <Star className="w-8 h-8 stroke-[1.5]" />
+            </div>
+            <h3 className="text-base font-bold text-white mb-1">لا توجد عناصر في هذا التبويب</h3>
+            <p className="text-xs text-slate-400 max-w-sm">
+              يمكنك تمييز أي رسالة، مستند، ميديا، أو جهة اتصال بنجمة من شريط أدوات المحادثة لتظهر هنا مباشرة.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {favorites.map((fav) => {
+              const isMedia = fav.category === 'media';
+              const isFile = fav.category === 'file';
+              const isMessage = fav.category === 'message';
+              const isContact = fav.category === 'contact';
+              const isChat = fav.category === 'direct_chat' || fav.category === 'group';
+
+              return (
+                <div
+                  key={fav.id}
+                  className="group relative rounded-2xl bg-slate-900/70 border border-purple-900/30 hover:border-purple-500/40 p-4 transition-all hover:shadow-xl hover:shadow-purple-950/20 flex flex-col justify-between overflow-hidden"
+                >
+                  <div>
+                    {/* Top row */}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-purple-950/60 text-purple-300 border border-purple-800/40">
+                        {isMedia && <ImageIcon className="w-3 h-3 text-purple-400" />}
+                        {isFile && <FileText className="w-3 h-3 text-blue-400" />}
+                        {isMessage && <MessageSquare className="w-3 h-3 text-emerald-400" />}
+                        {isContact && <Bookmark className="w-3 h-3 text-amber-400" />}
+                        {isChat && <Users className="w-3 h-3 text-pink-400" />}
+                        <span>
+                          {fav.category === 'message' && 'رسالة'}
+                          {fav.category === 'file' && 'مستند'}
+                          {fav.category === 'media' && 'ميديا'}
+                          {fav.category === 'direct_chat' && 'محادثة فردية'}
+                          {fav.category === 'group' && 'مجموعة'}
+                          {fav.category === 'contact' && 'جهة اتصال'}
+                        </span>
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(fav.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-all"
+                        title="إزالة من المفضلة"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Media Preview if image */}
+                    {isMedia && fav.meta?.url && (
+                      <div className="mb-3 rounded-xl overflow-hidden bg-black/40 border border-purple-900/20 aspect-video flex items-center justify-center">
+                        <img
+                          src={fav.meta.url}
+                          alt={fav.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Title */}
+                    <h4 className="text-sm font-bold text-white line-clamp-2 mb-1 group-hover:text-purple-300 transition-colors">
+                      {fav.title}
+                    </h4>
+
+                    {/* Subtitle / snippet */}
+                    {fav.subtitle && (
+                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                        {fav.subtitle}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="mt-4 pt-3 border-t border-purple-900/20 flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="font-mono">
+                      {new Date(fav.created_at).toLocaleDateString('ar-SA')}
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      {fav.meta?.url && (
+                        <a
+                          href={fav.meta.url}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-purple-950 text-slate-300 hover:text-white transition-colors"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>تحميل</span>
+                        </a>
+                      )}
+
+                      {fav.meta?.chat_jid && (
+                        <Link
+                          href={`/inbox?chat=${encodeURIComponent(fav.meta.chat_jid)}`}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/30 transition-colors"
+                        >
+                          <span>فتح في المحادثة</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </AppShell>
   );
 }
-

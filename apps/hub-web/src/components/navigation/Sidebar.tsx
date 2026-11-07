@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -55,6 +55,36 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   const [searchTerm, setSearchTerm] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // صلاحية ظهور لوحة الإدارة والإشراف: تظهر فقط للمشرفين والمدراء
+  const canAccessAdmin = useMemo(() => {
+    if (!user) return false;
+    if (user.role === 'super_admin' || user.role === 'sales_lead') return true;
+    return adminModules.length > 0;
+  }, [user, adminModules]);
+
+  // التبويب النشط في القائمة الجانبية: مساحة الموظف أم لوحة الإدارة
+  const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user');
+
+  // مزامنة التبويب تلقائياً مع المسار الحالي
+  useEffect(() => {
+    const isAdminPath =
+      pathname.startsWith('/admin_dashboard') ||
+      pathname.startsWith('/module/lines') ||
+      pathname.startsWith('/module/inboxes') ||
+      pathname.startsWith('/module/labels') ||
+      pathname.startsWith('/module/staff') ||
+      pathname.startsWith('/module/settings') ||
+      pathname.startsWith('/module/signature') ||
+      pathname.startsWith('/module/groups_admin') ||
+      pathname.startsWith('/module/roles');
+
+    if (isAdminPath && canAccessAdmin) {
+      setActiveTab('admin');
+    } else if (!isAdminPath) {
+      setActiveTab('user');
+    }
+  }, [pathname, canAccessAdmin]);
+
   // Company branding dynamic state
   const [companyBranding, setCompanyBranding] = useState<{
     company_name: string;
@@ -76,7 +106,6 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
       });
     }
     async function loadBranding() {
-      // الكاش المحلي أولاً لعرض فوري، ثم القاعدة هي المرجع
       try {
         const cached = localStorage.getItem('hub_company_branding');
         if (cached) applyBranding(JSON.parse(cached));
@@ -96,7 +125,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
     return () => window.removeEventListener('branding-updated', loadBranding);
   }, []);
 
-  // Preserve scroll position to eliminate scroll jumping when navigating admin modules
+  // Preserve scroll position
   useEffect(() => {
     const savedPos = sessionStorage.getItem('sidebar_scroll_top');
     if (savedPos && scrollContainerRef.current) {
@@ -112,7 +141,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
   const filterModules = (list: ModuleContract[]) => {
     if (!searchTerm.trim()) return list;
-    return list.filter(m => m.title_ar.includes(searchTerm) || m.key.includes(searchTerm));
+    return list.filter((m) => m.title_ar.includes(searchTerm) || m.key.includes(searchTerm));
   };
 
   const filteredUserModules = filterModules(userModules);
@@ -133,6 +162,9 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
     return pathname === href;
   };
 
+  // قائمة العناصر الحالية بحسب التبويب النشط
+  const currentModules = activeTab === 'admin' ? filteredAdminModules : filteredUserModules;
+
   return (
     <>
       {mobileOpen && (
@@ -149,7 +181,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           mobileOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
         }`}
       >
-        {/* Brand Header - عرض اسم الشركة وشعارها الديناميكي المرفوع */}
+        {/* Brand Header */}
         <div className="h-16 border-b border-[var(--border-subtle)] px-4 flex items-center justify-between shrink-0">
           {!collapsed ? (
             <Link href="/inbox" className="flex items-center gap-2.5 overflow-hidden">
@@ -194,6 +226,42 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           </button>
         </div>
 
+        {/* ════════════════════════════════════════════════════════
+            تبويبان رئيسيان: مساحة الموظف / لوحة الإدارة والإشراف
+            يظهر تبويب الإدارة فقط للمستخدمين المصرح لهم (Admin / Lead)
+           ════════════════════════════════════════════════════════ */}
+        {!collapsed && canAccessAdmin && (
+          <div className="p-3 pb-0">
+            <div className="grid grid-cols-2 gap-1 p-1 bg-[var(--card-elevated)]/80 rounded-2xl border border-[var(--border-subtle)] shadow-inner">
+              <button
+                type="button"
+                onClick={() => setActiveTab('user')}
+                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+                  activeTab === 'user'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-950/40'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-white/5'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>مساحة الموظف</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('admin')}
+                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+                  activeTab === 'admin'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-950/40'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-white/5'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span>الإدارة والإشراف</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Quick Search */}
         {!collapsed && (
           <div className="p-3 border-b border-[var(--border-subtle)]">
@@ -201,7 +269,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
               <Search className="w-4 h-4 text-[var(--text-muted)] absolute right-3 top-2.5" />
               <input
                 type="text"
-                placeholder="بحث في الأقسام..."
+                placeholder={activeTab === 'admin' ? 'بحث في أدوات الإدارة...' : 'بحث في مساحة الموظف...'}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-2xl pr-9 pl-3 py-1.5 text-xs text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none focus:border-purple-500 transition-colors"
@@ -210,99 +278,57 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           </div>
         )}
 
-        {/* Navigation Sections with Scroll Preservation */}
+        {/* Navigation Section with Scroll Preservation */}
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-3 space-y-6"
+          className="flex-1 overflow-y-auto p-3 space-y-1"
         >
-          
-          {/* مساحة الموظف */}
-          <div>
-            {!collapsed && (
-              <div className="px-3 pb-2 text-[10px] font-bold text-[var(--text-muted)] tracking-wider uppercase">
-                مساحة الموظف
-              </div>
-            )}
-            <nav className="space-y-1">
-              {filteredUserModules.map((m) => {
-                const IconComponent = MODULE_ICONS[m.key] || MessageSquare;
-                const active = isModuleActive(m);
-
-                return (
-                  <Link
-                    key={m.key}
-                    href={getModuleHref(m)}
-                    onClick={onCloseMobile}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
-                      active
-                        ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold shadow-sm'
-                        : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
-                    } ${collapsed ? 'justify-center px-2' : ''}`}
-                    title={collapsed ? m.title_ar : undefined}
-                  >
-                    <div className="flex items-center gap-3">
-                      <IconComponent className={`w-4 h-4 shrink-0 ${active ? 'text-purple-400' : 'text-[var(--text-muted)]'}`} />
-                      {!collapsed && <span>{m.title_ar}</span>}
-                    </div>
-
-                    {!collapsed && (
-                      <div>
-                        {m.status === 'live' && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                        )}
-                      </div>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* لوحة الإدارة والإشراف - قسم مستقل مفصول */}
-          {filteredAdminModules.length > 0 && (
-            <div className="pt-2 border-t border-[var(--border-subtle)]/60">
-              {!collapsed && (
-                <div className="px-3 pb-2 text-[10px] font-bold text-[var(--text-muted)] tracking-wider uppercase">
-                  لوحة الإدارة والإشراف
-                </div>
-              )}
-              <nav className="space-y-1">
-                {filteredAdminModules.map((m) => {
-                  const IconComponent = MODULE_ICONS[m.key] || LayoutDashboard;
-                  const active = isModuleActive(m);
-
-                  return (
-                    <Link
-                      key={m.key}
-                      href={getModuleHref(m)}
-                      onClick={onCloseMobile}
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
-                        active
-                          ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold shadow-sm'
-                          : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
-                      } ${collapsed ? 'justify-center px-2' : ''}`}
-                      title={collapsed ? m.title_ar : undefined}
-                    >
-                      <div className="flex items-center gap-3">
-                        <IconComponent className={`w-4 h-4 shrink-0 ${active ? 'text-purple-400' : 'text-[var(--text-muted)]'}`} />
-                        {!collapsed && <span>{m.title_ar}</span>}
-                      </div>
-
-                      {!collapsed && (
-                        <div>
-                          {m.status === 'live' && (
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                          )}
-                        </div>
-                      )}
-                    </Link>
-                  );
-                })}
-              </nav>
+          {/* Header عنوان القسم الحالي عند الفتح */}
+          {!collapsed && (
+            <div className="px-3 pb-2 text-[10px] font-bold text-[var(--text-muted)] tracking-wider uppercase flex items-center justify-between">
+              <span>{activeTab === 'admin' ? 'لوحة الإدارة والإشراف' : 'مساحة الموظف'}</span>
+              <span className="text-[10px] font-mono text-purple-400">
+                {currentModules.length} أقسام
+              </span>
             </div>
           )}
 
+          <nav className="space-y-1">
+            {currentModules.map((m) => {
+              const IconComponent = MODULE_ICONS[m.key] || MessageSquare;
+              const active = isModuleActive(m);
+
+              return (
+                <Link
+                  key={m.key}
+                  href={getModuleHref(m)}
+                  onClick={onCloseMobile}
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
+                    active
+                      ? 'bg-purple-500/15 text-[var(--text-secondary)] border border-purple-500/30 font-bold shadow-sm'
+                      : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                  } ${collapsed ? 'justify-center px-2' : ''}`}
+                  title={collapsed ? m.title_ar : undefined}
+                >
+                  <div className="flex items-center gap-3">
+                    <IconComponent
+                      className={`w-4 h-4 shrink-0 ${active ? 'text-purple-400' : 'text-[var(--text-muted)]'}`}
+                    />
+                    {!collapsed && <span>{m.title_ar}</span>}
+                  </div>
+
+                  {!collapsed && (
+                    <div>
+                      {m.status === 'live' && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                      )}
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         {/* Footer info: Connected Line */}
@@ -311,7 +337,9 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
             <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-semibold text-[var(--text-main)]">{selectedLine.title_ar}</span>
+                <span className="font-semibold text-[var(--text-main)] truncate max-w-[140px]">
+                  {selectedLine?.title_ar || 'خط متصل'}
+                </span>
               </div>
               <span className="text-[10px] text-emerald-400 font-mono">متصل</span>
             </div>
@@ -321,7 +349,6 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
             </div>
           )}
         </div>
-
       </aside>
     </>
   );

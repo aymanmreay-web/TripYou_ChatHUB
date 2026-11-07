@@ -71,7 +71,7 @@ export function Header({ onOpenMobile }: HeaderProps) {
           {lineDropdownOpen && (
             <div className="absolute right-0 mt-2 w-72 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 glass-panel">
               <div className="text-xs font-bold text-[var(--text-muted)] px-3 py-1.5 mb-1 border-b border-[var(--border-subtle)]">
-                خطوط واتساب المتصلة (Evolution API)
+                خطوط واتساب المعتمدة
               </div>
               {lines.map((l) => (
                 <button
