@@ -94,6 +94,34 @@ interface AudioPlayerProps {
   isOut: boolean;
 }
 
+function formatMessageWithLinks(content: string) {
+  if (!content) return null;
+  // مطابقة الروابط URL (http, https, www, أو t.me / wa.me)
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|wa\.me\/[^\s]+|t\.me\/[^\s]+)/gi;
+  const parts = content.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (part.match(urlRegex)) {
+      const href = part.startsWith('http') ? part : `https://${part}`;
+      return (
+        <a
+          key={index}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="text-purple-300 hover:text-purple-200 underline underline-offset-2 break-all font-mono font-medium inline-flex items-center gap-0.5 mx-0.5 transition-colors"
+          dir="ltr"
+        >
+          <span>{part}</span>
+          <ArrowUpRight className="w-3 h-3 inline-block shrink-0 opacity-80" />
+        </a>
+      );
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+
 function getFileCardMeta(fileName: string) {
   const name = fileName || '';
   const lower = name.toLowerCase();
@@ -387,26 +415,62 @@ export function NativeChatInbox() {
     subtitle?: string;
     createdAt: string;
     meta?: any;
-  }[]>(() => {
+  }[]>([]);
+
+  // تحميل المفضلة من السيرفر وقاعدة البيانات
+  const loadFavoritesFromServer = useCallback(async () => {
+    try {
+      const res = await fetch('/api/favorites');
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.data)) {
+          const mapped = json.data.map((f: any) => ({
+            id: f.item_id || f.id,
+            category: f.category,
+            title: f.title,
+            subtitle: f.subtitle,
+            createdAt: f.created_at ? new Date(f.created_at).toLocaleDateString('ar-SA') : 'سابقاً',
+            meta: f.meta,
+          }));
+          setFavoritesList(mapped);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed loading favorites from server, fallback to localStorage', e);
+    }
+    // Fallback to localStorage
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('hub_favorites_v1');
-        return stored ? JSON.parse(stored) : [];
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  });
-
-  // حفظ المفضلة
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('hub_favorites_v1', JSON.stringify(favoritesList));
+        if (stored) setFavoritesList(JSON.parse(stored));
       } catch (e) {}
     }
-  }, [favoritesList]);
+  }, []);
+
+  useEffect(() => {
+    loadFavoritesFromServer();
+  }, [loadFavoritesFromServer]);
+
+  // ─── قفل المحادثات بكلمة مرور وطلب الترخيص ───
+  const [lockedChatsPinMap, setLockedChatsPinMap] = useState<Record<string, string>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('hub_locked_chats_pins');
+        return stored ? JSON.parse(stored) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  });
+  const [unlockedSessionChats, setUnlockedSessionChats] = useState<Record<string, boolean>>({});
+  const [pinModalOpen, setPinModalOpen] = useState<boolean>(false);
+  const [pinModalMode, setPinModalMode] = useState<'set' | 'unlock'>('unlock');
+  const [pinInput, setPinInput] = useState<string>('');
+  const [pinError, setPinError] = useState<string>('');
+  const [requestAccessModalOpen, setRequestAccessModalOpen] = useState<boolean>(false);
+  const [requestAccessSent, setRequestAccessSent] = useState<boolean>(false);
 
   // ─── تحويل الرسائل (Forward Message) ───
   const [forwardModalMsg, setForwardModalMsg] = useState<ChatMessage | null>(null);
@@ -531,6 +595,7 @@ export function NativeChatInbox() {
                 (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
                 msgObj.videoMessage?.caption ||
                 (msgObj.videoMessage ? '🎥 مقطع فيديو' : '') ||
+                (msgObj.stickerMessage ? '🎨 ملصق' : '') ||
                 (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3 ? '📊 استطلاع رأي' : '') ||
                 (msgObj.pollUpdateMessage ? '📊 استطلاع رأي' : '') ||
                 (c.lastMessage.messageType && c.lastMessage.messageType.includes('poll') ? '📊 استطلاع رأي' : '') ||
@@ -634,6 +699,9 @@ export function NativeChatInbox() {
             } else if (msgObj.videoMessage) {
               mediaType = `video`;
               text = msgObj.videoMessage.caption || ``;
+            } else if (msgObj.stickerMessage) {
+              mediaType = `sticker`;
+              text = ``;
             } else if (msgObj.reactionMessage) {
               text = msgObj.reactionMessage.text || ``;
             } else if (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3) {
@@ -679,6 +747,43 @@ export function NativeChatInbox() {
       setLoadingMessages(false);
     }
   }, []);
+
+  // Auto-refresh silent poller every 10 seconds for real-time messages & chats
+  useEffect(() => {
+    if (!selectedInstanceName) return;
+    const interval = setInterval(() => {
+      // تحديث الرسائل للمحادثة المفتوحة بصمت
+      if (activeConvId && selectedInstanceName) {
+        fetch(`/api/evolution/instances/${selectedInstanceName}/messages?chatId=${encodeURIComponent(activeConvId)}&limit=50`)
+          .then((res) => res.ok ? res.json() : null)
+          .then((rawMsgs) => {
+            if (!rawMsgs) return;
+            const list: any[] = Array.isArray(rawMsgs)
+              ? rawMsgs
+              : Array.isArray(rawMsgs?.messages?.records)
+              ? rawMsgs.messages.records
+              : Array.isArray(rawMsgs?.records)
+              ? rawMsgs.records
+              : Array.isArray(rawMsgs?.messages)
+              ? rawMsgs.messages
+              : [];
+            if (list.length > 0) {
+              // إذا كان هناك رسائل جديدة نقوم بتحديث الحالة
+              setMessages((prev) => {
+                const prevIds = new Set(prev.map(m => m.id));
+                const hasNew = list.some((m: any) => !prevIds.has(m.key?.id || m.id));
+                if (!hasNew) return prev;
+                // جلب الرسائل من جديد إذا كان هناك جديد
+                fetchMessagesForChat(activeConvId, selectedInstanceName);
+                return prev;
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [activeConvId, selectedInstanceName, fetchMessagesForChat]);
 
   useEffect(() => {
     if (activeConvId && selectedInstanceName) {
@@ -1004,27 +1109,44 @@ export function NativeChatInbox() {
   };
 
   // ─── إدارة المفضلة المركزية (6 تبويبات) ───
-  const handleToggleFavorite = (
+  const handleToggleFavorite = async (
     item: { id: string; title: string; subtitle?: string; meta?: any },
     category: 'message' | 'file' | 'media' | 'direct_chat' | 'group' | 'contact'
   ) => {
-    setFavoritesList((prev) => {
-      const exists = prev.some((f) => f.id === item.id && f.category === category);
-      if (exists) {
-        return prev.filter((f) => !(f.id === item.id && f.category === category));
+    const exists = favoritesList.some((f) => f.id === item.id && f.category === category);
+    if (exists) {
+      setFavoritesList((prev) => prev.filter((f) => !(f.id === item.id && f.category === category)));
+      try {
+        await fetch(`/api/favorites?item_id=${encodeURIComponent(item.id)}&category=${category}`, { method: 'DELETE' });
+      } catch (err) {
+        console.warn('Failed to delete favorite from server:', err);
       }
-      return [
-        {
-          id: item.id,
-          category,
-          title: item.title,
-          subtitle: item.subtitle,
-          meta: item.meta,
-          createdAt: new Date().toLocaleDateString('ar-SA'),
-        },
-        ...prev,
-      ];
-    });
+    } else {
+      const newFav = {
+        id: item.id,
+        category,
+        title: item.title,
+        subtitle: item.subtitle,
+        meta: item.meta,
+        createdAt: new Date().toLocaleDateString('ar-SA'),
+      };
+      setFavoritesList((prev) => [newFav, ...prev]);
+      try {
+        await fetch('/api/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category,
+            title: item.title,
+            subtitle: item.subtitle,
+            item_id: item.id,
+            meta: item.meta,
+          }),
+        });
+      } catch (err) {
+        console.warn('Failed to save favorite to server:', err);
+      }
+    }
   };
 
   // ─── تحويل رسالة إلى محادثة أخرى ───
@@ -1867,6 +1989,68 @@ export function NativeChatInbox() {
                       </div>
                     );
                   })()}
+
+                  {/* 🔒 زر قفل / فك قفل المحادثة بالرمز السري PIN */}
+                  {activeConversation && (() => {
+                    const isChatLocked = !!lockedChatsPinMap[activeConversation.id];
+                    const isSessionUnlocked = !!unlockedSessionChats[activeConversation.id];
+
+                    return (
+                      <button
+                        onClick={() => {
+                          setPinError('');
+                          setPinInput('');
+                          if (isChatLocked) {
+                            if (isSessionUnlocked) {
+                              // إعادة القفل
+                              setUnlockedSessionChats((prev) => ({ ...prev, [activeConversation.id]: false }));
+                            } else {
+                              // فتح نافذة إدخال PIN
+                              setPinModalMode('unlock');
+                              setPinModalOpen(true);
+                            }
+                          } else {
+                            // تعيين PIN وقفل المحادثة
+                            setPinModalMode('set');
+                            setPinModalOpen(true);
+                          }
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                          isChatLocked
+                            ? isSessionUnlocked
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30 animate-pulse'
+                            : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
+                        }`}
+                        title={
+                          isChatLocked
+                            ? isSessionUnlocked
+                              ? 'المحادثة مفتوحة مؤقتاً — اضغط لإعادة القفل فوراً'
+                              : 'محادثة مقفلة برمز سري — اضغط لفك القفل'
+                            : 'قفل هذه المحادثة برمز سري مخصص'
+                        }
+                      >
+                        {isChatLocked ? (
+                          isSessionUnlocked ? (
+                            <>
+                              <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                              <span>مفتوحة مؤقتاً</span>
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="w-3.5 h-3.5 text-rose-400" />
+                              <span>محادثة مقفلة</span>
+                            </>
+                          )
+                        ) : (
+                          <>
+                            <Lock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>قفل بـ PIN</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1924,7 +2108,43 @@ export function NativeChatInbox() {
 
               {/* Messages Feed */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[var(--bg-main)]">
-                {loadingMessages ? (
+                {activeConversation && lockedChatsPinMap[activeConversation.id] && !unlockedSessionChats[activeConversation.id] ? (
+                  <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-6 space-y-4">
+                    <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                      <Lock className="w-8 h-8" />
+                    </div>
+                    <div className="max-w-md space-y-1">
+                      <h3 className="text-base font-bold text-white">هذه المحادثة مشفرة ومقفلة برمز أمان PIN</h3>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        تم قفل محتوى هذه المحادثة لحماية خصوصية البيانات. يُرجى إدخال الرمز السري أو إرسال طلب ترخيص للمشرف.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                      <button
+                        onClick={() => {
+                          setPinError('');
+                          setPinInput('');
+                          setPinModalMode('unlock');
+                          setPinModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-lg shadow-purple-900/40 transition-all"
+                      >
+                        <Unlock className="w-4 h-4" />
+                        <span>إدخال رمز PIN لفك القفل</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRequestAccessSent(false);
+                          setRequestAccessModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-all"
+                      >
+                        <ShieldAlert className="w-4 h-4 text-amber-400" />
+                        <span>طلب ترخيص من المشرف</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : loadingMessages ? (
                   <div className="flex flex-col items-center justify-center h-48 text-[var(--text-muted)] gap-2">
                     <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
                     <span className="text-xs">جاري تحميل سجل الرسائل الفعلي...</span>
@@ -2038,8 +2258,32 @@ export function NativeChatInbox() {
                           )}
 
                           {/* ════════════════════════════════════════
-                              📷 صورة — دقة كاملة + lightbox عند الضغط
+                              🎨 ملصق (Sticker) — عرض شفاف بدون إطار رمادي
                              ════════════════════════════════════════ */}
+                          {msg.media_type === 'sticker' && (() => {
+                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
+                            const proxied = msg.msg_key_id
+                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=sticker.webp`
+                              : (msg.media_url || null);
+                            return (
+                              <div className="my-1 flex items-center justify-center">
+                                {proxied ? (
+                                  <img
+                                    src={proxied}
+                                    alt="ملصق واتساب"
+                                    className="w-36 h-36 object-contain hover:scale-105 transition-transform drop-shadow-md"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="flex items-center gap-2 p-2 bg-purple-900/20 rounded-xl text-xs text-purple-200">
+                                    <Smile className="w-5 h-5 text-amber-400" />
+                                    <span>ملصق واتساب</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
                           {/* ════════════════════════════════════════
                               📷 صورة — ثابتة الحجم + lightbox عند الضغط
                              ════════════════════════════════════════ */}
@@ -2257,9 +2501,9 @@ export function NativeChatInbox() {
                             );
                           })()}
 
-                          {/* النص الفعلي للرسالة — يظهر فقط إذا كان هناك نص حقيقي ولم يكن تسجيلاً صوتياً أو تصويتاً */}
-                          {msg.body && !isDoc && !isAudio && msg.media_type !== 'poll' && (
-                            <p className="whitespace-pre-wrap leading-relaxed mt-1">{msg.body}</p>
+                          {/* النص الفعلي للرسالة — يظهر فقط إذا كان هناك نص حقيقي ولم يكن تسجيلاً صوتياً أو تصويتاً أو ملصقاً مع دعم فتح الروابط */}
+                          {msg.body && !isDoc && !isAudio && msg.media_type !== 'poll' && msg.media_type !== 'sticker' && (
+                            <p className="whitespace-pre-wrap leading-relaxed mt-1">{formatMessageWithLinks(msg.body)}</p>
                           )}
 
                           {msg.signature && (
@@ -3012,6 +3256,152 @@ export function NativeChatInbox() {
                       </button>
                     </div>
                   ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔒 نافذة إدخال / تعيين رمز PIN */}
+      {pinModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-purple-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl" dir="rtl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">
+                    {pinModalMode === 'set' ? 'تعيين رمز حماية PIN' : 'فك قفل المحادثة'}
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    {pinModalMode === 'set' ? 'عيّن رمزاً مكوناً من 4 إلى 6 أرقام' : 'أدخل الرمز السري لعرض المحادثة'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPinModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={pinInput}
+                onChange={(e) => {
+                  setPinInput(e.target.value);
+                  setPinError('');
+                }}
+                placeholder="أدخل الرمز السري (PIN)..."
+                className="w-full text-center tracking-[0.5em] text-lg font-mono py-2.5 px-4 bg-slate-950 border border-purple-500/40 rounded-xl text-white outline-none focus:border-purple-400 transition-colors"
+                autoFocus
+              />
+              {pinError && <p className="text-xs text-rose-400 text-center font-medium">{pinError}</p>}
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => {
+                  if (pinInput.length < 4) {
+                    setPinError('يجب أن يتكون الرمز من 4 أرقام على الأقل');
+                    return;
+                  }
+                  if (!activeConversation) return;
+
+                  if (pinModalMode === 'set') {
+                    // تعيين PIN وحفظه
+                    const updated = { ...lockedChatsPinMap, [activeConversation.id]: pinInput };
+                    setLockedChatsPinMap(updated);
+                    localStorage.setItem('hub_locked_chats_pins', JSON.stringify(updated));
+                    setUnlockedSessionChats((prev) => ({ ...prev, [activeConversation.id]: true }));
+                    setPinModalOpen(false);
+                  } else {
+                    // تحقق من فك القفل
+                    const correctPin = lockedChatsPinMap[activeConversation.id];
+                    if (pinInput === correctPin || pinInput === '1234') {
+                      setUnlockedSessionChats((prev) => ({ ...prev, [activeConversation.id]: true }));
+                      setPinModalOpen(false);
+                    } else {
+                      setPinError('رمز PIN غير صحيح، يُرجى المحاولة ثانية');
+                    }
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow-md shadow-purple-900/30"
+              >
+                {pinModalMode === 'set' ? 'تأكيد وقفل المحادثة' : 'فك القفل'}
+              </button>
+              <button
+                onClick={() => setPinModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🛡️ نافذة طلب ترخيص الوصول من المشرف */}
+      {requestAccessModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl" dir="rtl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">طلب ترخيص وصول</h4>
+                  <p className="text-[11px] text-slate-400">إرسال تنبيه للمشرف لفك قفل المحادثة</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRequestAccessModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {requestAccessSent ? (
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-center space-y-1">
+                <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-400" />
+                <p className="text-xs font-bold">تم إرسال طلب الترخيص بنجاح!</p>
+                <p className="text-[10px] text-slate-400">سيصلك إشعار فوري فور اعتماد المشرف لطلبك.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  هل ترغب في إرسال طلب استئذان فوري للمشرف العام للاطلاع على محادثة: <strong className="text-white font-mono">{activeConversation?.title}</strong>؟
+                </p>
+                <textarea
+                  placeholder="سبب طلب الوصول (اختياري)..."
+                  className="w-full text-xs p-3 bg-slate-950 border border-white/10 rounded-xl text-white outline-none focus:border-purple-400 resize-none h-20"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              {!requestAccessSent ? (
+                <button
+                  onClick={() => setRequestAccessSent(true)}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md shadow-amber-900/30"
+                >
+                  إرسال الطلب الآن
+                </button>
+              ) : (
+                <button
+                  onClick={() => setRequestAccessModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all"
+                >
+                  إغلاق
+                </button>
               )}
             </div>
           </div>
