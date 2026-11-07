@@ -239,3 +239,46 @@ html.light .badge-glass {
   border: 1px solid var(--bubble-peer-border);
   border-radius: 1.35rem 1.35rem 1.35rem 0.35rem;
 }
+
+/* ═══════════════════════════════════════════════════════
+   Arabic RTL — Utilities (قواعد النص العربي وثنائي الاتجاه)
+   ═══════════════════════════════════════════════════════ */
+
+/* الحاوية الكاملة بنص عربي RTL */
+.dir-rtl {
+  direction: rtl;
+  text-align: right;
+  unicode-bidi: embed;
+}
+
+/* عزل الكلمات الإنجليزية / الأرقام / الأكواد داخل النص العربي
+   استخدم: <span className="isolate-latin">English Word</span>
+           <bdi className="isolate-latin">+966554125782</bdi>
+*/
+.isolate-latin {
+  display: inline-block;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* أرقام الهواتف والأكواد التقنية بخط monospace داخل النص العربي */
+.latin-mono {
+  display: inline-block;
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+/* ضبط حقول الإدخال العربية */
+input[dir="rtl"],
+textarea[dir="rtl"],
+select[dir="rtl"] {
+  text-align: right;
+  unicode-bidi: embed;
+}
+
+input[dir="rtl"]::placeholder,
+textarea[dir="rtl"]::placeholder {
+  text-align: right;
+}

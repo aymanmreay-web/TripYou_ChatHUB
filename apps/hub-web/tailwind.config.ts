@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
 
 const config: Config = {
   content: [
@@ -64,7 +65,40 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // ═══════════════════════════════════════════════════════
+    // Arabic RTL Plugin — ضبط النص العربي وثنائي الاتجاه
+    // ═══════════════════════════════════════════════════════
+    plugin(function ({ addUtilities }) {
+      addUtilities({
+        // حاوية RTL كاملة
+        '.rtl-container': {
+          direction: 'rtl',
+          textAlign: 'right',
+          unicodeBidi: 'embed',
+        },
+        // عزل الكلمات الإنجليزية / الأرقام / الأكواد
+        '.ltr-isolate': {
+          display: 'inline-block',
+          direction: 'ltr',
+          unicodeBidi: 'isolate',
+        },
+        // أرقام وأكواد monospace محاذية يساراً داخل نص RTL
+        '.ltr-mono': {
+          display: 'inline-block',
+          direction: 'ltr',
+          unicodeBidi: 'isolate',
+          fontVariantNumeric: 'tabular-nums',
+          letterSpacing: '0.03em',
+        },
+        // إخفاء التمرير مع الحفاظ على الوظيفة
+        '.scrollbar-none': {
+          scrollbarWidth: 'none',
+          '&::-webkit-scrollbar': { display: 'none' },
+        },
+      });
+    }),
+  ],
 };
 
 export default config;
