@@ -22,3 +22,9 @@ export function initials(name: string): string {
 export function shortName(name: string): string {
   return nameWords(name).slice(0, 2).join(' ');
 }
+
+/** حروف الأفاتار للمحادثات: إن كان الاسم حروفاً نستخدم الحرفين، وإن كان رقماً أو رمزاً نعيد الحرف الاحتياطي. */
+export function initialsOrLetter(name: string, fallback: string): string {
+  const first = Array.from(name.trim())[0] ?? '';
+  return /[A-Za-z\u0600-\u06FF]/.test(first) ? initials(name) : fallback;
+}

@@ -339,7 +339,7 @@ export default function SignatureSettingsPage() {
             {/* فاصل التوقيع */}
             <div className="p-4 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-xs font-bold text-white">الفاصل بين أجزاء التوقيع</h3>
+                <h3 className="text-xs font-bold text-[var(--text-main)]">الفاصل بين أجزاء التوقيع</h3>
                 <p className="text-[11px] text-[var(--text-muted)]">الرمز أو الكلمة الفاصلة بين اسم الموظف واسم الخط واسم المؤسسة</p>
               </div>
               <div className="flex items-center gap-2">
@@ -379,7 +379,7 @@ export default function SignatureSettingsPage() {
                         {index + 1}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-white">{part.label_ar}</h4>
+                        <h4 className="text-sm font-bold text-[var(--text-main)]">{part.label_ar}</h4>
                         <span className="text-[10px] text-purple-400 font-mono">
                           {partKey === 'part1' ? 'Staff Name & Role' : partKey === 'part2' ? 'Line or Department' : 'Company Branding'}
                         </span>
@@ -509,7 +509,7 @@ export default function SignatureSettingsPage() {
                   {staffList.map((st) => (
                     <tr key={st.id} className="hover:bg-purple-900/10 transition-colors">
                       <td className="p-3.5">
-                        <div className="font-bold text-white text-sm">{st.name}</div>
+                        <div className="font-bold text-[var(--text-main)] text-sm">{st.name}</div>
                         <div className="text-[10px] text-purple-400">{st.role}</div>
                       </td>
 
@@ -575,7 +575,7 @@ export default function SignatureSettingsPage() {
         {activeTab === 'policy' && (
           <div className="p-6 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] space-y-6">
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-[var(--text-main)] flex items-center gap-2">
                 <Send className="w-5 h-5 text-purple-400" />
                 سياسة تكرار وإلزامية التوقيع في المحادثات
               </h3>
@@ -622,7 +622,7 @@ export default function SignatureSettingsPage() {
                 >
                   <div>
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-white">{pol.title}</span>
+                      <span className="font-bold text-sm text-[var(--text-main)]">{pol.title}</span>
                       {config.send_mode === pol.key && (
                         <CheckCircle2 className="w-4 h-4 text-purple-400" />
                       )}

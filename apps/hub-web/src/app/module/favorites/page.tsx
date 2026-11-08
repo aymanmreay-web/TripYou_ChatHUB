@@ -135,7 +135,7 @@ export default function FavoritesPage() {
                 <Star className="w-7 h-7 fill-amber-400" />
               </div>
               <div>
-                <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                <h1 className="text-2xl font-black text-[var(--text-main)] tracking-tight flex items-center gap-2">
                   قائمة المفضلات الشخصية
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
                     {favorites.length} عنصر
@@ -167,7 +167,7 @@ export default function FavoritesPage() {
                       : 'bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${active ? 'text-white' : 'text-slate-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${active ? 'text-[var(--text-main)]' : 'text-slate-400'}`} />
                   <span>{tab.label}</span>
                   {tab.key !== 'all' && (counts as any)[tab.key] > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/10 font-mono">
@@ -203,7 +203,7 @@ export default function FavoritesPage() {
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-4">
               <Star className="w-8 h-8 stroke-[1.5]" />
             </div>
-            <h3 className="text-base font-bold text-white mb-1">لا توجد عناصر في هذا التبويب</h3>
+            <h3 className="text-base font-bold text-[var(--text-main)] mb-1">لا توجد عناصر في هذا التبويب</h3>
             <p className="text-xs text-slate-400 max-w-sm">
               يمكنك تمييز أي رسالة، مستند، ميديا، أو جهة اتصال بنجمة من شريط أدوات المحادثة لتظهر هنا مباشرة.
             </p>
@@ -266,7 +266,7 @@ export default function FavoritesPage() {
                     )}
 
                     {/* Title */}
-                    <h4 className="text-sm font-bold text-white line-clamp-2 mb-1 group-hover:text-purple-300 transition-colors">
+                    <h4 className="text-sm font-bold text-[var(--text-main)] line-clamp-2 mb-1 group-hover:text-purple-300 transition-colors">
                       {fav.title}
                     </h4>
 

@@ -45,7 +45,7 @@ export function ComingSoonView({ module }: ComingSoonViewProps) {
                 <Sparkles className="w-6 h-6 animate-pulse" />
               </span>
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-main)] tracking-tight">
                   {module.title_ar}
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-400 mt-0.5">

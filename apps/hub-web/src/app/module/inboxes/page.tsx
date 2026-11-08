@@ -199,7 +199,7 @@ export default function InboxesPage() {
                       className="w-3.5 h-3.5 rounded-xl shadow-sm"
                       style={{ backgroundColor: ibx.color_hex }}
                     />
-                    <h3 className="font-bold text-white text-base">{ibx.name_ar}</h3>
+                    <h3 className="font-bold text-[var(--text-main)] text-base">{ibx.name_ar}</h3>
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -208,7 +208,7 @@ export default function InboxesPage() {
                         setEditingInbox(ibx);
                         setIsCreating(false);
                       }}
-                      className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                      className="p-1.5 rounded-xl text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10 transition-colors"
                       title="تعديل الصندوق"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -266,11 +266,11 @@ export default function InboxesPage() {
             <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 space-y-5 text-right shadow-2xl">
               
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
-                <h4 className="font-bold text-white text-base flex items-center gap-2">
+                <h4 className="font-bold text-[var(--text-main)] text-base flex items-center gap-2">
                   <Inbox className="w-5 h-5 text-purple-400" />
                   {isCreating ? 'إنشاء صندوق محادثات جديد' : `تعديل: ${editingInbox.name_ar}`}
                 </h4>
-                <button onClick={() => setEditingInbox(null)} className="text-slate-400 hover:text-white">
+                <button onClick={() => setEditingInbox(null)} className="text-slate-400 hover:text-[var(--text-main)]">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -324,7 +324,7 @@ export default function InboxesPage() {
 
               {/* تحديد الخطوط المسندة */}
               <div className="space-y-2 pt-2 border-t border-purple-900/30">
-                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                <label className="text-xs font-bold text-[var(--text-main)] flex items-center gap-1.5">
                   <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
                   الخطوط التابعة لهذا الصندوق:
                 </label>

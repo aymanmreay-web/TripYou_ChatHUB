@@ -38,12 +38,12 @@ export default function DynamicModulePage({ params }: ModulePageProps) {
               <ShieldX className="w-8 h-8" />
             </div>
 
-            <h1 className="text-xl font-bold text-white mb-2">
+            <h1 className="text-xl font-bold text-[var(--text-main)] mb-2">
               صلاحية غير متوفرة لهذا الحساب
             </h1>
 
             <p className="text-sm text-slate-300 mb-6 leading-relaxed">
-              يتطلب قسم <strong className="text-white">{targetModule.title_ar}</strong> الحصول على صلاحية:{' '}
+              يتطلب قسم <strong className="text-[var(--text-main)]">{targetModule.title_ar}</strong> الحصول على صلاحية:{' '}
               <code className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-amber-300 font-mono text-xs">
                 {targetModule.required_permission}
               </code>

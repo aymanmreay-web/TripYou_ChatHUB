@@ -1,5 +1,6 @@
 'use client';
 
+import { initialsOrLetter } from '../../lib/nameUtils';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Send,
@@ -267,12 +268,12 @@ function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
         title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التسجيل الصوتي'}
       >
         {isPlaying ? (
-          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-[var(--text-main)]" fill="currentColor" viewBox="0 0 24 24">
             <rect x="6" y="4" width="4" height="16" />
             <rect x="14" y="4" width="4" height="16" />
           </svg>
         ) : (
-          <svg className="w-4 h-4 ml-0.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 ml-0.5 text-[var(--text-main)]" fill="currentColor" viewBox="0 0 24 24">
             <polygon points="5,3 19,12 5,21" />
           </svg>
         )}
@@ -1893,7 +1894,7 @@ export function NativeChatInbox() {
                       className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 overflow-hidden border ${
                         conv.is_group
                           ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
-                          : 'bg-violet-600/20 text-violet-300 border-violet-500/30'
+                          : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
                       }`}
                     >
                       {conv.avatar_url ? (
@@ -1901,14 +1902,14 @@ export function NativeChatInbox() {
                       ) : conv.is_group ? (
                         <Users className="w-5 h-5" />
                       ) : (
-                        conv.avatar_letter
+                        initialsOrLetter(conv.title, conv.avatar_letter)
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-1">
                         <div className="flex items-center gap-1.5 truncate">
-                          <span className="font-semibold text-xs text-white truncate">
+                          <span className="font-semibold text-xs text-[var(--text-main)] truncate">
                             {conv.title}
                           </span>
                           {conv.participant_count && (
@@ -1990,7 +1991,7 @@ export function NativeChatInbox() {
                     ) : activeConversation.is_group ? (
                       <Users className="w-5 h-5" />
                     ) : (
-                      activeConversation.avatar_letter
+                      initialsOrLetter(activeConversation.title, activeConversation.avatar_letter)
                     )}
                   </div>
 
@@ -2256,7 +2257,7 @@ export function NativeChatInbox() {
                       <Lock className="w-8 h-8" />
                     </div>
                     <div className="max-w-md space-y-1">
-                      <h3 className="text-base font-bold text-white">هذه المحادثة مشفرة ومقفلة برمز أمان PIN</h3>
+                      <h3 className="text-base font-bold text-[var(--text-main)]">هذه المحادثة مشفرة ومقفلة برمز أمان PIN</h3>
                       <p className="text-xs text-[var(--text-muted)]">
                         تم قفل محتوى هذه المحادثة لحماية خصوصية البيانات. طلب فتح القفل يذهب حصراً للموظف الذي قام بقفلها، أو يمكنك إدخال الرمز السري إذا كنت تملكه.
                       </p>
@@ -2295,7 +2296,7 @@ export function NativeChatInbox() {
                       <ShieldAlert className="w-8 h-8" />
                     </div>
                     <div className="max-w-md space-y-2">
-                      <h3 className="text-base font-bold text-white">المحادثة قيد المتابعة بواسطة زميل</h3>
+                      <h3 className="text-base font-bold text-[var(--text-main)]">المحادثة قيد المتابعة بواسطة زميل</h3>
                       <p className="text-xs text-[var(--text-muted)] leading-relaxed">
                         هذه المحادثة مسندة حالياً للموظف <strong className="text-amber-300 font-semibold">{activeConversation.assigned_staff_name}</strong>. محتوى الرسائل محجوب لمنع تضارب الردود، ولكن يمكنك تقديم طلب رسمي للمشرف للاطلاع أو الاستلام.
                       </p>
@@ -2517,7 +2518,7 @@ export function NativeChatInbox() {
                                 </div>
 
                                 <div className="flex-1 min-w-0 text-right">
-                                  <div className="font-bold text-white text-xs truncate dir-ltr text-right" title={rawFileName}>
+                                  <div className="font-bold text-[var(--text-main)] text-xs truncate dir-ltr text-right" title={rawFileName}>
                                     {rawFileName}
                                   </div>
                                   <div className="flex items-center gap-2 mt-1">
@@ -2533,7 +2534,7 @@ export function NativeChatInbox() {
                                 <a
                                   href={proxied || '#'}
                                   download={rawFileName}
-                                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white shrink-0 shadow transition-colors flex items-center justify-center"
+                                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[var(--text-main)] shrink-0 shadow transition-colors flex items-center justify-center"
                                   title={`تحميل الملف باسمه الأصلي: ${rawFileName}`}
                                 >
                                   <Download className="w-4 h-4" />
@@ -2650,7 +2651,7 @@ export function NativeChatInbox() {
                                       className="w-full text-right p-2.5 rounded-xl border border-white/10 hover:border-purple-500/50 bg-black/30 hover:bg-purple-900/30 transition-all flex flex-col gap-1.5"
                                     >
                                       <div className="flex items-center justify-between text-xs">
-                                        <span className={`font-semibold ${opt.userVoted ? 'text-emerald-300 font-bold' : 'text-white'}`}>
+                                        <span className={`font-semibold ${opt.userVoted ? 'text-emerald-300 font-bold' : 'text-[var(--text-main)]'}`}>
                                           {opt.userVoted ? '✓ ' : ''}{opt.text}
                                         </span>
                                         <span className="text-purple-300 font-mono text-[11px]">{opt.votes} صوت</span>
@@ -2693,7 +2694,7 @@ export function NativeChatInbox() {
                                 {msg.status === 'read' ? (
                                   <CheckCheck className="w-3.5 h-3.5 text-cyan-200" />
                                 ) : (
-                                  <CheckCheck className="w-3.5 h-3.5 text-white/80" />
+                                  <CheckCheck className="w-3.5 h-3.5 text-[var(--text-main)]/80" />
                                 )}
                               </span>
                             )}
@@ -2736,7 +2737,7 @@ export function NativeChatInbox() {
                     <button
                       type="button"
                       onClick={() => setReplyingToMessage(null)}
-                      className="p-1.5 hover:bg-white/10 rounded-xl text-slate-400 hover:text-white transition-colors"
+                      className="p-1.5 hover:bg-white/10 rounded-xl text-slate-400 hover:text-[var(--text-main)] transition-colors"
                       title="إلغاء الرد"
                     >
                       <X className="w-4 h-4" />
@@ -2950,7 +2951,7 @@ export function NativeChatInbox() {
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
-                <h3 className="font-bold text-base text-white">إرسال مرفق عبر واتساب</h3>
+                <h3 className="font-bold text-base text-[var(--text-main)]">إرسال مرفق عبر واتساب</h3>
               </div>
               <button
                 type="button"
@@ -2958,7 +2959,7 @@ export function NativeChatInbox() {
                   setAttachmentModalOpen(false);
                   setSelectedAttachment(null);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2985,7 +2986,7 @@ export function NativeChatInbox() {
                 <div className="flex items-center gap-3 p-4 text-purple-300">
                   <FileText className="w-10 h-10 text-purple-400" />
                   <div className="text-right">
-                    <div className="font-semibold text-white text-sm">{selectedAttachment.fileName}</div>
+                    <div className="font-semibold text-[var(--text-main)] text-sm">{selectedAttachment.fileName}</div>
                     <div className="text-xs text-slate-400 font-mono mt-0.5">
                       {(selectedAttachment.file.size / 1024).toFixed(1)} KB • {selectedAttachment.mimeType}
                     </div>
@@ -3004,7 +3005,7 @@ export function NativeChatInbox() {
                   setSelectedAttachment((prev) => (prev ? { ...prev, caption: e.target.value } : null))
                 }
                 placeholder="اكتب تعليقاً على المرفق (اختياري)..."
-                className="w-full bg-[var(--bg-main)] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
+                className="w-full bg-[var(--bg-main)] text-sm text-[var(--text-main)] px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
               />
             </div>
 
@@ -3068,7 +3069,7 @@ export function NativeChatInbox() {
             className="w-full max-w-5xl flex items-center justify-between px-4 py-3 z-[210]"
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="text-sm font-semibold text-white/90">
+            <span className="text-sm font-semibold text-[var(--text-main)]/90">
               {lightboxMedia.type === 'video' ? 'عرض مقطع الفيديو' : 'معاينة الصورة'}
             </span>
             <div className="flex items-center gap-3">
@@ -3083,7 +3084,7 @@ export function NativeChatInbox() {
               </a>
               <button
                 onClick={() => setLightboxMedia(null)}
-                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-[var(--text-main)] flex items-center justify-center transition-colors"
                 title="إغلاق (Esc)"
               >
                 <X className="w-5 h-5" />
@@ -3134,7 +3135,7 @@ export function NativeChatInbox() {
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
-                <h3 className="font-bold text-base text-white">
+                <h3 className="font-bold text-base text-[var(--text-main)]">
                   معاينة وإرسال دفعة الوسائط ({batchAttachments.length} عناصر)
                 </h3>
               </div>
@@ -3144,7 +3145,7 @@ export function NativeChatInbox() {
                   setMultiSendModalOpen(false);
                   setBatchAttachments([]);
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3224,7 +3225,7 @@ export function NativeChatInbox() {
                 value={batchCaption}
                 onChange={(e) => setBatchCaption(e.target.value)}
                 placeholder="اكتب وصفاً للدفعة (اختياري)..."
-                className="w-full bg-[var(--bg-main)] text-sm text-white px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
+                className="w-full bg-[var(--bg-main)] text-sm text-[var(--text-main)] px-4 py-2.5 rounded-xl border border-purple-900/60 focus:border-purple-500 outline-none placeholder:text-slate-500"
               />
             </div>
 
@@ -3275,7 +3276,7 @@ export function NativeChatInbox() {
                 <Pin className="w-4 h-4 rotate-45" />
                 <span>تثبيت الرسالة في المحادثة</span>
               </div>
-              <button onClick={() => setPinModalMsg(null)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setPinModalMsg(null)} className="text-slate-400 hover:text-[var(--text-main)]">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -3320,7 +3321,7 @@ export function NativeChatInbox() {
                 <Share2 className="w-4 h-4" />
                 <span>تحويل الرسالة إلى محادثة</span>
               </div>
-              <button onClick={() => setForwardModalMsg(null)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setForwardModalMsg(null)} className="text-slate-400 hover:text-[var(--text-main)]">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -3331,7 +3332,7 @@ export function NativeChatInbox() {
                 value={forwardSearch}
                 onChange={(e) => setForwardSearch(e.target.value)}
                 placeholder="ابحث عن اسم العميل أو المجموعة..."
-                className="w-full bg-[var(--bg-main)] pr-9 pl-3 py-2 text-xs rounded-xl border border-white/10 text-white outline-none focus:border-purple-500"
+                className="w-full bg-[var(--bg-main)] pr-9 pl-3 py-2 text-xs rounded-xl border border-white/10 text-[var(--text-main)] outline-none focus:border-purple-500"
               />
             </div>
             <div className="max-h-60 overflow-y-auto space-y-1.5">
@@ -3344,7 +3345,7 @@ export function NativeChatInbox() {
                     className="w-full text-right p-2.5 rounded-xl bg-slate-900/60 hover:bg-purple-900/40 border border-white/5 hover:border-purple-500/30 flex items-center justify-between transition-colors"
                   >
                     <div>
-                      <div className="font-semibold text-white text-xs">{conv.title}</div>
+                      <div className="font-semibold text-[var(--text-main)] text-xs">{conv.title}</div>
                       <div className="text-[10px] text-slate-400 font-mono">{conv.phone_or_jid}</div>
                     </div>
                     <span className="text-[11px] text-purple-400 font-bold">إرسال ↵</span>
@@ -3364,11 +3365,11 @@ export function NativeChatInbox() {
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                <h3 className="font-bold text-white text-sm">المفضلة المركزية للموظف</h3>
+                <h3 className="font-bold text-[var(--text-main)] text-sm">المفضلة المركزية للموظف</h3>
               </div>
               <button
                 onClick={() => setFavoritesDrawerOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3428,7 +3429,7 @@ export function NativeChatInbox() {
                       className="p-3 rounded-2xl bg-slate-900/70 border border-white/5 hover:border-purple-500/40 flex items-start justify-between gap-3 group transition-all"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="text-white text-xs font-semibold truncate">{item.title}</div>
+                        <div className="text-[var(--text-main)] text-xs font-semibold truncate">{item.title}</div>
                         {item.subtitle && (
                           <div className="text-[10px] text-slate-400 mt-0.5 truncate">{item.subtitle}</div>
                         )}
@@ -3459,7 +3460,7 @@ export function NativeChatInbox() {
                   <Lock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">
+                  <h4 className="text-sm font-bold text-[var(--text-main)]">
                     {pinModalMode === 'set' ? 'تعيين رمز حماية PIN' : 'فك قفل المحادثة'}
                   </h4>
                   <p className="text-[11px] text-slate-400">
@@ -3469,7 +3470,7 @@ export function NativeChatInbox() {
               </div>
               <button
                 onClick={() => setPinModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3544,7 +3545,7 @@ export function NativeChatInbox() {
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">
+                  <h4 className="text-sm font-bold text-[var(--text-main)]">
                     {activeConversation && lockedChatsPinMap[activeConversation.id] ? 'طلب فك قفل المحادثة' : 'طلب ترخيص وصول / إسناد'}
                   </h4>
                   <p className="text-[11px] text-slate-400">
@@ -3554,7 +3555,7 @@ export function NativeChatInbox() {
               </div>
               <button
                 onClick={() => setRequestAccessModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3571,7 +3572,7 @@ export function NativeChatInbox() {
             ) : (
               <div className="space-y-3.5">
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  المحادثة المستهدفة: <strong className="text-white font-mono">{activeConversation?.title}</strong>
+                  المحادثة المستهدفة: <strong className="text-[var(--text-main)] font-mono">{activeConversation?.title}</strong>
                 </p>
 
                 {/* خيارات نوع الطلب الثلاثية */}

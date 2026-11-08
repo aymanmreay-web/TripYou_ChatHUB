@@ -270,11 +270,11 @@ export default function LinesPage() {
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <QrCode className="w-5 h-5 text-purple-400" />
-                <h3 className="font-bold text-base text-white">ربط جلسة واتساب: {activeInstanceName}</h3>
+                <h3 className="font-bold text-base text-[var(--text-main)]">ربط جلسة واتساب: {activeInstanceName}</h3>
               </div>
               <button
                 onClick={() => setQrModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
               >
                 <X className="w-5 h-5" />
               </button>

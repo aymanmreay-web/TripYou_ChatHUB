@@ -159,7 +159,7 @@ export default function CompanySettingsPage() {
             </div>
 
             <div className="space-y-1 text-center sm:text-right">
-              <h3 className="font-bold text-sm text-white">شعار الشركة</h3>
+              <h3 className="font-bold text-sm text-[var(--text-main)]">شعار الشركة</h3>
               {logoPreview && (
                 <button
                   type="button"

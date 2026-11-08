@@ -459,3 +459,68 @@ textarea[dir="rtl"]::placeholder {
   .gbar, .avatar-ring, .aurora i { animation: none !important; }
   *, *::before, *::after { scroll-behavior: auto !important; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   theme-google — طبقة التطبيق على المكونات الحالية
+   (زجاج، خلفية متحركة، وتصحيح الألوان التي كُتبت للثيم الداكن فقط)
+   ═══════════════════════════════════════════════════════ */
+.aurora { display: none; }
+html.theme-google .aurora { display: block; }
+html.theme-google.light .aurora i { opacity: 0.30; }
+html.theme-google.dark .aurora i { opacity: 0.20; }
+
+/* المحتوى فوق الخلفية المتحركة، والحاويات الجذرية شفافة لتظهر الهالات */
+html.theme-google body { background: var(--bg-main); }
+html.theme-google #__next, html.theme-google body > div { position: relative; z-index: 1; }
+html.theme-google .min-h-screen.bg-\[var\(--bg-main\)\] { background: transparent; }
+
+/* زجاج: الشريط الجانبي والهيدر */
+html.theme-google aside,
+html.theme-google header {
+  background: color-mix(in srgb, var(--card-bg) 72%, transparent) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.7);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.7);
+  border-color: var(--border-subtle);
+}
+html.theme-google header { position: sticky; }
+html.theme-google header::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 3px; pointer-events: none;
+  background: linear-gradient(90deg, #4285F4, #EA4335, #FBBC04, #34A853, #4285F4);
+  background-size: 300% 100%; animation: gbar-slide 9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { html.theme-google header::before { animation: none; } }
+
+/* أسطح البطاقات والقوائم: زجاجية ناعمة */
+html.theme-google main .bg-\[var\(--card-bg\)\],
+html.theme-google main [class*="bg-slate-9"] {
+  background-color: color-mix(in srgb, var(--card-bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+}
+
+/* ── الوضع الفاتح: تصحيح ما كُتب للداكن ── */
+html.theme-google.light [class*="bg-slate-9"],
+html.theme-google.light [class*="bg-slate-8"] {
+  background-color: var(--card-surface);
+}
+html.theme-google.light [class~="text-slate-100"],
+html.theme-google.light [class~="text-slate-200"],
+html.theme-google.light [class~="text-slate-300"] { color: var(--text-main); }
+html.theme-google.light [class~="text-slate-400"],
+html.theme-google.light [class~="text-slate-500"] { color: var(--text-muted); }
+html.theme-google.light [class*="border-white/"] { border-color: var(--border-subtle); }
+html.theme-google.light [class*="bg-white/"] { background-color: color-mix(in srgb, var(--text-main) 6%, transparent); }
+/* خلفيات بنفسجية داكنة شفافة (كانت للداكن) تتحول لتظليل لوني هادئ */
+html.theme-google.light [class*="bg-purple-9"],
+html.theme-google.light [class*="bg-purple-8"] {
+  background-color: color-mix(in srgb, var(--brand-500) 14%, transparent);
+}
+html.theme-google.light [class*="text-purple-2"],
+html.theme-google.light [class*="text-purple-3"],
+html.theme-google.light [class*="text-purple-4"] { color: var(--brand-700); }
+html.theme-google.light [class*="text-violet-"] { color: var(--brand-700); }
+
+/* ── الوضع الداكن: تظليل لوني بدل البنفسجي الغامق ── */
+html.theme-google.dark [class*="bg-purple-9"] {
+  background-color: color-mix(in srgb, var(--brand-500) 22%, transparent);
+}

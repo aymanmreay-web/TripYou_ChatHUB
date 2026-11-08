@@ -76,7 +76,7 @@ export default function PendingApprovalPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-main)] text-white flex items-center justify-center p-4 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] flex items-center justify-center p-4 relative overflow-hidden font-sans">
       
       {/* Background glow effects */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
@@ -93,7 +93,7 @@ export default function PendingApprovalPage() {
           <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
             بانتظار ترخيص المشرف
           </span>
-          <h2 className="text-xl sm:text-2xl font-black text-white">
+          <h2 className="text-xl sm:text-2xl font-black text-[var(--text-main)]">
             مرحباً بك، {userName}
           </h2>
           <p className="text-xs text-slate-300 leading-relaxed">
@@ -109,7 +109,7 @@ export default function PendingApprovalPage() {
           </div>
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>مدير النظام المعتمد:</span>
-            <span className="font-bold text-white">م. أيمن مريعي</span>
+            <span className="font-bold text-[var(--text-main)]">م. أيمن مريعي</span>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>حالة الترخيص:</span>
@@ -140,7 +140,7 @@ export default function PendingApprovalPage() {
 
           <button
             onClick={handleSignOut}
-            className="w-full py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs font-medium flex items-center justify-center gap-2 border border-white/5 transition-all"
+            className="w-full py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-[var(--text-main)] text-xs font-medium flex items-center justify-center gap-2 border border-white/5 transition-all"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>تسجيل الخروج والعودة لاحقاً</span>

@@ -47,6 +47,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-[var(--bg-main)] text-[var(--text-main)] min-h-screen antialiased selection:bg-purple-600 selection:text-white transition-colors duration-200">
+        <div className="aurora" aria-hidden="true"><i /><i /><i /><i /></div>
         <AppProvider>
           {children}
         </AppProvider>
