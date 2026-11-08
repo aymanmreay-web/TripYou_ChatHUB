@@ -492,35 +492,200 @@ html.theme-google header::before {
 
 /* أسطح البطاقات والقوائم: زجاجية ناعمة */
 html.theme-google main .bg-\[var\(--card-bg\)\],
-html.theme-google main [class*="bg-slate-9"] {
+html.theme-google main [class^="bg-slate-9"],
+html.theme-google main [class*=" bg-slate-9"] {
   background-color: color-mix(in srgb, var(--card-bg) 78%, transparent);
   -webkit-backdrop-filter: blur(18px) saturate(1.5);
   backdrop-filter: blur(18px) saturate(1.5);
 }
 
-/* ── الوضع الفاتح: تصحيح ما كُتب للداكن ── */
-html.theme-google.light [class*="bg-slate-9"],
-html.theme-google.light [class*="bg-slate-8"] {
+/* ── الأصناف المكتوبة للداكن ──
+   ملاحظة: المحددات تطابق بداية اسم الصنف فقط (^ أو مسبوقاً بمسافة)، حتى لا تلتقط hover:bg-... و focus:... */
+
+/* عناصر النماذج الأصلية (القوائم المنسدلة) تتبع الوضع */
+html.theme-google.light { color-scheme: light; }
+html.theme-google.dark { color-scheme: dark; }
+html.theme-google select option,
+html.theme-google select optgroup { background-color: var(--card-bg); color: var(--text-main); }
+
+/* ── الوضع الفاتح ── */
+html.theme-google.light [class^="bg-slate-800"],
+html.theme-google.light [class*=" bg-slate-800"],
+html.theme-google.light [class^="bg-slate-900"],
+html.theme-google.light [class*=" bg-slate-900"],
+html.theme-google.light [class^="bg-slate-950"],
+html.theme-google.light [class*=" bg-slate-950"] {
   background-color: var(--card-surface);
 }
-html.theme-google.light [class~="text-slate-100"],
-html.theme-google.light [class~="text-slate-200"],
-html.theme-google.light [class~="text-slate-300"] { color: var(--text-main); }
-html.theme-google.light [class~="text-slate-400"],
-html.theme-google.light [class~="text-slate-500"] { color: var(--text-muted); }
-html.theme-google.light [class*="border-white/"] { border-color: var(--border-subtle); }
-html.theme-google.light [class*="bg-white/"] { background-color: color-mix(in srgb, var(--text-main) 6%, transparent); }
-/* خلفيات بنفسجية داكنة شفافة (كانت للداكن) تتحول لتظليل لوني هادئ */
-html.theme-google.light [class*="bg-purple-9"],
-html.theme-google.light [class*="bg-purple-8"] {
-  background-color: color-mix(in srgb, var(--brand-500) 14%, transparent);
+html.theme-google.light [class^="text-slate-100"],
+html.theme-google.light [class*=" text-slate-100"],
+html.theme-google.light [class^="text-slate-200"],
+html.theme-google.light [class*=" text-slate-200"],
+html.theme-google.light [class^="text-slate-300"],
+html.theme-google.light [class*=" text-slate-300"] { color: var(--text-main); }
+html.theme-google.light [class^="text-slate-400"],
+html.theme-google.light [class*=" text-slate-400"],
+html.theme-google.light [class^="text-slate-500"],
+html.theme-google.light [class*=" text-slate-500"] { color: var(--text-muted); }
+html.theme-google.light [class^="border-white/5"],
+html.theme-google.light [class*=" border-white/5"],
+html.theme-google.light [class^="border-white/10"],
+html.theme-google.light [class*=" border-white/10"],
+html.theme-google.light [class^="border-white/15"],
+html.theme-google.light [class*=" border-white/15"],
+html.theme-google.light [class^="border-white/20"],
+html.theme-google.light [class*=" border-white/20"] { border-color: var(--border-subtle); }
+html.theme-google.light [class^="bg-white/5"],
+html.theme-google.light [class*=" bg-white/5"],
+html.theme-google.light [class^="bg-white/10"],
+html.theme-google.light [class*=" bg-white/10"],
+html.theme-google.light [class^="bg-white/15"],
+html.theme-google.light [class*=" bg-white/15"],
+html.theme-google.light [class^="bg-white/20"],
+html.theme-google.light [class*=" bg-white/20"] { background-color: color-mix(in srgb, var(--text-main) 6%, transparent); }
+html.theme-google.light [class^="bg-purple-800"],
+html.theme-google.light [class*=" bg-purple-800"],
+html.theme-google.light [class^="bg-purple-900"],
+html.theme-google.light [class*=" bg-purple-900"],
+html.theme-google.light [class^="bg-purple-950"],
+html.theme-google.light [class*=" bg-purple-950"] {
+  background-color: color-mix(in srgb, var(--brand-500) 12%, transparent);
 }
-html.theme-google.light [class*="text-purple-2"],
-html.theme-google.light [class*="text-purple-3"],
-html.theme-google.light [class*="text-purple-4"] { color: var(--brand-700); }
-html.theme-google.light [class*="text-violet-"] { color: var(--brand-700); }
+html.theme-google.light [class^="text-purple-50"],
+html.theme-google.light [class*=" text-purple-50"],
+html.theme-google.light [class^="text-purple-100"],
+html.theme-google.light [class*=" text-purple-100"],
+html.theme-google.light [class^="text-purple-200"],
+html.theme-google.light [class*=" text-purple-200"],
+html.theme-google.light [class^="text-purple-300"],
+html.theme-google.light [class*=" text-purple-300"],
+html.theme-google.light [class^="text-purple-400"],
+html.theme-google.light [class*=" text-purple-400"],
+html.theme-google.light [class^="text-violet-100"],
+html.theme-google.light [class*=" text-violet-100"],
+html.theme-google.light [class^="text-violet-200"],
+html.theme-google.light [class*=" text-violet-200"],
+html.theme-google.light [class^="text-violet-300"],
+html.theme-google.light [class*=" text-violet-300"],
+html.theme-google.light [class^="text-violet-400"],
+html.theme-google.light [class*=" text-violet-400"] { color: var(--brand-700); }
+html.theme-google.light [class^="text-emerald-100"],
+html.theme-google.light [class*=" text-emerald-100"],
+html.theme-google.light [class^="text-emerald-200"],
+html.theme-google.light [class*=" text-emerald-200"],
+html.theme-google.light [class^="text-emerald-300"],
+html.theme-google.light [class*=" text-emerald-300"],
+html.theme-google.light [class^="text-emerald-400"],
+html.theme-google.light [class*=" text-emerald-400"] { color: #047857; }
+html.theme-google.light [class^="text-green-100"],
+html.theme-google.light [class*=" text-green-100"],
+html.theme-google.light [class^="text-green-200"],
+html.theme-google.light [class*=" text-green-200"],
+html.theme-google.light [class^="text-green-300"],
+html.theme-google.light [class*=" text-green-300"],
+html.theme-google.light [class^="text-green-400"],
+html.theme-google.light [class*=" text-green-400"] { color: #15803d; }
+html.theme-google.light [class^="text-amber-100"],
+html.theme-google.light [class*=" text-amber-100"],
+html.theme-google.light [class^="text-amber-200"],
+html.theme-google.light [class*=" text-amber-200"],
+html.theme-google.light [class^="text-amber-300"],
+html.theme-google.light [class*=" text-amber-300"],
+html.theme-google.light [class^="text-amber-400"],
+html.theme-google.light [class*=" text-amber-400"] { color: #b45309; }
+html.theme-google.light [class^="text-yellow-100"],
+html.theme-google.light [class*=" text-yellow-100"],
+html.theme-google.light [class^="text-yellow-200"],
+html.theme-google.light [class*=" text-yellow-200"],
+html.theme-google.light [class^="text-yellow-300"],
+html.theme-google.light [class*=" text-yellow-300"],
+html.theme-google.light [class^="text-yellow-400"],
+html.theme-google.light [class*=" text-yellow-400"] { color: #a16207; }
+html.theme-google.light [class^="text-red-100"],
+html.theme-google.light [class*=" text-red-100"],
+html.theme-google.light [class^="text-red-200"],
+html.theme-google.light [class*=" text-red-200"],
+html.theme-google.light [class^="text-red-300"],
+html.theme-google.light [class*=" text-red-300"],
+html.theme-google.light [class^="text-red-400"],
+html.theme-google.light [class*=" text-red-400"] { color: #b91c1c; }
+html.theme-google.light [class^="text-rose-100"],
+html.theme-google.light [class*=" text-rose-100"],
+html.theme-google.light [class^="text-rose-200"],
+html.theme-google.light [class*=" text-rose-200"],
+html.theme-google.light [class^="text-rose-300"],
+html.theme-google.light [class*=" text-rose-300"],
+html.theme-google.light [class^="text-rose-400"],
+html.theme-google.light [class*=" text-rose-400"] { color: #be123c; }
+html.theme-google.light [class^="text-blue-100"],
+html.theme-google.light [class*=" text-blue-100"],
+html.theme-google.light [class^="text-blue-200"],
+html.theme-google.light [class*=" text-blue-200"],
+html.theme-google.light [class^="text-blue-300"],
+html.theme-google.light [class*=" text-blue-300"],
+html.theme-google.light [class^="text-blue-400"],
+html.theme-google.light [class*=" text-blue-400"] { color: #1d4ed8; }
+html.theme-google.light [class^="text-sky-100"],
+html.theme-google.light [class*=" text-sky-100"],
+html.theme-google.light [class^="text-sky-200"],
+html.theme-google.light [class*=" text-sky-200"],
+html.theme-google.light [class^="text-sky-300"],
+html.theme-google.light [class*=" text-sky-300"],
+html.theme-google.light [class^="text-sky-400"],
+html.theme-google.light [class*=" text-sky-400"] { color: #0369a1; }
+html.theme-google.light [class^="text-cyan-100"],
+html.theme-google.light [class*=" text-cyan-100"],
+html.theme-google.light [class^="text-cyan-200"],
+html.theme-google.light [class*=" text-cyan-200"],
+html.theme-google.light [class^="text-cyan-300"],
+html.theme-google.light [class*=" text-cyan-300"],
+html.theme-google.light [class^="text-cyan-400"],
+html.theme-google.light [class*=" text-cyan-400"] { color: #0e7490; }
+html.theme-google.light [class^="text-teal-100"],
+html.theme-google.light [class*=" text-teal-100"],
+html.theme-google.light [class^="text-teal-200"],
+html.theme-google.light [class*=" text-teal-200"],
+html.theme-google.light [class^="text-teal-300"],
+html.theme-google.light [class*=" text-teal-300"],
+html.theme-google.light [class^="text-teal-400"],
+html.theme-google.light [class*=" text-teal-400"] { color: #0f766e; }
+html.theme-google.light [class^="text-indigo-100"],
+html.theme-google.light [class*=" text-indigo-100"],
+html.theme-google.light [class^="text-indigo-200"],
+html.theme-google.light [class*=" text-indigo-200"],
+html.theme-google.light [class^="text-indigo-300"],
+html.theme-google.light [class*=" text-indigo-300"],
+html.theme-google.light [class^="text-indigo-400"],
+html.theme-google.light [class*=" text-indigo-400"] { color: #4338ca; }
+html.theme-google.light [class^="text-pink-100"],
+html.theme-google.light [class*=" text-pink-100"],
+html.theme-google.light [class^="text-pink-200"],
+html.theme-google.light [class*=" text-pink-200"],
+html.theme-google.light [class^="text-pink-300"],
+html.theme-google.light [class*=" text-pink-300"],
+html.theme-google.light [class^="text-pink-400"],
+html.theme-google.light [class*=" text-pink-400"] { color: #be185d; }
+html.theme-google.light [class^="text-orange-100"],
+html.theme-google.light [class*=" text-orange-100"],
+html.theme-google.light [class^="text-orange-200"],
+html.theme-google.light [class*=" text-orange-200"],
+html.theme-google.light [class^="text-orange-300"],
+html.theme-google.light [class*=" text-orange-300"],
+html.theme-google.light [class^="text-orange-400"],
+html.theme-google.light [class*=" text-orange-400"] { color: #c2410c; }
+html.theme-google.light [class^="text-fuchsia-100"],
+html.theme-google.light [class*=" text-fuchsia-100"],
+html.theme-google.light [class^="text-fuchsia-200"],
+html.theme-google.light [class*=" text-fuchsia-200"],
+html.theme-google.light [class^="text-fuchsia-300"],
+html.theme-google.light [class*=" text-fuchsia-300"],
+html.theme-google.light [class^="text-fuchsia-400"],
+html.theme-google.light [class*=" text-fuchsia-400"] { color: #a21caf; }
 
-/* ── الوضع الداكن: تظليل لوني بدل البنفسجي الغامق ── */
-html.theme-google.dark [class*="bg-purple-9"] {
-  background-color: color-mix(in srgb, var(--brand-500) 22%, transparent);
+/* ── الوضع الداكن ── */
+html.theme-google.dark [class^="bg-purple-900"],
+html.theme-google.dark [class*=" bg-purple-900"],
+html.theme-google.dark [class^="bg-purple-950"],
+html.theme-google.dark [class*=" bg-purple-950"] {
+  background-color: color-mix(in srgb, var(--brand-500) 18%, transparent);
 }
