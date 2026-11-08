@@ -60,7 +60,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[var(--bg-main)] text-white flex items-center justify-center p-4 relative">
+    <div className="h-screen w-screen overflow-hidden bg-[var(--bg-main)] text-[var(--text-main)] flex items-center justify-center p-4 relative">
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-gradient-to-tr from-purple-700/20 via-indigo-600/15 to-transparent rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-sm w-full bg-[var(--card-bg)]/95 backdrop-blur-2xl border border-purple-500/30 rounded-3xl p-7 shadow-2xl relative z-10">

@@ -195,7 +195,7 @@ export default function StaffManagementPage() {
                 >
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-white text-sm">{st.name}</span>
+                      <span className="font-bold text-[var(--text-main)] text-sm">{st.name}</span>
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
                         معلق
                       </span>
@@ -284,7 +284,7 @@ export default function StaffManagementPage() {
                   
                   {/* الموظف والبيانات */}
                   <td className="p-4">
-                    <div className="font-extrabold text-sm text-white">{st.name}</div>
+                    <div className="font-extrabold text-sm text-[var(--text-main)]">{st.name}</div>
                     <div className="text-[11px] text-purple-300 font-mono mt-0.5">{st.email}</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">{st.phone}</div>
                   </td>
@@ -400,13 +400,13 @@ export default function StaffManagementPage() {
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-purple-400" />
-                  <h3 className="font-extrabold text-base text-white">
+                  <h3 className="font-extrabold text-base text-[var(--text-main)]">
                     {isNewModal ? 'إضافة وترخيص موظف جديد' : `تعديل صلاحيات وترخيص: ${editingStaff.name}`}
                   </h3>
                 </div>
                 <button
                   onClick={() => setEditingStaff(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white"
+                  className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)]"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -460,7 +460,7 @@ export default function StaffManagementPage() {
 
               {/* تعيين الخطوط المسموحة (Line Access) */}
               <div className="space-y-2 pt-2 border-t border-purple-900/30">
-                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                <label className="text-xs font-bold text-[var(--text-main)] flex items-center gap-1.5">
                   <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
                   الخطوط المسموح للموظف القراءة والإرسال منها:
                 </label>
@@ -493,7 +493,7 @@ export default function StaffManagementPage() {
 
               {/* تعيين الصناديق المسموحة (Inbox Access) */}
               <div className="space-y-2 pt-2 border-t border-purple-900/30">
-                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                <label className="text-xs font-bold text-[var(--text-main)] flex items-center gap-1.5">
                   <Inbox className="w-3.5 h-3.5 text-blue-400" />
                   الصناديق المسندة للموظف:
                 </label>

@@ -76,7 +76,7 @@ export function ModernColorPicker({ value, onChange, label }: ModernColorPickerP
             className="w-4 h-4 rounded-lg shadow-sm border border-white/20 transition-transform"
             style={{ backgroundColor: value || '#8b5cf6' }}
           />
-          <span className="font-mono text-white text-xs font-semibold uppercase">{value || '#8b5cf6'}</span>
+          <span className="font-mono text-[var(--text-main)] text-xs font-semibold uppercase">{value || '#8b5cf6'}</span>
         </div>
         <Palette className="w-3.5 h-3.5 text-slate-400" />
       </button>
@@ -107,7 +107,7 @@ export function ModernColorPicker({ value, onChange, label }: ModernColorPickerP
                       style={{ backgroundColor: hex }}
                       title={hex}
                     >
-                      {isSelected && <Check className="w-3 h-3 text-white drop-shadow-md stroke-[3]" />}
+                      {isSelected && <Check className="w-3 h-3 text-[var(--text-main)] drop-shadow-md stroke-[3]" />}
                     </button>
                   );
                 })}

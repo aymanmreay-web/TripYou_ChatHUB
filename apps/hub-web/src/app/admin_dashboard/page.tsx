@@ -313,17 +313,17 @@ export default function AdminDashboardPage() {
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-2.5 rounded-2xl bg-blue-950/40 border border-blue-500/30">
                   <User className="w-4 h-4 text-blue-400 mx-auto mb-1" />
-                  <span className="text-xs font-bold text-white block">{contactStats?.by_entity_type?.individual || 0}</span>
+                  <span className="text-xs font-bold text-[var(--text-main)] block">{contactStats?.by_entity_type?.individual || 0}</span>
                   <span className="text-[10px] text-blue-300">أفراد (B2C)</span>
                 </div>
                 <div className="p-2.5 rounded-2xl bg-purple-950/40 border border-purple-500/30">
                   <Building2 className="w-4 h-4 text-purple-400 mx-auto mb-1" />
-                  <span className="text-xs font-bold text-white block">{contactStats?.by_entity_type?.organization || 0}</span>
+                  <span className="text-xs font-bold text-[var(--text-main)] block">{contactStats?.by_entity_type?.organization || 0}</span>
                   <span className="text-[10px] text-purple-300">منشآت</span>
                 </div>
                 <div className="p-2.5 rounded-2xl bg-amber-950/40 border border-amber-500/30">
                   <Users className="w-4 h-4 text-amber-400 mx-auto mb-1" />
-                  <span className="text-xs font-bold text-white block">{contactStats?.by_entity_type?.group || 0}</span>
+                  <span className="text-xs font-bold text-[var(--text-main)] block">{contactStats?.by_entity_type?.group || 0}</span>
                   <span className="text-[10px] text-amber-300">مجموعات</span>
                 </div>
               </div>

@@ -275,7 +275,7 @@ export default function LabelsAndTagsPage() {
             
             {/* إضافة وسم جديد */}
             <div className="p-5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] shadow-sm space-y-4">
-              <h3 className="text-xs font-bold text-white flex items-center gap-2">
+              <h3 className="text-xs font-bold text-[var(--text-main)] flex items-center gap-2">
                 <Plus className="w-4 h-4 text-purple-400" />
                 إضافة وسم جديد
               </h3>
@@ -326,7 +326,7 @@ export default function LabelsAndTagsPage() {
                 />
               </div>
               <span className="text-xs text-slate-400">
-                الإجمالي: <strong className="text-white font-mono">{tags.length}</strong>
+                الإجمالي: <strong className="text-[var(--text-main)] font-mono">{tags.length}</strong>
               </span>
             </div>
 
@@ -344,7 +344,7 @@ export default function LabelsAndTagsPage() {
                       style={{ backgroundColor: t.hex_color }}
                     />
                     <div>
-                      <span className="text-xs font-bold text-white">{t.name}</span>
+                      <span className="text-xs font-bold text-[var(--text-main)]">{t.name}</span>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                         {t.count} محادثة
                       </div>
@@ -354,7 +354,7 @@ export default function LabelsAndTagsPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setEditingTag(t)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10 transition-colors"
                       title="تعديل"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -377,8 +377,8 @@ export default function LabelsAndTagsPage() {
               <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-sm w-full p-5 space-y-4 text-right shadow-2xl">
                   <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
-                    <h4 className="font-bold text-white text-sm">تعديل الوسم</h4>
-                    <button onClick={() => setEditingTag(null)} className="text-slate-400 hover:text-white">
+                    <h4 className="font-bold text-[var(--text-main)] text-sm">تعديل الوسم</h4>
+                    <button onClick={() => setEditingTag(null)} className="text-slate-400 hover:text-[var(--text-main)]">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -468,7 +468,7 @@ export default function LabelsAndTagsPage() {
                             className="w-3 h-3 rounded-full shadow-sm"
                             style={{ backgroundColor: s.hex_color }}
                           />
-                          <h3 className="text-sm font-extrabold text-white">{s.title_ar}</h3>
+                          <h3 className="text-sm font-extrabold text-[var(--text-main)]">{s.title_ar}</h3>
                         </div>
                         <div className="mt-1 flex items-center gap-1.5">
                           <span className="text-[10px] font-mono font-bold tracking-widest text-purple-300 bg-purple-950/80 px-2 py-0.5 rounded-md border border-purple-800">
@@ -503,7 +503,7 @@ export default function LabelsAndTagsPage() {
                         <Clock className="w-3.5 h-3.5 text-amber-400" />
                         مهلة الاستجابة:
                       </span>
-                      <span className="font-bold text-white font-mono">
+                      <span className="font-bold text-[var(--text-main)] font-mono">
                         {s.sla_max_minutes > 0 ? `${s.sla_max_minutes} دقيقة` : 'مفتوح (بدون مهلة)'}
                       </span>
                     </div>
@@ -513,7 +513,7 @@ export default function LabelsAndTagsPage() {
                         <button
                           onClick={() => handleMoveStatus(index, 'up')}
                           disabled={index === 0}
-                          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
+                          className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10 disabled:opacity-20"
                           title="تقديم"
                         >
                           <ArrowUp className="w-3.5 h-3.5" />
@@ -521,7 +521,7 @@ export default function LabelsAndTagsPage() {
                         <button
                           onClick={() => handleMoveStatus(index, 'down')}
                           disabled={index === statuses.length - 1}
-                          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-20"
+                          className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10 disabled:opacity-20"
                           title="تأخير"
                         >
                           <ArrowDown className="w-3.5 h-3.5" />
@@ -549,11 +549,11 @@ export default function LabelsAndTagsPage() {
               <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 space-y-4 text-right shadow-2xl">
                   <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
-                    <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                    <h4 className="font-bold text-[var(--text-main)] text-sm flex items-center gap-2">
                       <SlidersHorizontal className="w-4 h-4 text-purple-400" />
                       {isCreatingStatus ? 'إضافة حالة مخصصة جديدة' : `تخصيص الحالة: ${editingStatus.title_ar}`}
                     </h4>
-                    <button onClick={() => setEditingStatus(null)} className="text-slate-400 hover:text-white">
+                    <button onClick={() => setEditingStatus(null)} className="text-slate-400 hover:text-[var(--text-main)]">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -641,7 +641,7 @@ export default function LabelsAndTagsPage() {
           <div className="p-6 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-purple-900/30">
               <div>
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <h2 className="text-base font-bold text-[var(--text-main)] flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 text-emerald-400" />
                   تسميات WhatsApp Business
                 </h2>
@@ -672,7 +672,7 @@ export default function LabelsAndTagsPage() {
                       style={{ backgroundColor: lbl.hexColor }}
                     />
                     <div>
-                      <div className="text-sm font-bold text-white">{lbl.name}</div>
+                      <div className="text-sm font-bold text-[var(--text-main)]">{lbl.name}</div>
                       <div className="text-[11px] text-purple-300/60 mt-0.5">
                         {lbl.chatsCount} محادثة
                       </div>

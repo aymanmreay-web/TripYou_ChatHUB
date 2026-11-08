@@ -24,7 +24,7 @@ export default function ProfilePage() {
 
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-1.5">
-                <h1 className="text-2xl font-bold text-white">{user.full_name}</h1>
+                <h1 className="text-2xl font-bold text-[var(--text-main)]">{user.full_name}</h1>
                 <Badge variant="live" size="md">
                   نشط الآن
                 </Badge>
@@ -39,19 +39,19 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/60">
                   <Mail className="w-4 h-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400">البريد الإلكتروني:</span>
-                  <span className="font-mono text-white mr-auto">{user.email_masked}</span>
+                  <span className="font-mono text-[var(--text-main)] mr-auto">{user.email_masked}</span>
                 </div>
 
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/60">
                   <Phone className="w-4 h-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400">رقم الهاتف:</span>
-                  <span className="font-mono text-white mr-auto">{user.phone_masked}</span>
+                  <span className="font-mono text-[var(--text-main)] mr-auto">{user.phone_masked}</span>
                 </div>
 
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/60">
                   <Clock className="w-4 h-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400">ساعات العمل:</span>
-                  <span className="text-white mr-auto">{user.working_hours || '09:00 ص - 05:00 م'}</span>
+                  <span className="text-[var(--text-main)] mr-auto">{user.working_hours || '09:00 ص - 05:00 م'}</span>
                 </div>
 
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/60">
@@ -72,7 +72,7 @@ export default function ProfilePage() {
                 <Shield className="w-5 h-5" />
               </span>
               <div>
-                <h2 className="text-base font-bold text-white">الصلاحيات الفعّالة (GET /me)</h2>
+                <h2 className="text-base font-bold text-[var(--text-main)]">الصلاحيات الفعّالة (GET /me)</h2>
                 <p className="text-xs text-slate-400">
                   يملك هذا الحساب {user.permissions.length} صلاحية تحدد الأقسام المتاحة في القائمة الجانبية
                 </p>

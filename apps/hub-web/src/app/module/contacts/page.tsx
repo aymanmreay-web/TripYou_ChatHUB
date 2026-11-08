@@ -600,7 +600,7 @@ export default function ContactsPage() {
 
               <button
                 onClick={() => setViewMode(viewMode === 'cards' ? 'table' : 'cards')}
-                className="p-2 rounded-xl bg-[var(--card-elevated)] hover:bg-white/5 border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-white transition-all"
+                className="p-2 rounded-xl bg-[var(--card-elevated)] hover:bg-white/5 border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all"
                 title={viewMode === 'cards' ? 'التحويل إلى عرض الجدول' : 'التحويل إلى عرض البطاقات'}
               >
                 <ArrowUpDown className="w-4 h-4" />
@@ -608,7 +608,7 @@ export default function ContactsPage() {
 
               <button
                 onClick={fetchContacts}
-                className="p-2 rounded-xl bg-[var(--card-elevated)] hover:bg-white/5 border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-white transition-all"
+                className="p-2 rounded-xl bg-[var(--card-elevated)] hover:bg-white/5 border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all"
                 title="تحديث البيانات"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-purple-400' : ''}`} />
@@ -810,7 +810,7 @@ export default function ContactsPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEditModal(contact)}
-                      className="p-1.5 rounded-xl hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-colors"
+                      className="p-1.5 rounded-xl hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
                       title="تعديل البيانات"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -875,7 +875,7 @@ export default function ContactsPage() {
                           </a>
                           <button
                             onClick={() => openEditModal(contact)}
-                            className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
+                            className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-[var(--text-main)]"
                             title="تعديل"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
@@ -904,10 +904,10 @@ export default function ContactsPage() {
           <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
-                <h3 className="font-bold text-base text-white">
+                <h3 className="font-bold text-base text-[var(--text-main)]">
                   {editContact ? '✏️ تعديل بيانات جهة الاتصال' : '➕ إضافة جهة اتصال جديدة ثلاثية الأبعاد'}
                 </h3>
-                <button onClick={() => setAddModalOpen(false)} className="text-slate-400 hover:text-white">
+                <button onClick={() => setAddModalOpen(false)} className="text-slate-400 hover:text-[var(--text-main)]">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -922,7 +922,7 @@ export default function ContactsPage() {
                       value={formData.display_name}
                       onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                       placeholder="مثال: فندق صفوة المدينة أو أ. عبدالله"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
 
@@ -934,7 +934,7 @@ export default function ContactsPage() {
                       value={formData.primary_phone}
                       onChange={(e) => setFormData({ ...formData, primary_phone: e.target.value })}
                       placeholder="+9665xxxxxxxx أو 05xxxxxxxx"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left font-mono"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left font-mono"
                     />
                   </div>
                 </div>
@@ -945,7 +945,7 @@ export default function ContactsPage() {
                     <select
                       value={formData.entity_type}
                       onChange={(e) => setFormData({ ...formData, entity_type: e.target.value as any })}
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     >
                       <option value="individual">🧑 فرد</option>
                       <option value="organization">🏢 منشأة / شركة</option>
@@ -958,7 +958,7 @@ export default function ContactsPage() {
                     <select
                       value={formData.commercial_role}
                       onChange={(e) => setFormData({ ...formData, commercial_role: e.target.value as any })}
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     >
                       <option value="b2c">عميل مباشر (B2C)</option>
                       <option value="b2b">شركة (B2B)</option>
@@ -973,7 +973,7 @@ export default function ContactsPage() {
                     <select
                       value={formData.source}
                       onChange={(e) => setFormData({ ...formData, source: e.target.value as any })}
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-emerald-400 font-medium"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-emerald-400 font-medium"
                     >
                       <option value="manual">✍️ إدخال يدوي</option>
                       <option value="evolution">📱 خط واتساب (Evolution)</option>
@@ -992,7 +992,7 @@ export default function ContactsPage() {
                       value={formData.source_detail}
                       onChange={(e) => setFormData({ ...formData, source_detail: e.target.value })}
                       placeholder="مثال: evolution:Sells_2 أو حجاج_1446.xlsx"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
 
@@ -1003,7 +1003,7 @@ export default function ContactsPage() {
                       value={formData.company}
                       onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                       placeholder="مثال: شركة ريزف بار للسياحة"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1016,7 +1016,7 @@ export default function ContactsPage() {
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       placeholder="email@example.com"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left"
                     />
                   </div>
 
@@ -1027,7 +1027,7 @@ export default function ContactsPage() {
                       value={formData.city}
                       onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                       placeholder="مكة المكرمة"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
 
@@ -1038,7 +1038,7 @@ export default function ContactsPage() {
                       value={formData.district}
                       onChange={(e) => setFormData({ ...formData, district: e.target.value })}
                       placeholder="حي العزيزية"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1050,7 +1050,7 @@ export default function ContactsPage() {
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     placeholder="ملاحظات حول جهة الاتصال والاتفاقات..."
-                    className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none resize-none"
+                    className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none resize-none"
                   />
                 </div>
 
@@ -1084,9 +1084,9 @@ export default function ContactsPage() {
               <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
                 <div className="flex items-center gap-2">
                   <Upload className="w-5 h-5 text-purple-400" />
-                  <h3 className="font-bold text-base text-white">استيراد جماعي ذكي مع تتبع المصدر</h3>
+                  <h3 className="font-bold text-base text-[var(--text-main)]">استيراد جماعي ذكي مع تتبع المصدر</h3>
                 </div>
-                <button onClick={() => setImportModalOpen(false)} className="text-slate-400 hover:text-white">
+                <button onClick={() => setImportModalOpen(false)} className="text-slate-400 hover:text-[var(--text-main)]">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1142,7 +1142,7 @@ export default function ContactsPage() {
                     <select
                       value={importSourceDetail || 'Master'}
                       onChange={(e) => setImportSourceDetail(e.target.value)}
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-xs font-semibold"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-xs font-semibold"
                     >
                       <option value="Master">الخط الرئيسي (Master) — (+966554125782)</option>
                       <option value="Sells_2">خط المبيعات 2 (Sells_2) — (+966548540410)</option>
@@ -1154,7 +1154,7 @@ export default function ContactsPage() {
                       value={importSourceDetail}
                       onChange={(e) => setImportSourceDetail(e.target.value)}
                       placeholder="مثال: ملف_حجاج_1446.xlsx أو قائمة_معرض_الرياض"
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
                     />
                   )}
                 </div>
@@ -1170,12 +1170,12 @@ export default function ContactsPage() {
                       value={importRawText}
                       onChange={(e) => setImportRawText(e.target.value)}
                       placeholder={"فندق الصفوة, +966500123456, شركة الحج والعمرة\nأحمد علي, 0551234567\n+966548540410"}
-                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none font-mono text-left resize-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none font-mono text-left resize-none"
                     />
                   </div>
                 ) : (
                   <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs text-purple-200 leading-relaxed">
-                    <p className="font-bold text-white flex items-center gap-1.5 mb-1">
+                    <p className="font-bold text-[var(--text-main)] flex items-center gap-1.5 mb-1">
                       <Smartphone className="w-4 h-4 text-emerald-400" />
                       استيراد وسحب جهات الاتصال الآلي من سيرفر واتساب
                     </p>
