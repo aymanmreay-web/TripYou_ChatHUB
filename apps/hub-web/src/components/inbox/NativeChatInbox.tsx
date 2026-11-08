@@ -913,25 +913,30 @@ export function NativeChatInbox() {
     if (!active || active.unread_count === 0) return;
 
     const timer = setTimeout(async () => {
-      // 1. تصفير العداد محلياً
+      // 1. تصفير العداد محلياً فوراً
       setConversations((prev) =>
         prev.map((c) => (c.id === activeConvId ? { ...c, unread_count: 0 } : c))
       );
-      // 2. إرسال أمر markMessageAsRead لخادم Evolution API ليعكس القراءة على واتساب والجوال
+      // 2. إرسال أمر markMessageAsRead لخادم Evolution API مع معرّف آخر رسالة
       const instance = active.line_id || selectedInstanceName;
+      const lastMsg = messages[messages.length - 1];
       try {
         await fetch(`/api/evolution/instances/${instance}/read`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatJid: active.chat_jid }),
+          body: JSON.stringify({
+            chatJid: active.chat_jid,
+            messageId: lastMsg?.id,
+            fromMe: lastMsg?.direction === 'out',
+          }),
         });
       } catch (e) {
         console.warn('Silent read status update failed:', e);
       }
-    }, 2000);
+    }, 1500);
 
     return () => clearTimeout(timer);
-  }, [activeConvId, conversations, selectedInstanceName]);
+  }, [activeConvId, conversations, messages, selectedInstanceName]);
 
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);
