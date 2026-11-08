@@ -48,12 +48,39 @@ export default function FavoritesPage() {
       const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
-        setFavorites(json.data || []);
+        const serverData = Array.isArray(json.data) ? json.data : [];
+        if (serverData.length > 0) {
+          setFavorites(serverData);
+          return;
+        }
       }
     } catch (err) {
-      console.error('Failed to load favorites:', err);
+      console.error('Failed to load favorites from server:', err);
     } finally {
       setLoading(false);
+    }
+
+    // Fallback: قراءة المفضلات المحفوظة محلياً إن لم توجد في السيرفر
+    if (typeof window !== 'undefined') {
+      try {
+        const local = localStorage.getItem('hub_favorites_v1');
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const mapped: FavoriteItem[] = parsed.map((item: any) => ({
+              id: item.id,
+              category: item.category || 'direct_chat',
+              item_id: item.id,
+              title: item.title,
+              subtitle: item.subtitle,
+              meta: item.meta,
+              created_at: item.createdAt || new Date().toISOString(),
+            }));
+            const filtered = activeTab === 'all' ? mapped : mapped.filter((f) => f.category === activeTab);
+            setFavorites(filtered);
+          }
+        }
+      } catch (e) {}
     }
   };
 

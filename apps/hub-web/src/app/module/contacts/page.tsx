@@ -254,6 +254,35 @@ export default function ContactsPage() {
 
   // معالجة الاستيراد السريع
   const handleRunImport = async () => {
+    // إذا اختار خط واتساب Evolution يقوم بالسحب التلقائي المباشر
+    if (importSourceType === 'evolution') {
+      setIsSubmitting(true);
+      setImportStatus('جاري جلب ومزامنة جهات الاتصال مباشرة من سيرفر واتساب Evolution...');
+      try {
+        const instanceToSync = importSourceDetail.trim() || 'Master';
+        const res = await fetch(`/api/contacts/sync-evolution?instance=${encodeURIComponent(instanceToSync)}`, {
+          method: 'POST',
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setImportStatus(`✅ تم بنجاح: تم جلب ${data.total_found} جهة اتصال من خط ${instanceToSync} (استيراد جديد: ${data.imported_count}، دمج وتحديث: ${data.merged_count})`);
+          fetchContacts();
+          setTimeout(() => {
+            setImportModalOpen(false);
+            setImportRawText('');
+            setImportStatus(null);
+          }, 2500);
+        } else {
+          setImportStatus(`❌ خطأ في الجلب: ${data.error || 'تعذر الاتصال بخط واتساب'}`);
+        }
+      } catch (err: any) {
+        setImportStatus(`❌ خطأ: ${err.message}`);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (!importRawText.trim()) {
       alert('يرجى لصق أرقام أو أسماء جهات الاتصال');
       return;
@@ -1107,30 +1136,54 @@ export default function ContactsPage() {
 
                 <div>
                   <label className="block text-[11px] text-slate-300 font-medium mb-1">
-                    اسم المصدر التفصيلي (ليظهر كوسام دائم):
+                    {importSourceType === 'evolution' ? 'حدد اسم خط واتساب (Instance):' : 'اسم المصدر التفصيلي (ليظهر كوسام دائم):'}
                   </label>
-                  <input
-                    type="text"
-                    value={importSourceDetail}
-                    onChange={(e) => setImportSourceDetail(e.target.value)}
-                    placeholder="مثال: ملف_حجاج_1446.xlsx أو خط واتساب Sells_2"
-                    className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
-                  />
+                  {importSourceType === 'evolution' ? (
+                    <select
+                      value={importSourceDetail || 'Master'}
+                      onChange={(e) => setImportSourceDetail(e.target.value)}
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-xs font-semibold"
+                    >
+                      <option value="Master">الخط الرئيسي (Master) — (+966554125782)</option>
+                      <option value="Sells_2">خط المبيعات 2 (Sells_2) — (+966548540410)</option>
+                      <option value="Sells_1">خط المبيعات 1 (Sells_1)</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={importSourceDetail}
+                      onChange={(e) => setImportSourceDetail(e.target.value)}
+                      placeholder="مثال: ملف_حجاج_1446.xlsx أو قائمة_معرض_الرياض"
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                    />
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-[11px] text-slate-300 font-medium mb-1">
-                    انسخ وألصق البيانات هنا (الاسم, الهاتف, المنشأة) أو قائمة أرقام:
-                  </label>
-                  <textarea
-                    rows={6}
-                    dir="ltr"
-                    value={importRawText}
-                    onChange={(e) => setImportRawText(e.target.value)}
-                    placeholder={"فندق الصفوة, +966500123456, شركة الحج والعمرة\nأحمد علي, 0551234567\n+966548540410"}
-                    className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none font-mono text-left resize-none"
-                  />
-                </div>
+                {importSourceType !== 'evolution' ? (
+                  <div>
+                    <label className="block text-[11px] text-slate-300 font-medium mb-1">
+                      انسخ وألصق البيانات هنا (الاسم, الهاتف, المنشأة) أو قائمة أرقام:
+                    </label>
+                    <textarea
+                      rows={6}
+                      dir="ltr"
+                      value={importRawText}
+                      onChange={(e) => setImportRawText(e.target.value)}
+                      placeholder={"فندق الصفوة, +966500123456, شركة الحج والعمرة\nأحمد علي, 0551234567\n+966548540410"}
+                      className="w-full bg-[var(--card-elevated)] text-white px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none font-mono text-left resize-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs text-purple-200 leading-relaxed">
+                    <p className="font-bold text-white flex items-center gap-1.5 mb-1">
+                      <Smartphone className="w-4 h-4 text-emerald-400" />
+                      استيراد وسحب جهات الاتصال الآلي من سيرفر واتساب
+                    </p>
+                    <p className="text-[11px] text-slate-300">
+                      سيقوم النظام بالاتصال بسيرفر <bdi dir="ltr">Evolution API</bdi> وسحب كافة جهات الاتصال المسجلة على الخط المحدد، واستخراج أرقام الهواتف وفك تشفير الـ <bdi dir="ltr">LID</bdi>، وإسناد وسوم المصدر والدولة تلقائياً مع دمج وتحديث المكرر في قاعدة البيانات.
+                    </p>
+                  </div>
+                )}
 
                 {importStatus && (
                   <div className="p-3 rounded-xl bg-purple-950/50 border border-purple-500/30 text-purple-200 text-xs">

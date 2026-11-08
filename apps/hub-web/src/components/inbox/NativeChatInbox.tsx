@@ -343,7 +343,12 @@ export function NativeChatInbox() {
   // Evolution Real State
   const [instances, setInstances] = useState<EvolutionInstanceSummary[]>([]);
   const [selectedInstanceName, setSelectedInstanceName] = useState<string>('Master');
+  const [sendingLineInstance, setSendingLineInstance] = useState<string>('');
   const [loadingInstances, setLoadingInstances] = useState<boolean>(true);
+
+  // Inboxes State
+  const [inboxesList, setInboxesList] = useState<{ id: string; name_ar: string; color_hex: string; filter_type: string; line_ids: string[] }[]>([]);
+  const [selectedInboxId, setSelectedInboxId] = useState<string>('all');
 
   // Conversations State (Real)
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -505,6 +510,28 @@ export function NativeChatInbox() {
     const ksaHour = (now.getUTCHours() + 3) % 24;
     return ksaHour >= 1 && ksaHour < 7;
   }, []);
+
+  // تحميل الصناديق من Supabase
+  const loadInboxes = useCallback(async () => {
+    try {
+      const { data } = await supabase.from('inboxes').select('id, name_ar, color, filter_type').order('sort_order');
+      if (Array.isArray(data)) {
+        setInboxesList(data.map((d: any) => ({
+          id: d.id,
+          name_ar: d.name_ar,
+          color_hex: d.color || '#8b5cf6',
+          filter_type: d.filter_type || 'all',
+          line_ids: [],
+        })));
+      }
+    } catch (e) {
+      console.warn('Failed to load inboxes:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadInboxes();
+  }, [loadInboxes]);
 
   // 1. Fetch connected instances from Evolution API
   const fetchInstances = useCallback(async () => {
@@ -845,10 +872,19 @@ export function NativeChatInbox() {
     return { text: `انتظار العميل: (${diffMinutes} د)`, level: 'normal', minutes: diffMinutes };
   }, [activeConversation]);
 
-  // Filter conversations based on search and tabs
+  // Filter conversations based on search, tabs and selected inbox
   const filteredConversations = useMemo(() => {
     const now = Date.now();
+    const currentInbox = inboxesList.find((ib) => ib.id === selectedInboxId);
+
     return conversations.filter((c) => {
+      // 1. فلترة الصندوق
+      if (currentInbox) {
+        if (currentInbox.filter_type === 'dm' && c.is_group) return false;
+        if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
+      }
+
+      // 2. فلترة البحث
       const matchSearch =
         c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.phone_or_jid.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -859,7 +895,6 @@ export function NativeChatInbox() {
       if (filterTab === 'unassigned') return !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند';
       if (filterTab === 'unread') return c.unread_count > 0;
       if (filterTab === 'rescue') {
-        // رادار الاقتناص السريع: تأخر الرد أكثر من 15 دقيقة (900000ms)
         const delay = now - (c.last_customer_message_timestamp || 0);
         return delay >= 15 * 60 * 1000;
       }
@@ -868,7 +903,7 @@ export function NativeChatInbox() {
       if (filterTab === 'escalated') return c.status === 'escalated';
       return true;
     });
-  }, [conversations, searchQuery, filterTab, user]);
+  }, [conversations, searchQuery, filterTab, user, selectedInboxId, inboxesList]);
 
   // مؤقت ذكي لتصفير قراءة الرسائل بعد ثانيتين (2s) في المحادثة وإرسالها لـ Evolution API
   useEffect(() => {
@@ -1003,14 +1038,16 @@ export function NativeChatInbox() {
 
     setIsSending(true);
 
+    const effectiveLine = sendingLineInstance || selectedInstanceName;
+
     const signature = includeSignature
-      ? `\n\n*${user.full_name}* — ${currentInstance?.profileName || selectedInstanceName}`
+      ? `\n\n*${user.full_name}* — ${currentInstance?.profileName || effectiveLine}`
       : '';
 
     const fullMessage = `${textToSend}${signature}`;
 
     try {
-      const res = await fetch(`/api/evolution/instances/${selectedInstanceName}/messages`, {
+      const res = await fetch(`/api/evolution/instances/${effectiveLine}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1022,7 +1059,7 @@ export function NativeChatInbox() {
       if (res.ok) {
         // نجاح الإرسال: تصفير أخطاء قاطع الدائرة وقفل خط الإرسال
         setConsecutiveErrors(0);
-        setLockedLinesMap((prev) => ({ ...prev, [activeConversation.chat_jid]: selectedInstanceName }));
+        setLockedLinesMap((prev) => ({ ...prev, [activeConversation.chat_jid]: effectiveLine }));
 
         const newMsg: ChatMessage = {
           id: `msg-${Date.now()}`,
@@ -1034,7 +1071,7 @@ export function NativeChatInbox() {
           media_type: 'text',
           sender_name: user.full_name,
           status: 'sent',
-          line_id: selectedInstanceName,
+          line_id: effectiveLine,
           created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
         };
 
@@ -1648,22 +1685,44 @@ export function NativeChatInbox() {
         </div>
       )}
 
-      {/* Top Bar: Connected Line / Instance Selector & Quick Status */}
+      {/* Top Bar: Inboxes, Connected Line / Instance Selector & Quick Status */}
       <div className="bg-[var(--card-bg)] border-b border-[var(--border-subtle)] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold text-[var(--text-secondary)]">خط واتساب النشط:</span>
-          <select
-            value={selectedInstanceName}
-            onChange={(e) => setSelectedInstanceName(e.target.value)}
-            disabled={loadingInstances}
-            className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none focus:border-purple-500 font-medium"
-          >
-            {instances.map((inst) => (
-              <option key={inst.name} value={inst.name}>
-                {inst.profileName || inst.name} {inst.ownerJid ? `(+${inst.ownerJid.replace('@s.whatsapp.net', '')})` : ''} — [{inst.connectionStatus === 'open' ? 'متصل' : 'معلق'}]
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* اختيار الصندوق المشترك */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-purple-300">الصندوق:</span>
+            <select
+              value={selectedInboxId}
+              onChange={(e) => setSelectedInboxId(e.target.value)}
+              className="bg-purple-950/40 text-xs text-purple-200 border border-purple-500/40 rounded-xl px-3 py-1.5 outline-none focus:border-purple-400 font-bold"
+            >
+              <option value="all">كل الصناديق (عرض مجمّع)</option>
+              {inboxesList.map((ib) => (
+                <option key={ib.id} value={ib.id}>
+                  {ib.name_ar} {ib.filter_type === 'groups' ? '(مجموعات)' : ib.filter_type === 'dm' ? '(فردي)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <span className="text-slate-600 hidden sm:inline">|</span>
+
+          {/* اختيار الخط المعروض */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">الخط:</span>
+            <select
+              value={selectedInstanceName}
+              onChange={(e) => setSelectedInstanceName(e.target.value)}
+              disabled={loadingInstances}
+              className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none focus:border-purple-500 font-medium"
+            >
+              {instances.map((inst) => (
+                <option key={inst.name} value={inst.name}>
+                  {inst.profileName || inst.name} {inst.ownerJid ? `(+${inst.ownerJid.replace('@s.whatsapp.net', '')})` : ''} — [{inst.connectionStatus === 'open' ? 'متصل' : 'معلق'}]
+                </option>
+              ))}
+            </select>
+          </div>
 
           {currentInstance && (
             <span className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
@@ -2774,6 +2833,22 @@ export function NativeChatInbox() {
                           </div>
                         </>
                       )}
+                    </div>
+
+                    {/* محدد خط الإرسال المرن من أرقام الصندوق */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <select
+                        value={sendingLineInstance || selectedInstanceName}
+                        onChange={(e) => setSendingLineInstance(e.target.value)}
+                        className="h-10 px-2 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-semibold outline-none focus:border-purple-400"
+                        title="اختر خط واتساب الذي ستخرج منه هذه الرسالة"
+                      >
+                        {instances.map((inst) => (
+                          <option key={inst.name} value={inst.name}>
+                            إرسال من: {inst.profileName || inst.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <input
