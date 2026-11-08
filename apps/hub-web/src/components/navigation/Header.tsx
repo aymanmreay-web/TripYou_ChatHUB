@@ -118,6 +118,17 @@ export function Header({ onOpenMobile }: HeaderProps) {
             <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-gradient-to-tr from-purple-600 to-fuchsia-400 shadow-sm" />
           </button>
           <button
+            onClick={() => setTheme('theme-google')}
+            title="سمة جوجل الزجاجية (Google Glass)"
+            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all ${
+              theme === 'theme-google'
+                ? 'bg-blue-500/20 ring-2 ring-blue-500'
+                : 'opacity-60 hover:opacity-100 hover:bg-[var(--card-bg)]'
+            }`}
+          >
+            <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full shadow-sm" style={{ background: 'conic-gradient(#4285F4, #EA4335, #FBBC04, #34A853, #4285F4)' }} />
+          </button>
+          <button
             onClick={() => setTheme('theme-blue')}
             title="السمة الزرقاء العميقة (Prussian Blue & Electric Ocean)"
             className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all ${

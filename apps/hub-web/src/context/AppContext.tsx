@@ -6,7 +6,10 @@ import { MOCK_LINES, RAW_MODULES, filterModulesForUser } from '../lib/mock-data'
 import { loadAuthState, signOut, AuthStatus } from '../lib/authDb';
 import { supabase } from '../lib/supabase';
 
-export type AppTheme = 'theme-purple' | 'theme-blue';
+export type AppTheme = 'theme-purple' | 'theme-blue' | 'theme-google';
+
+/** الثيم الافتراضي للمستخدمين الجدد. بعد مراجعة التصميم الجديد غيّر القيمة إلى 'theme-google'. */
+export const DEFAULT_THEME: AppTheme = 'theme-purple';
 export type AppMode = 'dark' | 'light';
 
 interface AppContextType {
@@ -36,7 +39,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<StaffMe | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [selectedLineId, setSelectedLineId] = useState<string>('line-01');
-  const [theme, setThemeState] = useState<AppTheme>('theme-purple');
+  const [theme, setThemeState] = useState<AppTheme>(DEFAULT_THEME);
   const [mode, setModeState] = useState<AppMode>('dark');
   const [dbLines, setDbLines] = useState<WhatsAppLine[]>([]);
 
@@ -74,7 +77,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const savedLine = localStorage.getItem('tripyou_hub_line_id');
-      const savedTheme = (localStorage.getItem('tripyou_theme') as AppTheme) || 'theme-purple';
+      const savedTheme = (localStorage.getItem('tripyou_theme') as AppTheme) || DEFAULT_THEME;
       const savedMode = (localStorage.getItem('tripyou_mode') as AppMode) || 'dark';
 
       if (savedLine) {
@@ -85,7 +88,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Synchronize <html> classes immediately
       const root = document.documentElement;
-      root.classList.remove('theme-purple', 'theme-blue', 'dark', 'light');
+      root.classList.remove('theme-purple', 'theme-blue', 'theme-google', 'dark', 'light');
       root.classList.add(savedTheme, savedMode);
     } catch {
       // ignore
@@ -97,7 +100,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.setItem('tripyou_theme', newTheme);
       const root = document.documentElement;
-      root.classList.remove('theme-purple', 'theme-blue');
+      root.classList.remove('theme-purple', 'theme-blue', 'theme-google');
       root.classList.add(newTheme);
     } catch {
       // ignore

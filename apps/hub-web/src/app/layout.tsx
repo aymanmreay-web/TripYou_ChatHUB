@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import './fonts';
 import './globals.css';
 import { AppProvider } from '../context/AppContext';
 
@@ -37,7 +38,7 @@ export default function RootLayout({
                   var savedTheme = localStorage.getItem('tripyou_theme') || 'theme-purple';
                   var savedMode = localStorage.getItem('tripyou_mode') || 'dark';
                   var root = document.documentElement;
-                  root.classList.remove('theme-purple', 'theme-blue', 'dark', 'light');
+                  root.classList.remove('theme-purple', 'theme-blue', 'theme-google', 'dark', 'light');
                   root.classList.add(savedTheme, savedMode);
                 } catch (e) {}
               })();
