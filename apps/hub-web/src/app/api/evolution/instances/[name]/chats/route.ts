@@ -6,12 +6,10 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'bc6075e9f95967407faa
 export async function GET(req: Request, { params }: { params: { name: string } }) {
   try {
     const { name } = params;
-    const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get('limit') || '1000', 10);
     const res = await fetch(`${EVOLUTION_URL}/chat/findChats/${name}`, {
       method: 'POST',
       headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ where: {}, limit }),
+      body: JSON.stringify({}),
       cache: 'no-store',
     });
     if (!res.ok) {

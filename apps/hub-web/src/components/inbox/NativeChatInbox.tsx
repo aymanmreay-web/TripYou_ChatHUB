@@ -515,11 +515,12 @@ export function NativeChatInbox() {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           setInstances(data);
-          const openInst = data.find((i: any) => i.connectionStatus === 'open');
-          if (openInst) {
-            setSelectedInstanceName(openInst.name);
-          } else {
-            setSelectedInstanceName(data[0].name);
+          // إذا كان Master متصلاً نجعله الافتراضي دائماً
+          const masterInst = data.find((i: any) => i.name === 'Master' && i.connectionStatus === 'open');
+          const anyOpenInst = data.find((i: any) => i.connectionStatus === 'open');
+          const defaultInst = masterInst || anyOpenInst || data[0];
+          if (defaultInst) {
+            setSelectedInstanceName(defaultInst.name);
           }
         }
       }
@@ -573,14 +574,18 @@ export function NativeChatInbox() {
           const mapped: ConversationItem[] = rawChats.map((c: any) => {
             const jid = c.remoteJid || c.id || '';
             const isGroup = jid.includes('@g.us');
-            const cleanPhone = jid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+            const altPhoneJid = c.lastMessage?.key?.remoteJidAlt || c.lastMessage?.key?.participantAlt || '';
+            const rawPhone = altPhoneJid
+              ? altPhoneJid.replace('@s.whatsapp.net', '')
+              : jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
+            const cleanPhone = rawPhone.replace(/\D/g, '');
             const groupInfo = groupMap.get(jid);
             
             let title = '';
             if (isGroup) {
               title = groupInfo?.subject || c.subject || c.name || (cleanPhone ? `مجموعة (${cleanPhone.slice(-6)})` : 'مجموعة واتساب');
             } else {
-              title = c.pushName || c.name || (cleanPhone ? `+${cleanPhone}` : 'محادثة جديدة');
+              title = c.pushName || c.name || (cleanPhone ? `+${cleanPhone}` : 'محادثة عميل');
             }
 
             let lastText = '';
@@ -750,14 +755,14 @@ export function NativeChatInbox() {
     }
   }, []);
 
-  // Auto-refresh silent poller every 10 seconds for real-time messages & chats
+  // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
   useEffect(() => {
     if (!selectedInstanceName) return;
     const interval = setInterval(() => {
-      // تحديث الرسائل للمحادثة المفتوحة بصمت
+      // 1. تحديث الرسائل للمحادثة المفتوحة بصمت
       if (activeConvId && selectedInstanceName) {
         fetch(`/api/evolution/instances/${selectedInstanceName}/messages?chatId=${encodeURIComponent(activeConvId)}&limit=50`)
-          .then((res) => res.ok ? res.json() : null)
+          .then((res) => (res.ok ? res.json() : null))
           .then((rawMsgs) => {
             if (!rawMsgs) return;
             const list: any[] = Array.isArray(rawMsgs)
@@ -770,12 +775,10 @@ export function NativeChatInbox() {
               ? rawMsgs.messages
               : [];
             if (list.length > 0) {
-              // إذا كان هناك رسائل جديدة نقوم بتحديث الحالة
               setMessages((prev) => {
-                const prevIds = new Set(prev.map(m => m.id));
+                const prevIds = new Set(prev.map((m) => m.id));
                 const hasNew = list.some((m: any) => !prevIds.has(m.key?.id || m.id));
                 if (!hasNew) return prev;
-                // جلب الرسائل من جديد إذا كان هناك جديد
                 fetchMessagesForChat(activeConvId, selectedInstanceName);
                 return prev;
               });
@@ -783,9 +786,25 @@ export function NativeChatInbox() {
           })
           .catch(() => {});
       }
-    }, 10000);
+
+      // 2. تحديث قائمة المحادثات الخلفية تلقائياً دون تجميد الواجهة أو إعادة التحميل المزعجة
+      fetch(`/api/evolution/instances/${selectedInstanceName}/chats`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((rawChats) => {
+          if (Array.isArray(rawChats) && rawChats.length > 0) {
+            setConversations((prev) => {
+              // إذا تغيرت الأعداد أو ورود محادثة جديدة نقوم بالتحديث الهادئ
+              if (rawChats.length !== prev.length) {
+                fetchChats(selectedInstanceName);
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+    }, 6000);
     return () => clearInterval(interval);
-  }, [activeConvId, selectedInstanceName, fetchMessagesForChat]);
+  }, [activeConvId, selectedInstanceName, fetchMessagesForChat, fetchChats]);
 
   useEffect(() => {
     if (activeConvId && selectedInstanceName) {
