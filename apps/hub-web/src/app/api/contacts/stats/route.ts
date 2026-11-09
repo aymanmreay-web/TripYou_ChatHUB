@@ -11,17 +11,18 @@ export async function GET() {
   try {
     const supabase = getSupabaseAdmin();
 
-    const { data: allContacts, count: exactTotal, error } = await supabase
-      .from('contacts')
-      .select('id, entity_type, commercial_role, source, source_detail, city, created_at', { count: 'exact' })
-      .range(0, 9999);
+    // جلب كامل السجلات (حتى مع حد PostgREST البالغ 1000 صف لكل استعلام)
+    const [batch1, batch2] = await Promise.all([
+      supabase.from('contacts').select('id, entity_type, commercial_role, source, source_detail, city, created_at').range(0, 999),
+      supabase.from('contacts').select('id, entity_type, commercial_role, source, source_detail, city, created_at').range(1000, 2999)
+    ]);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (batch1.error) {
+      return NextResponse.json({ error: batch1.error.message }, { status: 500 });
     }
 
-    const list = allContacts || [];
-    const total = exactTotal || list.length;
+    const list = [...(batch1.data || []), ...(batch2.data || [])];
+    const total = list.length;
 
     // توزيع الكيان (Entity Type)
     const byEntityType = {
