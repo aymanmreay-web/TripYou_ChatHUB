@@ -514,11 +514,11 @@ export function NativeChatInbox() {
     return ksaHour >= 1 && ksaHour < 7;
   }, []);
 
-  // تحميل الصناديق وربطها بالخطوط من Supabase
+  // تحميل الصناديق وربطها بالخطوط من Supabase بناءً على صلاحيات الموظف في جدول inbox_access
   const loadInboxes = useCallback(async () => {
     try {
       const [inboxesRes, linesRes, inboxLinesRes] = await Promise.all([
-        supabase.from('inboxes').select('id, name_ar, color, filter_type').order('sort_order'),
+        supabase.from('inboxes').select('id, name_ar, color, filter_type, is_active').order('sort_order'),
         supabase.from('lines').select('id, instance_name, title_ar'),
         supabase.from('inbox_lines').select('inbox_id, line_id'),
       ]);
@@ -542,19 +542,38 @@ export function NativeChatInbox() {
         });
       }
 
-      if (Array.isArray(inboxesRes.data)) {
-        setInboxesList(inboxesRes.data.map((d: any) => ({
-          id: d.id,
-          name_ar: d.name_ar,
-          color_hex: d.color || '#8b5cf6',
-          filter_type: d.filter_type || 'all',
-          line_ids: inboxLinesMap.get(d.id) || [],
-        })));
+      let rawInboxes = Array.isArray(inboxesRes.data) ? inboxesRes.data : [];
+
+      // التحقق الأمني: إذا كان المستخدم ليس مسؤل نظام أعلى (Super Admin)،
+      // نجلب فقط الصناديق المصرح له بها في جدول inbox_access
+      if (user?.id && user?.role !== 'super_admin') {
+        const { data: accessRows } = await supabase
+          .from('inbox_access')
+          .select('inbox_id')
+          .eq('staff_id', user.id);
+
+        const allowedInboxIds = new Set((accessRows || []).map((a: any) => a.inbox_id));
+        rawInboxes = rawInboxes.filter((d: any) => allowedInboxIds.has(d.id));
+      }
+
+      const mappedList = rawInboxes.map((d: any) => ({
+        id: d.id,
+        name_ar: d.name_ar,
+        color_hex: d.color || '#8b5cf6',
+        filter_type: d.filter_type || 'all',
+        line_ids: inboxLinesMap.get(d.id) || [],
+      }));
+
+      setInboxesList(mappedList);
+
+      // إذا كان الموظف مربوطاً بصناديق معينة ولديه صندوق واحد أو اختار صندوقاً غير مصرح له به، نثبت على الأول
+      if (user?.role !== 'super_admin' && mappedList.length > 0) {
+        setSelectedInboxId(mappedList[0].id);
       }
     } catch (e) {
       console.warn('Failed to load inboxes:', e);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadInboxes();
@@ -931,16 +950,26 @@ export function NativeChatInbox() {
 
   // المحادثات المحصورة في نطاق الصندوق المختار فقط (قبل تطبيق تبويبات الحالة والبحث والخط)
   const inboxScopedConversations = useMemo(() => {
-    if (!currentInbox) return conversations;
-    return conversations.filter((c) => {
-      if (currentInbox.filter_type === 'dm' && c.is_group) return false;
-      if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
-      if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
-        if (!currentInbox.line_ids.includes(c.line_id)) return false;
-      }
-      return true;
-    });
-  }, [conversations, currentInbox]);
+    if (currentInbox) {
+      return conversations.filter((c) => {
+        if (currentInbox.filter_type === 'dm' && c.is_group) return false;
+        if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
+        if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
+          if (!currentInbox.line_ids.includes(c.line_id)) return false;
+        }
+        return true;
+      });
+    }
+
+    // إذا كان الموظف ليس Super Admin، تنحصر محادثاته في خطوط الصناديق المخصصة له فقط
+    if (user?.role !== 'super_admin') {
+      const allowedLines = new Set<string>();
+      inboxesList.forEach((ib) => ib.line_ids.forEach((l) => allowedLines.add(l)));
+      return conversations.filter((c) => allowedLines.has(c.line_id));
+    }
+
+    return conversations;
+  }, [conversations, currentInbox, inboxesList, user]);
 
   // Filter conversations based on search, tabs, inbox lines and lineFilter
   const filteredConversations = useMemo(() => {
@@ -1787,7 +1816,11 @@ export function NativeChatInbox() {
               }}
               className="bg-purple-950/40 text-xs text-purple-200 border border-purple-500/40 rounded-xl px-3 py-1.5 outline-none focus:border-purple-400 font-bold"
             >
-              <option value="all">كل الصناديق (عرض مجمّع)</option>
+              {user?.role === 'super_admin' ? (
+                <option value="all">كل الصناديق (عرض مجمّع للإشراف)</option>
+              ) : inboxesList.length > 1 ? (
+                <option value="all">كل الصناديق المخصصة لي (مجمّع)</option>
+              ) : null}
               {inboxesList.map((ib) => (
                 <option key={ib.id} value={ib.id}>
                   {ib.name_ar} {ib.filter_type === 'groups' ? '(مجموعات)' : ib.filter_type === 'dm' ? '(فردي)' : ''}
