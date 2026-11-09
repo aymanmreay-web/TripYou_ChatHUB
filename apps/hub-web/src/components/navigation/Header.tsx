@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { Menu, Bell, LogOut, Check, ChevronDown, Sun, Moon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Button, Avatar, Badge } from '@tripyou/ui';
@@ -12,14 +11,8 @@ interface HeaderProps {
 }
 
 export function Header({ onOpenMobile }: HeaderProps) {
-  const pathname = usePathname();
-  const isInboxPage = pathname === '/inbox' || pathname === '/' || pathname?.startsWith('/inbox');
   const {
     user,
-    selectedLine,
-    selectedLineId,
-    setSelectedLineId,
-    lines,
     logout,
     theme,
     setTheme,
@@ -28,13 +21,12 @@ export function Header({ onOpenMobile }: HeaderProps) {
   } = useApp();
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
-  const [lineDropdownOpen, setLineDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   return (
-    <header className="h-16 bg-[var(--card-bg)]/85 backdrop-blur-xl border-b border-[var(--border-subtle)] px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 transition-colors duration-200">
+    <header className="h-16 bg-[var(--card-bg)]/85 backdrop-blur-xl border-b border-[var(--border-subtle)] px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 transition-colors duration-200" dir="rtl">
       
-      {/* Right side (RTL start): Mobile toggle + Active WhatsApp Line with Emerald Pulse */}
+      {/* Right side (RTL start): Mobile toggle + Live System Pulse */}
       <div className="flex items-center gap-2.5 sm:gap-3">
         <button
           onClick={onOpenMobile}
@@ -44,82 +36,14 @@ export function Header({ onOpenMobile }: HeaderProps) {
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* إذا كان المستخدم في صفحة المحادثات: نعرض شارة توضيحية موحدة تمنع التشتت والازدواجية */}
-        {isInboxPage ? (
-          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-right shadow-sm">
-            <div className="relative flex items-center justify-center w-2.5 h-2.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 animate-pulse"></span>
-            </div>
-            <div className="text-right">
-              <div className="text-xs font-bold text-[var(--text-main)] leading-none">
-                صناديق المحادثات المجمّعة
-              </div>
-              <div className="hidden sm:block text-[10px] text-emerald-400 font-mono mt-0.5">
-                تصفية الخطوط من شريط المحادثة
-              </div>
-            </div>
+        {/* نبض الاتصال الحي المباشر للنظام */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-right shadow-sm">
+          <div className="relative flex items-center justify-center w-2 h-2">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 animate-pulse"></span>
           </div>
-        ) : (
-          /* WhatsApp Line Selector Dropdown في باقي الصفحات الإدارية */
-          <div className="relative">
-            <button
-              onClick={() => {
-                setLineDropdownOpen(!lineDropdownOpen);
-                setRoleDropdownOpen(false);
-                setNotificationsOpen(false);
-              }}
-              className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-glow)] transition-all text-right shadow-sm"
-            >
-              {/* الشارة الزمردية الخضراء المستقلة بنبض دائم */}
-              <div className="relative flex items-center justify-center w-2.5 h-2.5">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 animate-pulse"></span>
-              </div>
-
-              <div className="text-right">
-                <div className="text-xs font-bold text-[var(--text-main)] leading-none flex items-center gap-1.5">
-                  <span>{selectedLine.title_ar}</span>
-                  <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
-                </div>
-                <div className="hidden sm:block text-[10px] text-[var(--text-muted)] font-mono mt-0.5 tabular-nums">
-                  {selectedLine.phone_masked}
-                </div>
-              </div>
-            </button>
-
-            {lineDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-72 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 glass-panel">
-                <div className="text-xs font-bold text-[var(--text-muted)] px-3 py-1.5 mb-1 border-b border-[var(--border-subtle)]">
-                  خطوط واتساب المعتمدة
-                </div>
-                {lines.map((l) => (
-                  <button
-                    key={l.id}
-                    onClick={() => {
-                      setSelectedLineId(l.id);
-                      setLineDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors ${
-                      l.id === selectedLineId
-                        ? 'bg-purple-500/15 text-[var(--text-secondary)] font-bold border border-purple-500/30'
-                        : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
-                    }`}
-                  >
-                    <div className="text-right flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <div>
-                        <div className="font-semibold">{l.title_ar}</div>
-                        <div className="text-[10px] text-[var(--text-muted)] font-mono tabular-nums">{l.phone_masked}</div>
-                      </div>
-                    </div>
-                    {l.id === selectedLineId && <Check className="w-4 h-4 text-emerald-400" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          <span className="text-xs font-bold text-[var(--text-main)]">النظام متصل ونشط</span>
+        </div>
       </div>
 
       {/* Left side (RTL end): Theme Selector + Mode Toggle + Role Switcher + Profile */}
@@ -181,7 +105,6 @@ export function Header({ onOpenMobile }: HeaderProps) {
             onClick={() => {
               setNotificationsOpen(!notificationsOpen);
               setRoleDropdownOpen(false);
-              setLineDropdownOpen(false);
             }}
             className="p-2 sm:p-2.5 rounded-2xl text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] border border-transparent hover:border-[var(--border-subtle)] transition-colors relative"
             title="التنبيهات"

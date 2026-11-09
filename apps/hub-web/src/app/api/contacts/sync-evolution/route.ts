@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     for (const c of list) {
       const jid = c.remoteJid || c.id || '';
-      if (!jid || jid.includes('@g.us')) continue; // استبعاد المجموعات
+      if (!jid || jid.includes('@g.us')) continue; // معالجة المجموعات تالياً من chats
 
       let rawPhone = '';
       if (jid.includes('@s.whatsapp.net')) {
@@ -80,7 +80,16 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const displayName = c.pushName || c.name || phone;
+      // تحديد الاسم الحقيقي واستبعاد كلمة Você
+      let displayName = '';
+      if (c.name && c.name.trim() && c.name !== 'Você') {
+        displayName = c.name.trim();
+      } else if (c.pushName && c.pushName.trim() && c.pushName !== 'Você') {
+        displayName = c.pushName.trim();
+      } else {
+        displayName = phone;
+      }
+
       const isGroup = false;
 
       // فحص وسوم وتحليل ذكي تلقائي حسب الدولة والاسم
@@ -102,7 +111,6 @@ export async function POST(req: NextRequest) {
       // تحليل ذكي لاسم المنشأة والدور التجاري
       let entityType: 'individual' | 'organization' | 'group' = 'individual';
       let commercialRole: 'b2c' | 'b2b' | 'vendor' | 'partner' | 'staff' = 'b2c';
-      const lowerName = displayName.toLowerCase();
       if (/(فندق|سياح|عمر|حج|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency|resv)/i.test(displayName)) {
         entityType = 'organization';
         commercialRole = 'b2b';
@@ -147,6 +155,61 @@ export async function POST(req: NextRequest) {
             country_code: countryCode,
           });
         importedCount++;
+      }
+    }
+
+    // 2. استيراد وتصنيف المجموعات الصريحة من rawChats
+    let groupsImported = 0;
+    if (Array.isArray(rawChats)) {
+      const groups = rawChats.filter((ch: any) => ch.remoteJid && ch.remoteJid.includes('@g.us'));
+      for (const grp of groups) {
+        const groupJid = grp.remoteJid;
+        let groupName = grp.pushName || grp.name || 'مجموعة واتساب';
+        if (groupName === 'Você') groupName = 'مجموعة واتساب';
+
+        const groupTags = ['مجموعة واتساب', `خط: ${instance}`];
+        let commRole: 'b2b' | 'b2c' | 'partner' = 'b2b';
+        if (/(فندق|سياح|عمر|حج|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency|resv)/i.test(groupName)) {
+          commRole = 'b2b';
+          groupTags.push('قطاع سياحي وفندقي');
+        }
+
+        const { data: existingGroup } = await supabase
+          .from('contacts')
+          .select('id, tags')
+          .eq('primary_phone', groupJid)
+          .maybeSingle();
+
+        if (existingGroup) {
+          const mergedTags = Array.from(new Set([...(existingGroup.tags || []), ...groupTags]));
+          await supabase
+            .from('contacts')
+            .update({
+              display_name: groupName,
+              entity_type: 'group',
+              commercial_role: commRole,
+              source_detail: `evolution:${instance} (محدث)`,
+              tags: mergedTags,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingGroup.id);
+          mergedCount++;
+        } else {
+          await supabase
+            .from('contacts')
+            .insert({
+              display_name: groupName,
+              primary_phone: groupJid,
+              entity_type: 'group',
+              commercial_role: commRole,
+              source: 'evolution',
+              source_detail: `evolution:${instance}`,
+              tags: groupTags,
+              country_code: 'SA',
+            });
+          importedCount++;
+          groupsImported++;
+        }
       }
     }
 
