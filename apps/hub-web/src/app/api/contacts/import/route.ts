@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
 
 function normalizePhoneE164(phone: string): string {
@@ -44,17 +44,16 @@ export async function POST(req: NextRequest) {
         const displayName = item.name || item.display_name || item.title || phone || 'جهة اتصال مستوردة';
 
         if (phone) {
-          // فحص التكرار
+          // فحص التكرار في public.contacts
           const { data: existing } = await supabase
-            .schema('hub')
             .from('contacts')
-            .select('id')
+            .select('id, tags')
             .eq('primary_phone', phone)
             .maybeSingle();
 
           if (existing) {
+            const combinedTags = Array.from(new Set([...(existing.tags || []), ...(Array.isArray(item.tags) ? item.tags : [])]));
             await supabase
-              .schema('hub')
               .from('contacts')
               .update({
                 display_name: displayName,
@@ -63,6 +62,7 @@ export async function POST(req: NextRequest) {
                 district: item.district || undefined,
                 facility_name: item.facility_name || undefined,
                 source_detail: `${source_detail} (تحديث)`,
+                tags: combinedTags,
                 updated_at: new Date().toISOString(),
               })
               .eq('id', existing.id);

@@ -83,51 +83,68 @@ export async function POST(req: NextRequest) {
       const displayName = c.pushName || c.name || phone;
       const isGroup = false;
 
-      // فحص وسوم تلقائية حسب الدولة
+      // فحص وسوم وتحليل ذكي تلقائي حسب الدولة والاسم
       const tags: string[] = [];
-      if (phone.startsWith('+966')) tags.push('السعودية');
-      else if (phone.startsWith('+971')) tags.push('الإمارات');
-      else if (phone.startsWith('+962')) tags.push('الأردن');
-      else if (phone.startsWith('+20')) tags.push('مصر');
+      let countryCode = 'SA';
+      if (phone.startsWith('+966')) { tags.push('السعودية'); countryCode = 'SA'; }
+      else if (phone.startsWith('+971')) { tags.push('الإمارات'); countryCode = 'AE'; }
+      else if (phone.startsWith('+962')) { tags.push('الأردن'); countryCode = 'JO'; }
+      else if (phone.startsWith('+20')) { tags.push('مصر'); countryCode = 'EG'; }
+      else if (phone.startsWith('+965')) { tags.push('الكويت'); countryCode = 'KW'; }
+      else if (phone.startsWith('+974')) { tags.push('قطر'); countryCode = 'QA'; }
+      else if (phone.startsWith('+968')) { tags.push('عمان'); countryCode = 'OM'; }
+      else if (phone.startsWith('+973')) { tags.push('البحرين'); countryCode = 'BH'; }
+      else if (phone.startsWith('+90')) { tags.push('تركيا'); countryCode = 'TR'; }
 
       if (c.isSaved) tags.push('مسجل في الهاتف');
+      tags.push(`خط: ${instance}`);
 
-      // فحص في Supabase
+      // تحليل ذكي لاسم المنشأة والدور التجاري
+      let entityType: 'individual' | 'organization' | 'group' = 'individual';
+      let commercialRole: 'b2c' | 'b2b' | 'vendor' | 'partner' | 'staff' = 'b2c';
+      const lowerName = displayName.toLowerCase();
+      if (/(فندق|سياح|عمر|حج|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency|resv)/i.test(displayName)) {
+        entityType = 'organization';
+        commercialRole = 'b2b';
+        tags.push('قطاع سياحي وفندقي');
+      }
+
+      // فحص في Supabase (public.contacts)
       const { data: existing } = await supabase
-        .schema('hub')
         .from('contacts')
-        .select('id, tags')
+        .select('id, tags, commercial_role, entity_type')
         .eq('primary_phone', phone)
         .maybeSingle();
 
       if (existing) {
         const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags]));
         await supabase
-          .schema('hub')
           .from('contacts')
           .update({
             display_name: displayName,
             source_detail: `evolution:${instance} (محدث)`,
             tags: mergedTags,
             avatar_url: c.profilePicUrl || undefined,
+            country_code: countryCode,
+            entity_type: existing.entity_type || entityType,
+            commercial_role: existing.commercial_role || commercialRole,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id);
         mergedCount++;
       } else {
         await supabase
-          .schema('hub')
           .from('contacts')
           .insert({
             display_name: displayName,
             primary_phone: phone,
-            entity_type: 'individual',
-            commercial_role: 'b2c',
+            entity_type: entityType,
+            commercial_role: commercialRole,
             source: 'evolution',
             source_detail: `evolution:${instance}`,
             avatar_url: c.profilePicUrl || null,
             tags: tags,
-            country_code: phone.startsWith('+966') ? 'SA' : null,
+            country_code: countryCode,
           });
         importedCount++;
       }

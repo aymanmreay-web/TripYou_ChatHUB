@@ -80,6 +80,7 @@ export interface ConversationItem {
   phone_or_jid: string;
   avatar_letter: string;
   avatar_url?: string;
+  avatar_color?: string;
   is_group: boolean;
   participant_count?: number;
   line_id: string;

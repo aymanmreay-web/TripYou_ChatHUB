@@ -350,6 +350,8 @@ export function NativeChatInbox() {
   // Inboxes State
   const [inboxesList, setInboxesList] = useState<{ id: string; name_ar: string; color_hex: string; filter_type: string; line_ids: string[] }[]>([]);
   const [selectedInboxId, setSelectedInboxId] = useState<string>('all');
+  const [lineFilter, setLineFilter] = useState<string>('all');
+  const readChatsSet = useRef<Set<string>>(new Set());
 
   // Conversations State (Real)
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -512,17 +514,41 @@ export function NativeChatInbox() {
     return ksaHour >= 1 && ksaHour < 7;
   }, []);
 
-  // تحميل الصناديق من Supabase
+  // تحميل الصناديق وربطها بالخطوط من Supabase
   const loadInboxes = useCallback(async () => {
     try {
-      const { data } = await supabase.from('inboxes').select('id, name_ar, color, filter_type').order('sort_order');
-      if (Array.isArray(data)) {
-        setInboxesList(data.map((d: any) => ({
+      const [inboxesRes, linesRes, inboxLinesRes] = await Promise.all([
+        supabase.from('inboxes').select('id, name_ar, color, filter_type').order('sort_order'),
+        supabase.from('lines').select('id, instance_name, title_ar'),
+        supabase.from('inbox_lines').select('inbox_id, line_id'),
+      ]);
+
+      const linesMap = new Map<string, string>();
+      if (Array.isArray(linesRes.data)) {
+        linesRes.data.forEach((l: any) => {
+          if (l.id && l.instance_name) linesMap.set(l.id, l.instance_name);
+        });
+      }
+
+      const inboxLinesMap = new Map<string, string[]>();
+      if (Array.isArray(inboxLinesRes.data)) {
+        inboxLinesRes.data.forEach((il: any) => {
+          const inst = linesMap.get(il.line_id);
+          if (inst) {
+            const arr = inboxLinesMap.get(il.inbox_id) || [];
+            if (!arr.includes(inst)) arr.push(inst);
+            inboxLinesMap.set(il.inbox_id, arr);
+          }
+        });
+      }
+
+      if (Array.isArray(inboxesRes.data)) {
+        setInboxesList(inboxesRes.data.map((d: any) => ({
           id: d.id,
           name_ar: d.name_ar,
           color_hex: d.color || '#8b5cf6',
           filter_type: d.filter_type || 'all',
-          line_ids: [],
+          line_ids: inboxLinesMap.get(d.id) || [],
         })));
       }
     } catch (e) {
@@ -543,7 +569,6 @@ export function NativeChatInbox() {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           setInstances(data);
-          // إذا كان Master متصلاً نجعله الافتراضي دائماً
           const masterInst = data.find((i: any) => i.name === 'Master' && i.connectionStatus === 'open');
           const anyOpenInst = data.find((i: any) => i.connectionStatus === 'open');
           const defaultInst = masterInst || anyOpenInst || data[0];
@@ -563,130 +588,156 @@ export function NativeChatInbox() {
     fetchInstances();
   }, [fetchInstances]);
 
-  // 2. Fetch real chats & WhatsApp groups for the selected instance
-  const fetchChats = useCallback(async (instanceName: string) => {
-    if (!instanceName) return;
+  // 2. Fetch real chats & WhatsApp groups across multiple instances in parallel
+  const fetchChats = useCallback(async (targetInstances?: string[]) => {
     try {
       setLoadingChats(true);
-      // Fetch chats and all groups in parallel
-      const [chatsRes, groupsRes] = await Promise.allSettled([
-        fetch(`/api/evolution/instances/${instanceName}/chats`),
-        fetch(`/api/evolution/instances/${instanceName}/groups?participants=false`),
-      ]);
 
-      const groupMap = new Map<string, { subject: string; size?: number; pictureUrl?: string }>();
-      if (groupsRes.status === 'fulfilled' && groupsRes.value.ok) {
-        try {
-          const rawGroups = await groupsRes.value.json();
-          if (Array.isArray(rawGroups)) {
-            rawGroups.forEach((g: any) => {
-              const id = g.id || g.jid;
-              if (id) {
-                groupMap.set(id, {
-                  subject: g.subject || g.name || '',
-                  size: g.size || (Array.isArray(g.participants) ? g.participants.length : undefined),
-                  pictureUrl: g.pictureUrl,
+      // تحديد الخطوط المستهدفة للجلب
+      let instancesToFetch = targetInstances;
+      if (!instancesToFetch || instancesToFetch.length === 0) {
+        const openInst = instances.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
+        instancesToFetch = openInst.length > 0 ? openInst : ['Master', 'Sells_2'];
+      }
+
+      const perInstanceResults = await Promise.allSettled(
+        instancesToFetch.map(async (instanceName) => {
+          const [chatsRes, groupsRes] = await Promise.allSettled([
+            fetch(`/api/evolution/instances/${instanceName}/chats`),
+            fetch(`/api/evolution/instances/${instanceName}/groups?participants=false`),
+          ]);
+
+          const groupMap = new Map<string, { subject: string; size?: number; pictureUrl?: string }>();
+          if (groupsRes.status === 'fulfilled' && groupsRes.value.ok) {
+            try {
+              const rawGroups = await groupsRes.value.json();
+              if (Array.isArray(rawGroups)) {
+                rawGroups.forEach((g: any) => {
+                  const id = g.id || g.jid;
+                  if (id) {
+                    groupMap.set(id, {
+                      subject: g.subject || g.name || '',
+                      size: g.size || (Array.isArray(g.participants) ? g.participants.length : undefined),
+                      pictureUrl: g.pictureUrl,
+                    });
+                  }
                 });
               }
-            });
+            } catch (e) {
+              console.warn(`Failed parsing groups for ${instanceName}:`, e);
+            }
           }
-        } catch (e) {
-          console.warn('Failed parsing groups list:', e);
+
+          if (chatsRes.status === 'fulfilled' && chatsRes.value.ok) {
+            const rawChats = await chatsRes.value.json();
+            if (Array.isArray(rawChats)) {
+              const nowTs = Date.now();
+              return rawChats.map((c: any): ConversationItem => {
+                const jid = c.remoteJid || c.id || '';
+                const isGroup = jid.includes('@g.us');
+                const altPhoneJid = c.lastMessage?.key?.remoteJidAlt || c.lastMessage?.key?.participantAlt || '';
+                const rawPhone = altPhoneJid
+                  ? altPhoneJid.replace('@s.whatsapp.net', '')
+                  : jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
+                const cleanPhone = rawPhone.replace(/\D/g, '');
+                const groupInfo = groupMap.get(jid);
+                
+                let title = '';
+                if (isGroup) {
+                  title = groupInfo?.subject || c.subject || c.name || (cleanPhone ? `مجموعة (${cleanPhone.slice(-6)})` : 'مجموعة واتساب');
+                } else {
+                  title = c.pushName || c.name || (cleanPhone ? `+${cleanPhone}` : 'محادثة عميل');
+                }
+
+                let lastText = '';
+                if (c.lastMessage?.message) {
+                  const msgObj = c.lastMessage.message;
+                  lastText =
+                    msgObj.conversation ||
+                    msgObj.extendedTextMessage?.text ||
+                    msgObj.reactionMessage?.text ||
+                    msgObj.documentMessage?.caption ||
+                    (msgObj.documentMessage ? '📄 مستند' : '') ||
+                    msgObj.imageMessage?.caption ||
+                    (msgObj.imageMessage ? '📷 صورة' : '') ||
+                    (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
+                    msgObj.videoMessage?.caption ||
+                    (msgObj.videoMessage ? '🎥 مقطع فيديو' : '') ||
+                    (msgObj.stickerMessage ? '🎨 ملصق' : '') ||
+                    (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3 ? '📊 استطلاع رأي' : '') ||
+                    (msgObj.pollUpdateMessage ? '📊 استطلاع رأي' : '') ||
+                    (c.lastMessage.messageType && c.lastMessage.messageType.includes('poll') ? '📊 استطلاع رأي' : '') ||
+                    '';
+                }
+
+                let timeStr = '';
+                let rawTimestamp = nowTs;
+                if (c.updatedAt) {
+                  const date = new Date(c.updatedAt);
+                  rawTimestamp = date.getTime();
+                  timeStr = date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+                }
+
+                const isReadLocally = readChatsSet.current.has(jid);
+                const unread = isReadLocally ? 0 : (c.unreadCount || 0);
+
+                return {
+                  id: `${instanceName}__${jid}`,
+                  chat_jid: jid,
+                  title: title,
+                  phone_or_jid: isGroup ? jid : `+${cleanPhone}`,
+                  avatar_letter: title.charAt(0) || '؟',
+                  avatar_url: groupInfo?.pictureUrl || c.profilePictureUrl || undefined,
+                  avatar_color: isGroup ? 'from-indigo-600 to-purple-600' : 'from-emerald-600 to-teal-600',
+                  unread_count: unread,
+                  is_group: isGroup,
+                  participant_count: groupInfo?.size,
+                  line_id: instanceName,
+                  line_title: instanceName === 'Master' ? 'الرقم الرئيسي (Master)' : instanceName === 'Sells_2' ? 'المبيعات 2 (Sells_2)' : instanceName,
+                  last_message_text: lastText || 'بدء المحادثة',
+                  last_message_at: timeStr || 'سابقاً',
+                  assigned_staff_name: user?.full_name || 'م. أيمن مريعي',
+                  tags: isGroup ? ['مجموعة'] : cleanPhone.startsWith('966') ? ['السعودية'] : [],
+                  status: 'open',
+                  last_customer_message_timestamp: rawTimestamp,
+                  locked_line_id: instanceName,
+                };
+              });
+            }
+          }
+          return [];
+        })
+      );
+
+      let allMerged: ConversationItem[] = [];
+      perInstanceResults.forEach((r) => {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+          allMerged = allMerged.concat(r.value);
         }
-      }
+      });
 
-      if (chatsRes.status === 'fulfilled' && chatsRes.value.ok) {
-        const rawChats = await chatsRes.value.json();
-        if (Array.isArray(rawChats)) {
-          const nowTs = Date.now();
-          const mapped: ConversationItem[] = rawChats.map((c: any) => {
-            const jid = c.remoteJid || c.id || '';
-            const isGroup = jid.includes('@g.us');
-            const altPhoneJid = c.lastMessage?.key?.remoteJidAlt || c.lastMessage?.key?.participantAlt || '';
-            const rawPhone = altPhoneJid
-              ? altPhoneJid.replace('@s.whatsapp.net', '')
-              : jid.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
-            const cleanPhone = rawPhone.replace(/\D/g, '');
-            const groupInfo = groupMap.get(jid);
-            
-            let title = '';
-            if (isGroup) {
-              title = groupInfo?.subject || c.subject || c.name || (cleanPhone ? `مجموعة (${cleanPhone.slice(-6)})` : 'مجموعة واتساب');
-            } else {
-              title = c.pushName || c.name || (cleanPhone ? `+${cleanPhone}` : 'محادثة عميل');
-            }
+      // ترتيب كافة المحادثات تنازلياً حسب توقيت أحدث رسالة
+      allMerged.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
 
-            let lastText = '';
-            if (c.lastMessage?.message) {
-              const msgObj = c.lastMessage.message;
-              lastText =
-                msgObj.conversation ||
-                msgObj.extendedTextMessage?.text ||
-                msgObj.reactionMessage?.text ||
-                msgObj.documentMessage?.caption ||
-                (msgObj.documentMessage ? '📄 مستند' : '') ||
-                msgObj.imageMessage?.caption ||
-                (msgObj.imageMessage ? '📷 صورة' : '') ||
-                (msgObj.audioMessage ? '🎵 تسجيل صوتي' : '') ||
-                msgObj.videoMessage?.caption ||
-                (msgObj.videoMessage ? '🎥 مقطع فيديو' : '') ||
-                (msgObj.stickerMessage ? '🎨 ملصق' : '') ||
-                (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3 ? '📊 استطلاع رأي' : '') ||
-                (msgObj.pollUpdateMessage ? '📊 استطلاع رأي' : '') ||
-                (c.lastMessage.messageType && c.lastMessage.messageType.includes('poll') ? '📊 استطلاع رأي' : '') ||
-                '';
-            }
-
-            let timeStr = '';
-            let rawTimestamp = nowTs;
-            if (c.updatedAt) {
-              const date = new Date(c.updatedAt);
-              rawTimestamp = date.getTime();
-              timeStr = date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
-            }
-
-            return {
-              id: jid,
-              chat_jid: jid,
-              title: title,
-              phone_or_jid: isGroup ? jid : `+${cleanPhone}`,
-              avatar_letter: title.charAt(0) || '؟',
-              avatar_url: groupInfo?.pictureUrl || c.profilePictureUrl || undefined,
-              avatar_color: isGroup ? 'from-indigo-600 to-purple-600' : 'from-emerald-600 to-teal-600',
-              unread_count: c.unreadCount || 0,
-              is_group: isGroup,
-              participant_count: groupInfo?.size,
-              line_id: instanceName,
-              line_title: instanceName === 'Master' ? 'الرقم الرئيسي' : instanceName,
-              last_message_text: lastText || 'بدء المحادثة',
-              last_message_at: timeStr || 'سابقاً',
-              assigned_staff_name: user?.full_name || 'م. أيمن مريعي',
-              tags: isGroup ? ['مجموعة'] : cleanPhone.startsWith('966') ? ['السعودية'] : [],
-              status: 'open',
-              last_customer_message_timestamp: rawTimestamp,
-              locked_line_id: instanceName,
-            };
-          });
-
-          setConversations(mapped);
-          setActiveConvId((curr) => curr || (mapped.length > 0 ? mapped[0].id : ''));
-        }
-      }
+      setConversations(allMerged);
+      setActiveConvId((curr) => {
+        if (curr && allMerged.some((c) => c.id === curr)) return curr;
+        return allMerged.length > 0 ? allMerged[0].id : '';
+      });
     } catch (err) {
       console.error('Failed to load chats:', err);
     } finally {
       setLoadingChats(false);
     }
-  }, [user]);
+  }, [instances, user]);
 
-  // When selected instance changes, reload chats
+  // استدعاء جلب المحادثات لكافة الخطوط فور جاهزية الخطوط أو تغيير الصندوق
   useEffect(() => {
-    if (selectedInstanceName) {
-      setActiveConvId('');
-      setMessages([]);
-      fetchChats(selectedInstanceName);
+    if (instances.length > 0) {
+      const openNames = instances.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
+      fetchChats(openNames.length > 0 ? openNames : ['Master', 'Sells_2']);
     }
-  }, [selectedInstanceName]);
+  }, [instances.length, fetchChats]);
 
   // 3. Fetch real messages when active conversation changes
   const fetchMessagesForChat = useCallback(async (chatJid: string, instanceName: string) => {
@@ -783,72 +834,63 @@ export function NativeChatInbox() {
     }
   }, []);
 
-  // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
-  useEffect(() => {
-    if (!selectedInstanceName) return;
-    const interval = setInterval(() => {
-      // 1. تحديث الرسائل للمحادثة المفتوحة بصمت
-      if (activeConvId && selectedInstanceName) {
-        fetch(`/api/evolution/instances/${selectedInstanceName}/messages?chatId=${encodeURIComponent(activeConvId)}&limit=50`)
-          .then((res) => (res.ok ? res.json() : null))
-          .then((rawMsgs) => {
-            if (!rawMsgs) return;
-            const list: any[] = Array.isArray(rawMsgs)
-              ? rawMsgs
-              : Array.isArray(rawMsgs?.messages?.records)
-              ? rawMsgs.messages.records
-              : Array.isArray(rawMsgs?.records)
-              ? rawMsgs.records
-              : Array.isArray(rawMsgs?.messages)
-              ? rawMsgs.messages
-              : [];
-            if (list.length > 0) {
-              setMessages((prev) => {
-                const prevIds = new Set(prev.map((m) => m.id));
-                const hasNew = list.some((m: any) => !prevIds.has(m.key?.id || m.id));
-                if (!hasNew) return prev;
-                fetchMessagesForChat(activeConvId, selectedInstanceName);
-                return prev;
-              });
-            }
-          })
-          .catch(() => {});
-      }
-
-      // 2. تحديث قائمة المحادثات الخلفية تلقائياً دون تجميد الواجهة أو إعادة التحميل المزعجة
-      fetch(`/api/evolution/instances/${selectedInstanceName}/chats`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((rawChats) => {
-          if (Array.isArray(rawChats) && rawChats.length > 0) {
-            setConversations((prev) => {
-              // إذا تغيرت الأعداد أو ورود محادثة جديدة نقوم بالتحديث الهادئ
-              if (rawChats.length !== prev.length) {
-                fetchChats(selectedInstanceName);
-              }
-              return prev;
-            });
-          }
-        })
-        .catch(() => {});
-    }, 6000);
-    return () => clearInterval(interval);
-  }, [activeConvId, selectedInstanceName, fetchMessagesForChat, fetchChats]);
-
-  useEffect(() => {
-    if (activeConvId && selectedInstanceName) {
-      fetchMessagesForChat(activeConvId, selectedInstanceName);
-    }
-  }, [activeConvId, selectedInstanceName, fetchMessagesForChat]);
-
   // Active conversation object
   const activeConversation = useMemo(() => {
     return conversations.find((c) => c.id === activeConvId) || conversations[0] || null;
   }, [conversations, activeConvId]);
 
+  // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // 1. تحديث الرسائل للمحادثة المفتوحة بصمت
+      if (activeConversation) {
+        const targetJid = activeConversation.chat_jid;
+        const targetLine = activeConversation.line_id || selectedInstanceName;
+        if (targetJid && targetLine) {
+          fetch(`/api/evolution/instances/${targetLine}/messages?chatId=${encodeURIComponent(targetJid)}&limit=50`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((rawMsgs) => {
+              if (!rawMsgs) return;
+              const list: any[] = Array.isArray(rawMsgs)
+                ? rawMsgs
+                : Array.isArray(rawMsgs?.messages?.records)
+                ? rawMsgs.messages.records
+                : Array.isArray(rawMsgs?.records)
+                ? rawMsgs.records
+                : Array.isArray(rawMsgs?.messages)
+                ? rawMsgs.messages
+                : [];
+              if (list.length > 0) {
+                setMessages((prev) => {
+                  const prevIds = new Set(prev.map((m) => m.id));
+                  const hasNew = list.some((m: any) => !prevIds.has(m.key?.id || m.id));
+                  if (!hasNew) return prev;
+                  fetchMessagesForChat(targetJid, targetLine);
+                  return prev;
+                });
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [activeConversation?.id, activeConversation?.line_id, activeConversation?.chat_jid, selectedInstanceName, fetchMessagesForChat]);
+
+  useEffect(() => {
+    if (activeConversation) {
+      const targetJid = activeConversation.chat_jid;
+      const targetLine = activeConversation.line_id || selectedInstanceName;
+      if (targetJid && targetLine) {
+        fetchMessagesForChat(targetJid, targetLine);
+      }
+    }
+  }, [activeConversation?.id, fetchMessagesForChat]);
+
   // Current selected instance info
   const currentInstance = useMemo(() => {
-    return instances.find((i) => i.name === selectedInstanceName) || null;
-  }, [instances, selectedInstanceName]);
+    return instances.find((i) => i.name === (activeConversation?.line_id || selectedInstanceName)) || instances[0] || null;
+  }, [instances, activeConversation?.line_id, selectedInstanceName]);
 
   // Auto-scroll down when messages change
   useEffect(() => {
@@ -873,7 +915,7 @@ export function NativeChatInbox() {
     return { text: `انتظار العميل: (${diffMinutes} د)`, level: 'normal', minutes: diffMinutes };
   }, [activeConversation]);
 
-  // Filter conversations based on search, tabs and selected inbox
+  // Filter conversations based on search, tabs, inbox lines and lineFilter
   const filteredConversations = useMemo(() => {
     const now = Date.now();
     const currentInbox = inboxesList.find((ib) => ib.id === selectedInboxId);
@@ -883,9 +925,17 @@ export function NativeChatInbox() {
       if (currentInbox) {
         if (currentInbox.filter_type === 'dm' && c.is_group) return false;
         if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
+        if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
+          if (!currentInbox.line_ids.includes(c.line_id)) return false;
+        }
       }
 
-      // 2. فلترة البحث
+      // 2. فلترة الخط الاختيارية
+      if (lineFilter !== 'all' && c.line_id !== lineFilter) {
+        return false;
+      }
+
+      // 3. فلترة البحث
       const matchSearch =
         c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.phone_or_jid.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -904,13 +954,16 @@ export function NativeChatInbox() {
       if (filterTab === 'escalated') return c.status === 'escalated';
       return true;
     });
-  }, [conversations, searchQuery, filterTab, user, selectedInboxId, inboxesList]);
+  }, [conversations, searchQuery, filterTab, user, selectedInboxId, inboxesList, lineFilter]);
 
-  // مؤقت ذكي لتصفير قراءة الرسائل بعد ثانيتين (2s) في المحادثة وإرسالها لـ Evolution API
+  // مؤقت ذكي لتصفير قراءة الرسائل بعد ثانية واحدة (1s) في المحادثة وإرسالها لـ Evolution API
   useEffect(() => {
     if (!activeConvId) return;
     const active = conversations.find((c) => c.id === activeConvId);
     if (!active || active.unread_count === 0) return;
+
+    // تسجيل فوري بالذاكرة لمنع عودة العداد عند التحديث الهادئ
+    readChatsSet.current.add(active.chat_jid);
 
     const timer = setTimeout(async () => {
       // 1. تصفير العداد محلياً فوراً
@@ -933,7 +986,7 @@ export function NativeChatInbox() {
       } catch (e) {
         console.warn('Silent read status update failed:', e);
       }
-    }, 1500);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, [activeConvId, conversations, messages, selectedInstanceName]);
@@ -941,6 +994,10 @@ export function NativeChatInbox() {
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);
     setShowMobileChat(true);
+    const target = conversations.find((c) => c.id === id);
+    if (target?.line_id) {
+      setSendingLineInstance(target.line_id);
+    }
   };
 
   // --- Supabase: حفظ حالة المحادثة (upsert) ---
@@ -1009,7 +1066,7 @@ export function NativeChatInbox() {
       prev.map((c) => (c.id === activeConversation.id ? { ...c, status: newStatus } : c))
     );
     // حفظ في Supabase بشكل غير متزامن (لا ينتظر)
-    upsertConversationState(activeConversation.chat_jid, selectedInstanceName, { status: newStatus });
+    upsertConversationState(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, { status: newStatus });
   };
 
   // --- دورة الإسناد: إسناد المحادثة لموظف (محلي + Supabase) ---
@@ -1020,7 +1077,7 @@ export function NativeChatInbox() {
       prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_staff_name: staffName, assigned_staff_id: staffMember?.id } : c))
     );
     // حفظ في Supabase بشكل غير متزامن (لا ينتظر)
-    upsertConversationState(activeConversation.chat_jid, selectedInstanceName, {
+    upsertConversationState(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
       assigned_staff_name: staffName,
       assigned_staff_id: staffMember?.id,
     });
@@ -1044,7 +1101,7 @@ export function NativeChatInbox() {
 
     setIsSending(true);
 
-    const effectiveLine = sendingLineInstance || selectedInstanceName;
+    const effectiveLine = sendingLineInstance || activeConversation?.line_id || selectedInstanceName || 'Master';
 
     const signature = includeSignature
       ? `\n\n*${user.full_name}* — ${currentInstance?.profileName || effectiveLine}`
@@ -1210,7 +1267,11 @@ export function NativeChatInbox() {
   ) => {
     const exists = favoritesList.some((f) => f.id === item.id && f.category === category);
     if (exists) {
-      setFavoritesList((prev) => prev.filter((f) => !(f.id === item.id && f.category === category)));
+      const updated = favoritesList.filter((f) => !(f.id === item.id && f.category === category));
+      setFavoritesList(updated);
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('hub_favorites_v1', JSON.stringify(updated)); } catch (e) {}
+      }
       try {
         await fetch(`/api/favorites?item_id=${encodeURIComponent(item.id)}&category=${category}`, { method: 'DELETE' });
       } catch (err) {
@@ -1225,7 +1286,11 @@ export function NativeChatInbox() {
         meta: item.meta,
         createdAt: new Date().toLocaleDateString('ar-SA'),
       };
-      setFavoritesList((prev) => [newFav, ...prev]);
+      const updated = [newFav, ...favoritesList];
+      setFavoritesList(updated);
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('hub_favorites_v1', JSON.stringify(updated)); } catch (e) {}
+      }
       try {
         await fetch('/api/favorites', {
           method: 'POST',
@@ -1691,7 +1756,7 @@ export function NativeChatInbox() {
         </div>
       )}
 
-      {/* Top Bar: Inboxes, Connected Line / Instance Selector & Quick Status */}
+      {/* Top Bar: Inboxes, Multi-Line Filter & Live Status */}
       <div className="bg-[var(--card-bg)] border-b border-[var(--border-subtle)] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div className="flex flex-wrap items-center gap-3">
           {/* اختيار الصندوق المشترك */}
@@ -1713,33 +1778,42 @@ export function NativeChatInbox() {
 
           <span className="text-slate-600 hidden sm:inline">|</span>
 
-          {/* اختيار الخط المعروض */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-[var(--text-secondary)]">الخط:</span>
-            <select
-              value={selectedInstanceName}
-              onChange={(e) => setSelectedInstanceName(e.target.value)}
-              disabled={loadingInstances}
-              className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none focus:border-purple-500 font-medium"
+          {/* تبويبات فلترة الخطوط السريعة بدون تكرار منسدلات */}
+          <div className="flex items-center gap-1 bg-[var(--card-elevated)] p-1 rounded-xl border border-[var(--border-subtle)] text-xs">
+            <button
+              type="button"
+              onClick={() => setLineFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                lineFilter === 'all'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              {instances.map((inst) => (
-                <option key={inst.name} value={inst.name}>
-                  {inst.profileName || inst.name} {inst.ownerJid ? `(+${inst.ownerJid.replace('@s.whatsapp.net', '')})` : ''} — [{inst.connectionStatus === 'open' ? 'متصل' : 'معلق'}]
-                </option>
-              ))}
-            </select>
+              جميع الخطوط ({conversations.length})
+            </button>
+            {instances.map((inst) => {
+              const count = conversations.filter((c) => c.line_id === inst.name).length;
+              const isOpen = inst.connectionStatus === 'open';
+              const active = lineFilter === inst.name;
+              return (
+                <button
+                  key={inst.name}
+                  type="button"
+                  onClick={() => setLineFilter(inst.name)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    active
+                      ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 font-bold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={`${inst.name} — ${isOpen ? 'متصل' : 'معلق'}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                  <bdi dir="ltr">{inst.profileName || inst.name}</bdi>
+                  <span className="text-[10px] opacity-70 font-mono">({count})</span>
+                </button>
+              );
+            })}
           </div>
-
-          {currentInstance && (
-            <span className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
-              currentInstance.connectionStatus === 'open'
-                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-            }`}>
-              {currentInstance.connectionStatus === 'open' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              {currentInstance.connectionStatus === 'open' ? 'متصل ومستقر' : 'جاري الاتصال'}
-            </span>
-          )}
 
           {/* شارة تسخين الأرقام وحارس المخاطر */}
           <span className="hidden lg:flex items-center gap-1 text-[10px] text-[var(--text-muted)] bg-[var(--card-elevated)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full">
@@ -1752,7 +1826,8 @@ export function NativeChatInbox() {
           <button
             onClick={() => {
               fetchInstances();
-              if (selectedInstanceName) fetchChats(selectedInstanceName);
+              const openNames = instances.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
+              fetchChats(openNames.length > 0 ? openNames : ['Master', 'Sells_2']);
             }}
             disabled={loadingChats || loadingInstances}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] hover:bg-purple-500/20 text-[var(--text-secondary)] border border-[var(--border-subtle)] text-xs transition-all"
@@ -1933,8 +2008,19 @@ export function NativeChatInbox() {
                       </p>
 
                       <div className="flex items-center justify-between gap-1">
-                        {/* حالة المحادثة في القائمة */}
+                        {/* حالة المحادثة في القائمة مع وسام الخط */}
                         <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border ${
+                              conv.line_id === 'Master'
+                                ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
+                                : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
+                            }`}
+                            title={`وارد عبر خط: ${conv.line_title || conv.line_id}`}
+                          >
+                            <bdi dir="ltr">{conv.line_id || 'Master'}</bdi>
+                          </span>
+
                           <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
                             conv.status === 'resolved'
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -1947,7 +2033,7 @@ export function NativeChatInbox() {
                             {conv.status === 'resolved' ? 'تم الحل' : conv.status === 'escalated' ? 'مصعدة' : conv.status === 'in_progress' ? 'قيد المعالجة' : 'مفتوحة'}
                           </span>
 
-                          <span className="text-[10px] text-slate-400 truncate max-w-[100px]">
+                          <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
                             {conv.assigned_staff_name || 'عام'}
                           </span>
                         </div>
@@ -2011,10 +2097,15 @@ export function NativeChatInbox() {
                         </span>
                       )}
 
-                      {/* شارة قفل الخط */}
-                      <span className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] bg-[var(--card-elevated)] px-2 py-0.5 rounded-md border border-[var(--border-subtle)] font-mono">
-                        <Lock className="w-2.5 h-2.5 text-purple-400" />
-                        <span>الخط: {lockedLinesMap[activeConversation.chat_jid] || selectedInstanceName}</span>
+                      {/* شارة الخط الوارد عليه المحادثة */}
+                      <span className={`flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold ${
+                        activeConversation.line_id === 'Master'
+                          ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
+                          : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
+                      }`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>الخط:</span>
+                        <bdi dir="ltr">{activeConversation.line_id || 'Master'}</bdi>
                       </span>
                     </div>
 
@@ -2841,17 +2932,17 @@ export function NativeChatInbox() {
                       )}
                     </div>
 
-                    {/* محدد خط الإرسال المرن من أرقام الصندوق */}
+                    {/* محدد خط الإرسال المرن المتطابق تلقائياً مع خط المحادثة */}
                     <div className="flex items-center gap-1 shrink-0">
                       <select
-                        value={sendingLineInstance || selectedInstanceName}
+                        value={sendingLineInstance || activeConversation?.line_id || selectedInstanceName || 'Master'}
                         onChange={(e) => setSendingLineInstance(e.target.value)}
-                        className="h-10 px-2 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-semibold outline-none focus:border-purple-400"
-                        title="اختر خط واتساب الذي ستخرج منه هذه الرسالة"
+                        className="h-10 px-2 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-semibold outline-none focus:border-purple-400 font-mono"
+                        title="خط واتساب الذي ستخرج منه هذه الرسالة (يتطابق تلقائياً مع خط العميل)"
                       >
                         {instances.map((inst) => (
                           <option key={inst.name} value={inst.name}>
-                            إرسال من: {inst.profileName || inst.name}
+                            إرسال عبر: {inst.profileName || inst.name}
                           </option>
                         ))}
                       </select>
