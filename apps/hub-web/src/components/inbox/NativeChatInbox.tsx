@@ -915,27 +915,44 @@ export function NativeChatInbox() {
     return { text: `انتظار العميل: (${diffMinutes} د)`, level: 'normal', minutes: diffMinutes };
   }, [activeConversation]);
 
+  // الصندوق الحالي المختار
+  const currentInbox = useMemo(
+    () => inboxesList.find((ib) => ib.id === selectedInboxId),
+    [inboxesList, selectedInboxId]
+  );
+
+  // الخطوط المتاحة والمسموح بها داخل الصندوق المختار فقط
+  const availableInstances = useMemo(() => {
+    if (!currentInbox || !currentInbox.line_ids || currentInbox.line_ids.length === 0) {
+      return instances;
+    }
+    return instances.filter((inst) => currentInbox.line_ids.includes(inst.name));
+  }, [instances, currentInbox]);
+
+  // المحادثات المحصورة في نطاق الصندوق المختار فقط (قبل تطبيق تبويبات الحالة والبحث والخط)
+  const inboxScopedConversations = useMemo(() => {
+    if (!currentInbox) return conversations;
+    return conversations.filter((c) => {
+      if (currentInbox.filter_type === 'dm' && c.is_group) return false;
+      if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
+      if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
+        if (!currentInbox.line_ids.includes(c.line_id)) return false;
+      }
+      return true;
+    });
+  }, [conversations, currentInbox]);
+
   // Filter conversations based on search, tabs, inbox lines and lineFilter
   const filteredConversations = useMemo(() => {
     const now = Date.now();
-    const currentInbox = inboxesList.find((ib) => ib.id === selectedInboxId);
 
-    return conversations.filter((c) => {
-      // 1. فلترة الصندوق
-      if (currentInbox) {
-        if (currentInbox.filter_type === 'dm' && c.is_group) return false;
-        if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
-        if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
-          if (!currentInbox.line_ids.includes(c.line_id)) return false;
-        }
-      }
-
-      // 2. فلترة الخط الاختيارية
+    return inboxScopedConversations.filter((c) => {
+      // 1. فلترة الخط الاختيارية داخل الصندوق
       if (lineFilter !== 'all' && c.line_id !== lineFilter) {
         return false;
       }
 
-      // 3. فلترة البحث
+      // 2. فلترة البحث
       const matchSearch =
         c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.phone_or_jid.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -954,7 +971,7 @@ export function NativeChatInbox() {
       if (filterTab === 'escalated') return c.status === 'escalated';
       return true;
     });
-  }, [conversations, searchQuery, filterTab, user, selectedInboxId, inboxesList, lineFilter]);
+  }, [inboxScopedConversations, searchQuery, filterTab, user, lineFilter]);
 
   // مؤقت ذكي لتصفير قراءة الرسائل بعد ثانية واحدة (1s) في المحادثة وإرسالها لـ Evolution API
   useEffect(() => {
@@ -1764,7 +1781,10 @@ export function NativeChatInbox() {
             <span className="text-xs font-semibold text-purple-300">الصندوق:</span>
             <select
               value={selectedInboxId}
-              onChange={(e) => setSelectedInboxId(e.target.value)}
+              onChange={(e) => {
+                setSelectedInboxId(e.target.value);
+                setLineFilter('all');
+              }}
               className="bg-purple-950/40 text-xs text-purple-200 border border-purple-500/40 rounded-xl px-3 py-1.5 outline-none focus:border-purple-400 font-bold"
             >
               <option value="all">كل الصناديق (عرض مجمّع)</option>
@@ -1778,7 +1798,7 @@ export function NativeChatInbox() {
 
           <span className="text-slate-600 hidden sm:inline">|</span>
 
-          {/* تبويبات فلترة الخطوط السريعة بدون تكرار منسدلات */}
+          {/* تبويبات فلترة الخطوط السريعة المقيدة بنطاق الصندوق فقط */}
           <div className="flex items-center gap-1 bg-[var(--card-elevated)] p-1 rounded-xl border border-[var(--border-subtle)] text-xs">
             <button
               type="button"
@@ -1789,10 +1809,10 @@ export function NativeChatInbox() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              جميع الخطوط ({conversations.length})
+              جميع الخطوط ({inboxScopedConversations.length})
             </button>
-            {instances.map((inst) => {
-              const count = conversations.filter((c) => c.line_id === inst.name).length;
+            {availableInstances.map((inst) => {
+              const count = inboxScopedConversations.filter((c) => c.line_id === inst.name).length;
               const isOpen = inst.connectionStatus === 'open';
               const active = lineFilter === inst.name;
               return (
@@ -1860,7 +1880,7 @@ export function NativeChatInbox() {
               />
             </div>
 
-            {/* Filter Tabs - مع تبويبات دورة الإسناد والرادار والمجموعات */}
+            {/* Filter Tabs - مع تبويبات دورة الإسناد والرادار والمجموعات بنطاق الصندوق */}
             <div className="flex items-center gap-1.5 text-[11px] overflow-x-auto pb-1 scrollbar-none" dir="rtl">
               <button
                 onClick={() => setFilterTab('all')}
@@ -1870,7 +1890,7 @@ export function NativeChatInbox() {
                     : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
                 }`}
               >
-                الكل ({conversations.length})
+                الكل ({inboxScopedConversations.length})
               </button>
               <button
                 onClick={() => setFilterTab('mine')}
@@ -1890,7 +1910,7 @@ export function NativeChatInbox() {
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
-                غير مسندة ({conversations.filter((c) => !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند').length})
+                غير مسندة ({inboxScopedConversations.filter((c) => !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند').length})
               </button>
               <button
                 onClick={() => setFilterTab('unread')}
@@ -1900,7 +1920,7 @@ export function NativeChatInbox() {
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
-                غير مقروء ({conversations.filter((c) => c.unread_count > 0).length})
+                غير مقروء ({inboxScopedConversations.filter((c) => c.unread_count > 0).length})
               </button>
               <button
                 onClick={() => setFilterTab('rescue')}
@@ -1921,7 +1941,7 @@ export function NativeChatInbox() {
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
-                العملاء
+                العملاء ({inboxScopedConversations.filter((c) => !c.is_group).length})
               </button>
               <button
                 onClick={() => setFilterTab('groups')}
@@ -1931,7 +1951,7 @@ export function NativeChatInbox() {
                     : 'text-slate-400 hover:text-white bg-slate-800/30'
                 }`}
               >
-                المجموعات
+                المجموعات ({inboxScopedConversations.filter((c) => c.is_group).length})
               </button>
               <button
                 onClick={() => setFilterTab('escalated')}

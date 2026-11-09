@@ -29,7 +29,9 @@ import {
   SlidersHorizontal,
   X,
   MessageSquare,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 
@@ -57,6 +59,9 @@ interface Contact {
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(100);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [entityFilter, setEntityFilter] = useState<string>('all');
@@ -65,6 +70,16 @@ export default function ContactsPage() {
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
+  // إحصائيات النظام الشاملة لكافة جهات الاتصال (1,672 سجل)
+  const [globalStats, setGlobalStats] = useState({
+    total: 0,
+    individuals: 0,
+    orgs: 0,
+    groups: 0,
+    fromEvolution: 0,
+    fromExcel: 0,
+  });
 
   // نوافذ منبثقة
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -95,8 +110,28 @@ export default function ContactsPage() {
   const [importRawText, setImportRawText] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
-  // جلب جهات الاتصال
-  const fetchContacts = async () => {
+  // جلب إحصائيات النظام الشاملة لجميع السجلات
+  const fetchGlobalStats = async () => {
+    try {
+      const res = await fetch('/api/contacts/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setGlobalStats({
+          total: data.total || 0,
+          individuals: data.by_entity_type?.individual || 0,
+          orgs: data.by_entity_type?.organization || 0,
+          groups: data.by_entity_type?.group || 0,
+          fromEvolution: data.by_source?.evolution || 0,
+          fromExcel: data.by_source?.excel_import || 0,
+        });
+      }
+    } catch (e) {
+      console.error('Failed to load global contact stats:', e);
+    }
+  };
+
+  // جلب جهات الاتصال بالترقيم والتصفية
+  const fetchContacts = async (targetPage = page, targetPageSize = pageSize) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -106,12 +141,14 @@ export default function ContactsPage() {
       if (sourceFilter !== 'all') params.set('source', sourceFilter);
       if (cityFilter !== 'all') params.set('city', cityFilter);
       if (onlyFavorites) params.set('favorite', 'true');
-      params.set('limit', '100');
+      params.set('limit', String(targetPageSize));
+      params.set('offset', String((targetPage - 1) * targetPageSize));
 
       const res = await fetch(`/api/contacts?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setContacts(data.contacts || []);
+        setTotalCount(data.total || 0);
       }
     } catch (err) {
       console.error('Failed to load contacts:', err);
@@ -120,13 +157,30 @@ export default function ContactsPage() {
     }
   };
 
+  // عند تحميل الصفحة وجلب الإحصائيات
   useEffect(() => {
-    fetchContacts();
-  }, [entityFilter, roleFilter, sourceFilter, cityFilter, onlyFavorites]);
+    fetchGlobalStats();
+  }, []);
+
+  // عند تغيير الفلاتر يعاد الضبط للصفحة 1
+  useEffect(() => {
+    setPage(1);
+    fetchContacts(1, pageSize);
+  }, [entityFilter, roleFilter, sourceFilter, cityFilter, onlyFavorites, pageSize]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchContacts();
+    setPage(1);
+    fetchContacts(1, pageSize);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    const maxPage = Math.max(1, Math.ceil(totalCount / pageSize));
+    if (newPage >= 1 && newPage <= maxPage) {
+      setPage(newPage);
+      fetchContacts(newPage, pageSize);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // فتح نافذة الإضافة
@@ -467,17 +521,22 @@ export default function ContactsPage() {
     }
   };
 
-  // إحصائيات سريعة
-  const stats = useMemo(() => {
+  // إحصائيات شاملة دقيقة: إذا لم يكن هناك بحث أو فلترة جزئية، نستخدم الإحصائيات الكاملة لقاعدة البيانات (1,672 سجل)
+  const isFiltered = Boolean(searchQuery || entityFilter !== 'all' || roleFilter !== 'all' || sourceFilter !== 'all' || cityFilter !== 'all' || onlyFavorites);
+
+  const displayStats = useMemo(() => {
+    if (!isFiltered && globalStats.total > 0) {
+      return globalStats;
+    }
     return {
-      total: contacts.length,
+      total: totalCount || contacts.length,
       individuals: contacts.filter((c) => c.entity_type === 'individual').length,
       orgs: contacts.filter((c) => c.entity_type === 'organization').length,
       groups: contacts.filter((c) => c.entity_type === 'group').length,
       fromEvolution: contacts.filter((c) => c.source === 'evolution').length,
       fromExcel: contacts.filter((c) => c.source === 'excel_import').length,
     };
-  }, [contacts]);
+  }, [isFiltered, globalStats, totalCount, contacts]);
 
   return (
     <AppShell>
@@ -517,47 +576,47 @@ export default function ContactsPage() {
             </button>
           </div>
         </div>
-        {/* شريط الإحصائيات السريع */}
+        {/* شريط الإحصائيات السريع الشامل لكافة جهات الاتصال */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
             <span className="text-[11px] text-[var(--text-muted)] font-medium">إجمالي السجلات</span>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-[var(--text-main)] font-mono">{stats.total}</span>
+              <span className="text-xl font-bold text-[var(--text-main)] font-mono">{displayStats.total}</span>
               <Layers className="w-4 h-4 text-purple-400" />
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
             <span className="text-[11px] text-[var(--text-muted)] font-medium">🧑 الأفراد (B2C)</span>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-blue-400 font-mono">{stats.individuals}</span>
+              <span className="text-xl font-bold text-blue-400 font-mono">{displayStats.individuals}</span>
               <User className="w-4 h-4 text-blue-400" />
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
             <span className="text-[11px] text-[var(--text-muted)] font-medium">🏢 منشآت وشركات</span>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-purple-400 font-mono">{stats.orgs}</span>
+              <span className="text-xl font-bold text-purple-400 font-mono">{displayStats.orgs}</span>
               <Building2 className="w-4 h-4 text-purple-400" />
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
             <span className="text-[11px] text-[var(--text-muted)] font-medium">👥 مجموعات</span>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-amber-400 font-mono">{stats.groups}</span>
+              <span className="text-xl font-bold text-amber-400 font-mono">{displayStats.groups}</span>
               <Users className="w-4 h-4 text-amber-400" />
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
             <span className="text-[11px] text-[var(--text-muted)] font-medium">📱 من خطوط واتساب</span>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-emerald-400 font-mono">{stats.fromEvolution}</span>
+              <span className="text-xl font-bold text-emerald-400 font-mono">{displayStats.fromEvolution}</span>
               <Smartphone className="w-4 h-4 text-emerald-400" />
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
             <span className="text-[11px] text-[var(--text-muted)] font-medium">📊 استيراد إكسل</span>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-emerald-500 font-mono">{stats.fromExcel}</span>
+              <span className="text-xl font-bold text-emerald-500 font-mono">{displayStats.fromExcel}</span>
               <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
             </div>
           </div>
@@ -607,7 +666,7 @@ export default function ContactsPage() {
               </button>
 
               <button
-                onClick={fetchContacts}
+                onClick={() => fetchContacts(page, pageSize)}
                 className="p-2 rounded-xl bg-[var(--card-elevated)] hover:bg-white/5 border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all"
                 title="تحديث البيانات"
               >
@@ -893,6 +952,89 @@ export default function ContactsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* شريط ترقيم وتصفح الصفحات الحديث (Pagination Bar) */}
+        {!loading && totalCount > 0 && (
+          <div className="p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-4 shadow-md text-xs">
+            {/* إحصائية العرض */}
+            <div className="flex items-center gap-2 text-[var(--text-muted)]">
+              <span>عرض</span>
+              <span className="font-bold text-[var(--text-main)] font-mono">
+                {Math.min((page - 1) * pageSize + 1, totalCount)} - {Math.min(page * pageSize, totalCount)}
+              </span>
+              <span>من أصل</span>
+              <span className="font-bold text-purple-400 font-mono text-sm">{totalCount}</span>
+              <span>جهة اتصال</span>
+            </div>
+
+            {/* أزرار الصفحات */}
+            <div className="flex items-center gap-1.5" dir="rtl">
+              <button
+                type="button"
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page <= 1}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-elevated)] text-[var(--text-secondary)] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronRight className="w-4 h-4" />
+                <span>السابق</span>
+              </button>
+
+              {/* أرقام الصفحات */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.ceil(totalCount / pageSize) }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === Math.ceil(totalCount / pageSize) || Math.abs(p - page) <= 1)
+                  .map((p, idx, arr) => (
+                    <React.Fragment key={p}>
+                      {idx > 0 && p - arr[idx - 1] > 1 && (
+                        <span className="px-1 text-slate-500 font-mono">...</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handlePageChange(p)}
+                        className={`w-8 h-8 rounded-xl font-bold font-mono text-xs transition-all ${
+                          p === page
+                            ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-md'
+                            : 'bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-white'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    </React.Fragment>
+                  ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page >= Math.ceil(totalCount / pageSize)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-elevated)] text-[var(--text-secondary)] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <span>التالي</span>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* تحديد حجم الصفحة */}
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--text-muted)]">لكل صفحة:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const newSize = parseInt(e.target.value, 10);
+                  setPageSize(newSize);
+                  setPage(1);
+                  fetchContacts(1, newSize);
+                }}
+                className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none font-mono focus:border-purple-500"
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={250}>250</option>
+                <option value={500}>500</option>
+              </select>
             </div>
           </div>
         )}

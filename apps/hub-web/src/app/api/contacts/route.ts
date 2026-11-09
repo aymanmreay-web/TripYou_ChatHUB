@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabase';
 
 /**
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     const source = searchParams.get('source');           // evolution | excel_import | contacts_file | system | manual
     const city = searchParams.get('city');
     const isFavorite = searchParams.get('favorite');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 500);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
     const supabase = getSupabaseAdmin();

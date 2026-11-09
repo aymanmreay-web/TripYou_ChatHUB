@@ -11,16 +11,17 @@ export async function GET() {
   try {
     const supabase = getSupabaseAdmin();
 
-    const { data: allContacts, error } = await supabase
+    const { data: allContacts, count: exactTotal, error } = await supabase
       .from('contacts')
-      .select('id, entity_type, commercial_role, source, source_detail, city, created_at');
+      .select('id, entity_type, commercial_role, source, source_detail, city, created_at', { count: 'exact' })
+      .range(0, 9999);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     const list = allContacts || [];
-    const total = list.length;
+    const total = exactTotal || list.length;
 
     // توزيع الكيان (Entity Type)
     const byEntityType = {
