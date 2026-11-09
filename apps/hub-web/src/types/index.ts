@@ -21,6 +21,8 @@ export interface StaffMe {
   default_line_id: string | null;
   avatar_url?: string;
   working_hours?: string;
+  assigned_line_ids?: string[];
+  assigned_instances?: string[];
 }
 
 export interface WhatsAppLine {
@@ -85,6 +87,7 @@ export interface ConversationItem {
   participant_count?: number;
   line_id: string;
   line_title: string;
+  available_lines?: string[];
   last_message_text: string;
   last_message_at: string;
   unread_count: number;

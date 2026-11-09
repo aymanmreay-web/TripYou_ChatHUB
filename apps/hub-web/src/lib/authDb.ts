@@ -50,6 +50,24 @@ export async function loadAuthState(): Promise<AuthState> {
   const status: AuthStatus =
     staff.status === 'active' ? 'active' : staff.status === 'pending' ? 'pending' : 'blocked';
 
+  // جلب الخطوط المربوطة بالموظف من جدول line_access
+  let assignedLineIds: string[] = [];
+  let assignedInstances: string[] = [];
+  try {
+    const { data: lineAcc } = await supabase
+      .from('line_access')
+      .select('line_id, lines(id, instance_name, title_ar)')
+      .eq('staff_id', staff.id);
+    if (lineAcc && Array.isArray(lineAcc)) {
+      assignedLineIds = lineAcc.map((x: any) => x.line_id);
+      assignedInstances = lineAcc
+        .map((x: any) => x.lines?.instance_name)
+        .filter(Boolean);
+    }
+  } catch (err) {
+    console.warn('Failed to load line_access for staff:', err);
+  }
+
   return {
     status,
     me: {
@@ -62,6 +80,8 @@ export async function loadAuthState(): Promise<AuthState> {
       permissions: status === 'active' ? permissions : [],
       default_line_id: staff.default_line_id,
       avatar_url: authUser.user_metadata?.avatar_url,
+      assigned_line_ids: assignedLineIds,
+      assigned_instances: assignedInstances,
     },
   };
 }

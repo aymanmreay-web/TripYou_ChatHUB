@@ -330,25 +330,6 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
             })}
           </nav>
         </div>
-
-        {/* Footer info: Connected Line */}
-        <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--card-elevated)]/40">
-          {!collapsed ? (
-            <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-semibold text-[var(--text-main)] truncate max-w-[140px]">
-                  {selectedLine?.title_ar || 'خط متصل'}
-                </span>
-              </div>
-              <span className="text-[10px] text-emerald-400 font-mono">متصل</span>
-            </div>
-          ) : (
-            <div className="flex justify-center">
-              <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" title="الخط متصل" />
-            </div>
-          )}
-        </div>
       </aside>
     </>
   );

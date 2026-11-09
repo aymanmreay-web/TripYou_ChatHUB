@@ -31,7 +31,9 @@ import {
   MessageSquare,
   ArrowUpDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  GitMerge,
+  AlertTriangle
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 
@@ -86,6 +88,12 @@ export default function ContactsPage() {
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // معالجة الدمج والمسح الشامل
+  const [isMerging, setIsMerging] = useState(false);
+  const [clearModalOpen, setClearModalOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [actionAlert, setActionAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // حقول نموذج الإضافة / التعديل
   const [formData, setFormData] = useState({
@@ -393,6 +401,56 @@ export default function ContactsPage() {
     }
   };
 
+  // معالجة ودمج كافة جهات الاتصال المشتركة عبر الخطوط
+  const handleMergeDuplicates = async () => {
+    try {
+      setIsMerging(true);
+      setActionAlert(null);
+      const res = await fetch('/api/contacts/merge', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setActionAlert({
+          type: 'success',
+          message: data.message || `تم بنجاح: دمج ${data.merged_count} جهة اتصال مكررة عبر الخطوط.`,
+        });
+        fetchContacts();
+        fetchGlobalStats();
+      } else {
+        setActionAlert({ type: 'error', message: data.error || 'تعذرت عملية معالجة ودمج جهات الاتصال' });
+      }
+    } catch (err: any) {
+      setActionAlert({ type: 'error', message: `خطأ أثناء الدمج: ${err.message}` });
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  // مسح كافة جهات الاتصال نهائياً
+  const handleClearAllContacts = async () => {
+    try {
+      setIsClearing(true);
+      setActionAlert(null);
+      const res = await fetch('/api/contacts?all=true', { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setClearModalOpen(false);
+        setActionAlert({
+          type: 'success',
+          message: 'تم مسح كافة جهات الاتصال بنجاح. يمكنك الآن إعادة الاستيراد النظيف لكل خط على حدة.',
+        });
+        setContacts([]);
+        setTotalCount(0);
+        fetchGlobalStats();
+      } else {
+        setActionAlert({ type: 'error', message: data.error || 'تعذر مسح جهات الاتصال' });
+      }
+    } catch (err: any) {
+      setActionAlert({ type: 'error', message: `خطأ أثناء المسح: ${err.message}` });
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   // تصدير CSV
   const handleExportCSV = () => {
     if (contacts.length === 0) {
@@ -552,7 +610,24 @@ export default function ContactsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleMergeDuplicates}
+              disabled={isMerging}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-200 border border-indigo-500/40 text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+              title="دمج جهات الاتصال المكررة أو المشتركة في أكثر من خط تلقائياً"
+            >
+              <GitMerge className={`w-4 h-4 text-indigo-400 ${isMerging ? 'animate-spin' : ''}`} />
+              <span>{isMerging ? 'جاري الدمج...' : 'معالجة ودمج الجهات'}</span>
+            </button>
+            <button
+              onClick={() => setClearModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/80 text-rose-200 border border-rose-500/40 text-xs font-medium transition-all shadow-sm"
+              title="مسح كافة جهات الاتصال لإعادة الاستيراد النظيف من كل خط على حدة"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>مسح كل جهات الاتصال</span>
+            </button>
             <button
               onClick={() => setImportModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-200 border border-purple-500/30 text-xs font-medium transition-all shadow-sm"
@@ -576,6 +651,32 @@ export default function ContactsPage() {
             </button>
           </div>
         </div>
+
+        {/* تنبيه الإجراءات */}
+        {actionAlert && (
+          <div
+            className={`p-3.5 rounded-2xl border flex items-center justify-between text-xs font-semibold shadow-md ${
+              actionAlert.type === 'success'
+                ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/50'
+                : 'bg-rose-950/70 text-rose-300 border-rose-500/50'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {actionAlert.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span>{actionAlert.message}</span>
+            </div>
+            <button
+              onClick={() => setActionAlert(null)}
+              className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
         {/* شريط الإحصائيات السريع الشامل لكافة جهات الاتصال */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
@@ -1350,6 +1451,68 @@ export default function ContactsPage() {
                     {isSubmitting ? 'جاري الاستيراد...' : 'بدء الاستيراد وتتبع المصدر'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* نافذة تأكيد مسح كافة جهات الاتصال */}
+        {clearModalOpen && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div
+              dir="rtl"
+              className="bg-[var(--card-bg)] border border-rose-500/50 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl text-right animate-in fade-in zoom-in-95 duration-200"
+            >
+              <div className="flex items-center gap-3 text-rose-400">
+                <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-[var(--text-main)]">
+                    تأكيد مسح كافة جهات الاتصال
+                  </h3>
+                  <p className="text-xs text-rose-300/80">
+                    إجراء حاسم لتنظيف الدليل وإعادة الاستيراد
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/30 space-y-2 text-xs text-slate-300">
+                <p>
+                  هل أنت متأكد من رغبتك في حذف <bdi className="font-bold text-white">كافة جهات الاتصال المسجلة</bdi> نهائياً؟
+                </p>
+                <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                  هذا الإجراء سيفرغ جدول جهات الاتصال بالكامل حتى تتمكن من سحب واستيراد جهات الاتصال من كل خط واتساب على حدة بشكل منظم ودقيق وبدون فوضى.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  disabled={isClearing}
+                  onClick={() => setClearModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-semibold transition-all disabled:opacity-50"
+                >
+                  إلغاء التراجع
+                </button>
+                <button
+                  type="button"
+                  disabled={isClearing}
+                  onClick={handleClearAllContacts}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-900/50 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {isClearing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>جاري المسح والتنظيف...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>نعم، امسح كل جهات الاتصال</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

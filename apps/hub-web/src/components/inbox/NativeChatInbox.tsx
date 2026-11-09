@@ -53,6 +53,7 @@ import {
   Bookmark,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   SlidersHorizontal,
   CheckSquare
 } from 'lucide-react';
@@ -369,6 +370,26 @@ export function NativeChatInbox() {
   const [isSending, setIsSending] = useState<boolean>(false);
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
   const [showMobileChat, setShowMobileChat] = useState<boolean>(false);
+
+  // ─── تحسين أداء وسرعة النظام: عرض المحادثات التدريجي لمنع ثقل المتصفح ───
+  const [visibleCount, setVisibleCount] = useState<number>(50);
+
+  // إعادة ضبط عداد العرض التدريجي عند تغيير الفلاتر أو البحث
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [filterTab, lineFilter, searchQuery, selectedInboxId]);
+
+  // ─── الخطوط المسموح للموظف الإرسال منها وفق ما تم ربطه به في قائمة تحكم الموظفين ───
+  const allowedSendInstances = useMemo(() => {
+    if (user?.assigned_instances && user.assigned_instances.length > 0) {
+      const filtered = instances.filter((inst) => user.assigned_instances?.includes(inst.name));
+      if (filtered.length > 0) return filtered;
+    }
+    if (user?.role === 'super_admin') {
+      return instances;
+    }
+    return instances;
+  }, [instances, user]);
 
   // --- حارس المخاطر (Risk Guard Engine State) ---
   const [consecutiveErrors, setConsecutiveErrors] = useState<number>(0);
@@ -700,13 +721,44 @@ export function NativeChatInbox() {
         }
       });
 
-      // ترتيب كافة المحادثات تنازلياً حسب توقيت أحدث رسالة
-      allMerged.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
+      // ── دمج وتوحيد المحادثات المتكررة عبر الخطوط (مثل المجموعات المشتركة كـ Test5 أو العملاء المشتركين) ──
+      const deduplicatedMap = new Map<string, ConversationItem>();
+      for (const item of allMerged) {
+        const key = item.chat_jid;
+        const existing = deduplicatedMap.get(key);
+        if (!existing) {
+          deduplicatedMap.set(key, {
+            ...item,
+            available_lines: [item.line_id],
+          });
+        } else {
+          // دمج المحادثة المشتركة
+          const mergedLines = Array.from(
+            new Set([...(existing.available_lines || [existing.line_id]), item.line_id])
+          );
+          const existingTs = existing.last_customer_message_timestamp || 0;
+          const newTs = item.last_customer_message_timestamp || 0;
+          const mostRecent = newTs >= existingTs ? item : existing;
 
-      setConversations(allMerged);
+          deduplicatedMap.set(key, {
+            ...mostRecent,
+            id: `unified__${key}`,
+            unread_count: (existing.unread_count || 0) + (item.unread_count || 0),
+            available_lines: mergedLines,
+            line_id: mostRecent.line_id,
+            line_title: mergedLines.join(' • '),
+          });
+        }
+      }
+
+      const finalList = Array.from(deduplicatedMap.values());
+      // ترتيب كافة المحادثات تنازلياً حسب توقيت أحدث رسالة
+      finalList.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
+
+      setConversations(finalList);
       setActiveConvId((curr) => {
-        if (curr && allMerged.some((c) => c.id === curr)) return curr;
-        return allMerged.length > 0 ? allMerged[0].id : '';
+        if (curr && finalList.some((c) => c.id === curr)) return curr;
+        return finalList.length > 0 ? finalList[0].id : '';
       });
     } catch (err) {
       console.error('Failed to load chats:', err);
@@ -723,94 +775,120 @@ export function NativeChatInbox() {
     }
   }, [instances.length, fetchChats]);
 
-  // 3. Fetch real messages when active conversation changes
-  const fetchMessagesForChat = useCallback(async (chatJid: string, instanceName: string) => {
+  // 3. Fetch real messages when active conversation changes (يدعم جلب الرسائل من كافة الخطوط المشتركة ودمجها)
+  const fetchMessagesForChat = useCallback(async (chatJid: string, instanceName: string, additionalLines?: string[]) => {
     if (!chatJid || !instanceName) return;
     try {
       setLoadingMessages(true);
-      const res = await fetch(`/api/evolution/instances/${instanceName}/messages?chatId=${encodeURIComponent(chatJid)}&limit=50`);
-      if (res.ok) {
-        const rawMsgs = await res.json();
-        const list: any[] = Array.isArray(rawMsgs)
-          ? rawMsgs
-          : Array.isArray(rawMsgs?.messages?.records)
-          ? rawMsgs.messages.records
-          : Array.isArray(rawMsgs?.records)
-          ? rawMsgs.records
-          : Array.isArray(rawMsgs?.messages)
-          ? rawMsgs.messages
-          : [];
-        
-        const mapped: ChatMessage[] = list.map((m: any) => {
-          const fromMe = m.key?.fromMe ?? false;
-          let text = ``;
-          let mediaType: any = `text`;
-          // ─── msgKeyId: المعرّف الحقيقي لرسالة واتساب (من m.key.id فقط)
-          // يُستخدم لبناء رابط الوكيل عند العرض — لا نبني الرابط هنا لتجنب double-proxy bug
-          const msgKeyId: string | undefined = m.key?.id || undefined;
-          let docFileName: string | undefined = undefined;
+      const linesToFetch = Array.from(new Set([instanceName, ...(additionalLines || [])].filter(Boolean)));
 
-          if (m.message) {
-            const msgObj = m.message;
-            if (msgObj.conversation) {
-              text = msgObj.conversation;
-            } else if (msgObj.extendedTextMessage?.text) {
-              text = msgObj.extendedTextMessage.text;
-            } else if (msgObj.imageMessage) {
-              mediaType = `image`;
-              text = msgObj.imageMessage.caption || ``;
-            } else if (msgObj.documentMessage) {
-              mediaType = `document`;
-              docFileName = msgObj.documentMessage.fileName || msgObj.documentMessage.title || undefined;
-              text = docFileName || msgObj.documentMessage.caption || `مستند`;
-            } else if (msgObj.audioMessage) {
-              mediaType = `audio`;
-              text = ``;
-            } else if (msgObj.videoMessage) {
-              mediaType = `video`;
-              text = msgObj.videoMessage.caption || ``;
-            } else if (msgObj.stickerMessage) {
-              mediaType = `sticker`;
-              text = ``;
-            } else if (msgObj.reactionMessage) {
-              text = msgObj.reactionMessage.text || ``;
-            } else if (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3) {
-              mediaType = `poll`;
-              const pollObj = msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3;
-              text = pollObj?.name || `استطلاع رأي`;
-            } else if (msgObj.pollUpdateMessage) {
-              mediaType = `poll`;
-              text = `استطلاع رأي تفاعلي`;
-            } else if (m.messageType) {
-              text = m.messageType.includes(`poll`) ? `استطلاع رأي` : ``;
-            }
+      const fetchResults = await Promise.allSettled(
+        linesToFetch.map(async (inst) => {
+          const res = await fetch(`/api/evolution/instances/${inst}/messages?chatId=${encodeURIComponent(chatJid)}&limit=50`);
+          if (res.ok) {
+            const rawMsgs = await res.json();
+            const list: any[] = Array.isArray(rawMsgs)
+              ? rawMsgs
+              : Array.isArray(rawMsgs?.messages?.records)
+              ? rawMsgs.messages.records
+              : Array.isArray(rawMsgs?.records)
+              ? rawMsgs.records
+              : Array.isArray(rawMsgs?.messages)
+              ? rawMsgs.messages
+              : [];
+            return list.map((m: any) => ({ ...m, _originInstance: inst }));
           }
+          return [];
+        })
+      );
 
-          let timeStr = ``;
-          if (m.messageTimestamp) {
-            const date = new Date(m.messageTimestamp * 1000);
-            timeStr = date.toLocaleTimeString(`ar-SA`, { hour: `2-digit`, minute: `2-digit` });
-          }
+      let allRawList: any[] = [];
+      fetchResults.forEach((r) => {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+          allRawList = allRawList.concat(r.value);
+        }
+      });
 
-          return {
-            id: msgKeyId || m.id || ('msg-' + Date.now() + '-' + Math.random()),
-            msg_key_id: msgKeyId,
-            conversation_id: chatJid,
-            chat_jid: chatJid,
-            direction: fromMe ? `out` : `in`,
-            body: text || (mediaType !== `text` ? `` : `(رسالة)`),
-            media_type: mediaType,
-            media_url: undefined,
-            file_name: docFileName,
-            sender_name: fromMe ? `أنا` : (m.pushName || `العميل`),
-            status: fromMe ? (m.status === `READ` ? `read` : `delivered`) : `delivered`,
-            line_id: instanceName,
-            created_at: timeStr || `الآن`,
-          };
-        });
-
-        setMessages(mapped.reverse());
+      // منع تكرار الرسائل بين الخطوط
+      const seenMsgKeys = new Set<string>();
+      const uniqueRawMsgs: any[] = [];
+      for (const m of allRawList) {
+        const k = m.key?.id || m.id;
+        if (k && seenMsgKeys.has(k)) continue;
+        if (k) seenMsgKeys.add(k);
+        uniqueRawMsgs.push(m);
       }
+
+      // ترتيب الرسائل زمنياً تصاعدياً
+      uniqueRawMsgs.sort((a, b) => (a.messageTimestamp || 0) - (b.messageTimestamp || 0));
+
+      const mapped: ChatMessage[] = uniqueRawMsgs.map((m: any) => {
+        const fromMe = m.key?.fromMe ?? false;
+        let text = ``;
+        let mediaType: any = `text`;
+        const msgKeyId: string | undefined = m.key?.id || undefined;
+        let docFileName: string | undefined = undefined;
+
+        if (m.message) {
+          const msgObj = m.message;
+          if (msgObj.conversation) {
+            text = msgObj.conversation;
+          } else if (msgObj.extendedTextMessage?.text) {
+            text = msgObj.extendedTextMessage.text;
+          } else if (msgObj.imageMessage) {
+            mediaType = `image`;
+            text = msgObj.imageMessage.caption || ``;
+          } else if (msgObj.documentMessage) {
+            mediaType = `document`;
+            docFileName = msgObj.documentMessage.fileName || msgObj.documentMessage.title || undefined;
+            text = docFileName || msgObj.documentMessage.caption || `مستند`;
+          } else if (msgObj.audioMessage) {
+            mediaType = `audio`;
+            text = ``;
+          } else if (msgObj.videoMessage) {
+            mediaType = `video`;
+            text = msgObj.videoMessage.caption || ``;
+          } else if (msgObj.stickerMessage) {
+            mediaType = `sticker`;
+            text = ``;
+          } else if (msgObj.reactionMessage) {
+            text = msgObj.reactionMessage.text || ``;
+          } else if (msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3) {
+            mediaType = `poll`;
+            const pollObj = msgObj.pollCreationMessage || msgObj.pollCreationMessageV2 || msgObj.pollCreationMessageV3;
+            text = pollObj?.name || `استطلاع رأي`;
+          } else if (msgObj.pollUpdateMessage) {
+            mediaType = `poll`;
+            text = `استطلاع رأي تفاعلي`;
+          } else if (m.messageType) {
+            text = m.messageType.includes(`poll`) ? `استطلاع رأي` : ``;
+          }
+        }
+
+        let timeStr = ``;
+        if (m.messageTimestamp) {
+          const date = new Date(m.messageTimestamp * 1000);
+          timeStr = date.toLocaleTimeString(`ar-SA`, { hour: `2-digit`, minute: `2-digit` });
+        }
+
+        return {
+          id: msgKeyId || m.id || ('msg-' + Date.now() + '-' + Math.random()),
+          msg_key_id: msgKeyId,
+          conversation_id: chatJid,
+          chat_jid: chatJid,
+          direction: fromMe ? `out` : `in`,
+          body: text || (mediaType !== `text` ? `` : `(رسالة)`),
+          media_type: mediaType,
+          media_url: undefined,
+          file_name: docFileName,
+          sender_name: fromMe ? `أنا` : (m.pushName || `العميل`),
+          status: fromMe ? (m.status === `READ` ? `read` : `delivered`) : `delivered`,
+          line_id: m._originInstance || instanceName,
+          created_at: timeStr || `الآن`,
+        };
+      });
+
+      setMessages(mapped);
     } catch (err) {
       console.error('Failed to load messages:', err);
     } finally {
@@ -823,9 +901,29 @@ export function NativeChatInbox() {
     return conversations.find((c) => c.id === activeConvId) || conversations[0] || null;
   }, [conversations, activeConvId]);
 
+  // خط الإرسال الفعلي المعتمد للموظف
+  const effectiveSendInstance = useMemo(() => {
+    if (sendingLineInstance && allowedSendInstances.some((i) => i.name === sendingLineInstance)) {
+      return sendingLineInstance;
+    }
+    if (activeConversation) {
+      if (allowedSendInstances.some((i) => i.name === activeConversation.line_id)) {
+        return activeConversation.line_id;
+      }
+      if (activeConversation.available_lines) {
+        const matched = allowedSendInstances.find((i) => activeConversation.available_lines?.includes(i.name));
+        if (matched) return matched.name;
+      }
+    }
+    return allowedSendInstances[0]?.name || 'Master';
+  }, [allowedSendInstances, sendingLineInstance, activeConversation]);
+
   // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
   useEffect(() => {
     const interval = setInterval(() => {
+      // تجنب استهلاك الموارد والبطء عند تصغير المتصفح أو الانتقال لتبويب آخر
+      if (typeof document !== 'undefined' && document.hidden) return;
+
       // 1. تحديث الرسائل للمحادثة المفتوحة بصمت
       if (activeConversation) {
         const targetJid = activeConversation.chat_jid;
@@ -849,7 +947,7 @@ export function NativeChatInbox() {
                   const prevIds = new Set(prev.map((m) => m.id));
                   const hasNew = list.some((m: any) => !prevIds.has(m.key?.id || m.id));
                   if (!hasNew) return prev;
-                  fetchMessagesForChat(targetJid, targetLine);
+                  fetchMessagesForChat(targetJid, targetLine, activeConversation.available_lines);
                   return prev;
                 });
               }
@@ -859,17 +957,17 @@ export function NativeChatInbox() {
       }
     }, 6000);
     return () => clearInterval(interval);
-  }, [activeConversation?.id, activeConversation?.line_id, activeConversation?.chat_jid, selectedInstanceName, fetchMessagesForChat]);
+  }, [activeConversation?.id, activeConversation?.line_id, activeConversation?.chat_jid, activeConversation?.available_lines, selectedInstanceName, fetchMessagesForChat]);
 
   useEffect(() => {
     if (activeConversation) {
       const targetJid = activeConversation.chat_jid;
       const targetLine = activeConversation.line_id || selectedInstanceName;
       if (targetJid && targetLine) {
-        fetchMessagesForChat(targetJid, targetLine);
+        fetchMessagesForChat(targetJid, targetLine, activeConversation.available_lines);
       }
     }
-  }, [activeConversation?.id, fetchMessagesForChat]);
+  }, [activeConversation?.id, activeConversation?.available_lines, fetchMessagesForChat]);
 
   // Current selected instance info
   const currentInstance = useMemo(() => {
@@ -920,7 +1018,10 @@ export function NativeChatInbox() {
         if (currentInbox.filter_type === 'dm' && c.is_group) return false;
         if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
         if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
-          if (!currentInbox.line_ids.includes(c.line_id)) return false;
+          const matchLine =
+            currentInbox.line_ids.includes(c.line_id) ||
+            (c.available_lines && c.available_lines.some((l) => currentInbox.line_ids.includes(l)));
+          if (!matchLine) return false;
         }
         return true;
       });
@@ -928,9 +1029,15 @@ export function NativeChatInbox() {
 
     // إذا كان الموظف ليس Super Admin، تنحصر محادثاته في خطوط الصناديق المخصصة له فقط
     if (user?.role !== 'super_admin') {
-      const allowedLines = new Set<string>();
+      const allowedLines = new Set<string>(user?.assigned_instances || []);
       inboxesList.forEach((ib) => ib.line_ids.forEach((l) => allowedLines.add(l)));
-      return conversations.filter((c) => allowedLines.has(c.line_id));
+      if (allowedLines.size > 0) {
+        return conversations.filter(
+          (c) =>
+            allowedLines.has(c.line_id) ||
+            (c.available_lines && c.available_lines.some((l) => allowedLines.has(l)))
+        );
+      }
     }
 
     return conversations;
@@ -942,8 +1049,11 @@ export function NativeChatInbox() {
 
     return inboxScopedConversations.filter((c) => {
       // 1. فلترة الخط الاختيارية داخل الصندوق
-      if (lineFilter !== 'all' && c.line_id !== lineFilter) {
-        return false;
+      if (lineFilter !== 'all') {
+        const matchLine =
+          c.line_id === lineFilter ||
+          (c.available_lines && c.available_lines.includes(lineFilter));
+        if (!matchLine) return false;
       }
 
       // 2. فلترة البحث
@@ -1112,7 +1222,7 @@ export function NativeChatInbox() {
 
     setIsSending(true);
 
-    const effectiveLine = sendingLineInstance || activeConversation?.line_id || selectedInstanceName || 'Master';
+    const effectiveLine = effectiveSendInstance;
 
     const signature = includeSignature
       ? `\n\n*${user.full_name}* — ${currentInstance?.profileName || effectiveLine}`
@@ -1543,7 +1653,7 @@ export function NativeChatInbox() {
 
     setIsSendingMedia(true);
     try {
-      const res = await fetch(`/api/evolution/instances/${selectedInstanceName}/media`, {
+      const res = await fetch(`/api/evolution/instances/${effectiveSendInstance}/media`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1839,22 +1949,6 @@ export function NativeChatInbox() {
             <span>حارس المخاطر: تسخين آمن (50 رسالة/يوم)</span>
           </span>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              fetchInstances();
-              const openNames = instances.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
-              fetchChats(openNames.length > 0 ? openNames : ['Master', 'Sells_2']);
-            }}
-            disabled={loadingChats || loadingInstances}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] hover:bg-purple-500/20 text-[var(--text-secondary)] border border-[var(--border-subtle)] text-xs transition-all"
-            title="تحديث المحادثات والخطوط الحقيقية"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingChats || loadingInstances ? 'animate-spin' : ''}`} />
-            <span>تحديث البيانات الحية</span>
-          </button>
-        </div>
       </div>
 
       {/* Main Chat Workspace */}
@@ -1965,7 +2059,17 @@ export function NativeChatInbox() {
           </div>
 
           {/* Conversations Scroll Area */}
-          <div className="flex-1 overflow-y-auto divide-y divide-purple-900/20">
+          <div
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              if (target.scrollHeight - target.scrollTop - target.clientHeight < 250) {
+                if (visibleCount < filteredConversations.length) {
+                  setVisibleCount((prev) => Math.min(prev + 50, filteredConversations.length));
+                }
+              }
+            }}
+            className="flex-1 overflow-y-auto divide-y divide-purple-900/20"
+          >
             {loadingChats ? (
               <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
                 <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
@@ -1976,96 +2080,119 @@ export function NativeChatInbox() {
                 {searchQuery ? 'لا توجد محادثات مطابقة للبحث' : 'لا توجد محادثات على هذا الخط حتى الآن'}
               </div>
             ) : (
-              filteredConversations.map((conv) => {
-                const isSelected = conv.id === activeConvId;
-                return (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConversation(conv.id)}
-                    className={`w-full p-3 text-right flex items-start gap-3 transition-colors ${
-                      isSelected
-                        ? 'bg-purple-950/40 border-r-4 border-purple-500'
-                        : 'hover:bg-purple-950/20'
-                    }`}
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 overflow-hidden border ${
-                        conv.is_group
-                          ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
-                          : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
+              <>
+                {filteredConversations.slice(0, visibleCount).map((conv) => {
+                  const isSelected = conv.id === activeConvId;
+                  return (
+                    <button
+                      key={conv.id}
+                      onClick={() => handleSelectConversation(conv.id)}
+                      className={`w-full p-3 text-right flex items-start gap-3 transition-colors ${
+                        isSelected
+                          ? 'bg-purple-950/40 border-r-4 border-purple-500'
+                          : 'hover:bg-purple-950/20'
                       }`}
                     >
-                      {conv.avatar_url ? (
-                        <img src={conv.avatar_url} alt={conv.title} className="w-full h-full object-cover" />
-                      ) : conv.is_group ? (
-                        <Users className="w-5 h-5" />
-                      ) : (
-                        initialsOrLetter(conv.title, conv.avatar_letter)
-                      )}
-                    </div>
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 overflow-hidden border ${
+                          conv.is_group
+                            ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
+                            : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
+                        }`}
+                      >
+                        {conv.avatar_url ? (
+                          <img src={conv.avatar_url} alt={conv.title} className="w-full h-full object-cover" />
+                        ) : conv.is_group ? (
+                          <Users className="w-5 h-5" />
+                        ) : (
+                          initialsOrLetter(conv.title, conv.avatar_letter)
+                        )}
+                      </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="font-semibold text-xs text-[var(--text-main)] truncate">
-                            {conv.title}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-semibold text-xs text-[var(--text-main)] truncate">
+                              {conv.title}
+                            </span>
+                            {conv.participant_count && (
+                              <span className="text-[10px] text-purple-300/80 shrink-0 font-normal">
+                                ({conv.participant_count})
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 shrink-0 font-mono">
+                            {conv.last_message_at}
                           </span>
-                          {conv.participant_count && (
-                            <span className="text-[10px] text-purple-300/80 shrink-0 font-normal">
-                              ({conv.participant_count})
+                        </div>
+
+                        <p className="text-[11px] text-slate-300 truncate mb-1.5 leading-snug">
+                          {conv.last_message_text}
+                        </p>
+
+                        <div className="flex items-center justify-between gap-1">
+                          {/* حالة المحادثة في القائمة مع وسام الخط */}
+                          <div className="flex items-center gap-1.5">
+                            {conv.available_lines && conv.available_lines.length > 1 ? (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-purple-950/70 text-purple-200 border border-purple-700/50 flex items-center gap-1"
+                                title={`محادثة مشتركة عبر الخطوط: ${conv.available_lines.join(', ')}`}
+                              >
+                                <bdi dir="ltr">{conv.available_lines.join(' • ')}</bdi>
+                              </span>
+                            ) : (
+                              <span
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border ${
+                                  conv.line_id === 'Master'
+                                    ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
+                                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
+                                }`}
+                                title={`وارد عبر خط: ${conv.line_title || conv.line_id}`}
+                              >
+                                <bdi dir="ltr">{conv.line_id || 'Master'}</bdi>
+                              </span>
+                            )}
+
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                              conv.status === 'resolved'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : conv.status === 'escalated'
+                                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse'
+                                : conv.status === 'in_progress'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            }`}>
+                              {conv.status === 'resolved' ? 'تم الحل' : conv.status === 'escalated' ? 'مصعدة' : conv.status === 'in_progress' ? 'قيد المعالجة' : 'مفتوحة'}
+                            </span>
+
+                            <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
+                              {conv.assigned_staff_name || 'عام'}
+                            </span>
+                          </div>
+
+                          {conv.unread_count > 0 && (
+                            <span className="w-4 h-4 rounded-full bg-purple-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                              {conv.unread_count}
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-slate-400 shrink-0 font-mono">
-                          {conv.last_message_at}
-                        </span>
                       </div>
+                    </button>
+                  );
+                })}
 
-                      <p className="text-[11px] text-slate-300 truncate mb-1.5 leading-snug">
-                        {conv.last_message_text}
-                      </p>
-
-                      <div className="flex items-center justify-between gap-1">
-                        {/* حالة المحادثة في القائمة مع وسام الخط */}
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border ${
-                              conv.line_id === 'Master'
-                                ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                                : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                            }`}
-                            title={`وارد عبر خط: ${conv.line_title || conv.line_id}`}
-                          >
-                            <bdi dir="ltr">{conv.line_id || 'Master'}</bdi>
-                          </span>
-
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                            conv.status === 'resolved'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : conv.status === 'escalated'
-                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse'
-                              : conv.status === 'in_progress'
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                          }`}>
-                            {conv.status === 'resolved' ? 'تم الحل' : conv.status === 'escalated' ? 'مصعدة' : conv.status === 'in_progress' ? 'قيد المعالجة' : 'مفتوحة'}
-                          </span>
-
-                          <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
-                            {conv.assigned_staff_name || 'عام'}
-                          </span>
-                        </div>
-
-                        {conv.unread_count > 0 && (
-                          <span className="w-4 h-4 rounded-full bg-purple-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {conv.unread_count}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })
+                {filteredConversations.length > visibleCount && (
+                  <div className="p-3 text-center">
+                    <button
+                      onClick={() => setVisibleCount((prev) => Math.min(prev + 50, filteredConversations.length))}
+                      className="w-full py-2 px-3 rounded-xl bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 text-purple-200 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <span>عرض المزيد من المحادثات (المتبقي: <bdi dir="ltr">{filteredConversations.length - visibleCount}</bdi>)</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -2115,16 +2242,24 @@ export function NativeChatInbox() {
                         </span>
                       )}
 
-                      {/* شارة الخط الوارد عليه المحادثة */}
-                      <span className={`flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold ${
-                        activeConversation.line_id === 'Master'
-                          ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                          : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                      }`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        <span>الخط:</span>
-                        <bdi dir="ltr">{activeConversation.line_id || 'Master'}</bdi>
-                      </span>
+                      {/* شارة الخط الوارد عليه المحادثة أو الخطوط المشتركة */}
+                      {activeConversation.available_lines && activeConversation.available_lines.length > 1 ? (
+                        <span className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold bg-purple-950/80 text-purple-200 border-purple-600/50">
+                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                          <span>الخطوط المشتركة:</span>
+                          <bdi dir="ltr">{activeConversation.available_lines.join(' • ')}</bdi>
+                        </span>
+                      ) : (
+                        <span className={`flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold ${
+                          activeConversation.line_id === 'Master'
+                            ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
+                            : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
+                        }`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span>الخط:</span>
+                          <bdi dir="ltr">{activeConversation.line_id || 'Master'}</bdi>
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
@@ -2950,15 +3085,15 @@ export function NativeChatInbox() {
                       )}
                     </div>
 
-                    {/* محدد خط الإرسال المرن المتطابق تلقائياً مع خط المحادثة */}
+                    {/* محدد خط الإرسال المقيد بالخطوط المسموح بها للموظف فقط */}
                     <div className="flex items-center gap-1 shrink-0">
                       <select
-                        value={sendingLineInstance || activeConversation?.line_id || selectedInstanceName || 'Master'}
+                        value={effectiveSendInstance}
                         onChange={(e) => setSendingLineInstance(e.target.value)}
                         className="h-10 px-2 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-semibold outline-none focus:border-purple-400 font-mono"
-                        title="خط واتساب الذي ستخرج منه هذه الرسالة (يتطابق تلقائياً مع خط العميل)"
+                        title="الخطوط المصرح لك الإرسال منها وفق قائمة الموظفين"
                       >
-                        {instances.map((inst) => (
+                        {allowedSendInstances.map((inst) => (
                           <option key={inst.name} value={inst.name}>
                             إرسال عبر: {inst.profileName || inst.name}
                           </option>

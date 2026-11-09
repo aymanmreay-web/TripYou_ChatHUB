@@ -233,3 +233,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/contacts?all=true
+ * مسح شامل لكافة جهات الاتصال المسجلة لإعادة ضبط الدليل والاستيراد المنظم لكل خط
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const deleteAll = searchParams.get('all') === 'true';
+
+    if (!deleteAll) {
+      return NextResponse.json({ error: 'مطلوب تأكيد الحذف الشامل all=true' }, { status: 400 });
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    // 1. مسح جدول هواتف جهات الاتصال أولاً منعاً لتعارض المفاتيح الخارجية
+    try {
+      await supabase.from('contact_phones').delete().not('id', 'is', null);
+    } catch (e) {
+      console.warn('contact_phones cleanup notice:', e);
+    }
+
+    // 2. مسح كافة جهات الاتصال
+    const { error, count } = await supabase
+      .from('contacts')
+      .delete({ count: 'exact' })
+      .not('id', 'is', null);
+
+    if (error) {
+      console.error('[API /api/contacts DELETE Error]:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'تم مسح كافة جهات الاتصال بنجاح',
+      deleted_count: count || 0,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
