@@ -339,7 +339,7 @@ const AVAILABLE_STAFF = [
 ];
 
 export function NativeChatInbox() {
-  const { user } = useApp();
+  const { user, authStatus } = useApp();
 
   // Evolution Real State
   const [instances, setInstances] = useState<EvolutionInstanceSummary[]>([]);
@@ -514,66 +514,31 @@ export function NativeChatInbox() {
     return ksaHour >= 1 && ksaHour < 7;
   }, []);
 
-  // تحميل الصناديق وربطها بالخطوط من Supabase بناءً على صلاحيات الموظف في جدول inbox_access
+  // تحميل الصناديق حصراً من API الخادم المحمي بجدول inbox_access ودور الموظف في قاعدة البيانات
   const loadInboxes = useCallback(async () => {
+    // ننتظر حتى تكتمل المصادقة ولا نعتمد على قيم غير مؤكدة
+    if (authStatus === 'loading') return;
+
     try {
-      const [inboxesRes, linesRes, inboxLinesRes] = await Promise.all([
-        supabase.from('inboxes').select('id, name_ar, color, filter_type, is_active').order('sort_order'),
-        supabase.from('lines').select('id, instance_name, title_ar'),
-        supabase.from('inbox_lines').select('inbox_id, line_id'),
-      ]);
+      const params = new URLSearchParams();
+      if (user?.id) params.set('staff_id', user.id);
+      if (user?.email_masked) params.set('email', user.email_masked);
 
-      const linesMap = new Map<string, string>();
-      if (Array.isArray(linesRes.data)) {
-        linesRes.data.forEach((l: any) => {
-          if (l.id && l.instance_name) linesMap.set(l.id, l.instance_name);
-        });
-      }
+      const res = await fetch(`/api/inboxes?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        const inboxes = data.inboxes || [];
+        setInboxesList(inboxes);
 
-      const inboxLinesMap = new Map<string, string[]>();
-      if (Array.isArray(inboxLinesRes.data)) {
-        inboxLinesRes.data.forEach((il: any) => {
-          const inst = linesMap.get(il.line_id);
-          if (inst) {
-            const arr = inboxLinesMap.get(il.inbox_id) || [];
-            if (!arr.includes(inst)) arr.push(inst);
-            inboxLinesMap.set(il.inbox_id, arr);
-          }
-        });
-      }
-
-      let rawInboxes = Array.isArray(inboxesRes.data) ? inboxesRes.data : [];
-
-      // التحقق الأمني: إذا كان المستخدم ليس مسؤل نظام أعلى (Super Admin)،
-      // نجلب فقط الصناديق المصرح له بها في جدول inbox_access
-      if (user?.id && user?.role !== 'super_admin') {
-        const { data: accessRows } = await supabase
-          .from('inbox_access')
-          .select('inbox_id')
-          .eq('staff_id', user.id);
-
-        const allowedInboxIds = new Set((accessRows || []).map((a: any) => a.inbox_id));
-        rawInboxes = rawInboxes.filter((d: any) => allowedInboxIds.has(d.id));
-      }
-
-      const mappedList = rawInboxes.map((d: any) => ({
-        id: d.id,
-        name_ar: d.name_ar,
-        color_hex: d.color || '#8b5cf6',
-        filter_type: d.filter_type || 'all',
-        line_ids: inboxLinesMap.get(d.id) || [],
-      }));
-
-      setInboxesList(mappedList);
-
-      // إذا كان الموظف مربوطاً بصناديق معينة ولديه صندوق واحد أو اختار صندوقاً غير مصرح له به، نثبت على الأول
-      if (user?.role !== 'super_admin' && mappedList.length > 0) {
-        setSelectedInboxId(mappedList[0].id);
+        // إذا كان الموظف غير مسؤل نظام ولديه صناديق مخصصة، نحدد أول صندوق له تلقائياً
+        if (!data.is_super_admin && inboxes.length > 0) {
+          setSelectedInboxId(inboxes[0].id);
+        }
       }
     } catch (e) {
       console.warn('Failed to load inboxes:', e);
     }
-  }, [user]);
+  }, [user, authStatus]);
 
   useEffect(() => {
     loadInboxes();
