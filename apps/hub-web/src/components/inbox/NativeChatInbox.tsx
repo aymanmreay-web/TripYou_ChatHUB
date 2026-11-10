@@ -372,6 +372,14 @@ export function NativeChatInbox() {
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
   const [showMobileChat, setShowMobileChat] = useState<boolean>(false);
 
+  // ─── سجل المقروء المحفوظ في الداتابيز للصندوق الحالي والمستخدم ───
+  const [readChatJids, setReadChatJids] = useState<Set<string>>(new Set());
+  // ─── حالة فحص جهة الاتصال الحالية في الداتابيز ───
+  const [isContactSaved, setIsContactSaved] = useState<boolean>(false);
+  // ─── إعدادات التواقيع المحملة من الداتابيز ───
+  const [signatureConfig, setSignatureConfig] = useState<any>(null);
+  const [staffSignaturesList, setStaffSignaturesList] = useState<any[]>([]);
+
   // ─── تحسين أداء وسرعة النظام: عرض المحادثات التدريجي لمنع ثقل المتصفح ───
   const [visibleCount, setVisibleCount] = useState<number>(50);
 
@@ -567,6 +575,36 @@ export function NativeChatInbox() {
     loadInboxes();
   }, [loadInboxes]);
 
+  // ─── تحميل سجل المقروء من قاعدة البيانات لهذا الصندوق والمستخدم ───
+  const loadReadReceipts = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`/api/inboxes/read?inbox_id=${selectedInboxId || 'all'}&user_id=${user.id}`);
+      if (res.ok) {
+        const json = await res.json();
+        const set = new Set<string>((json.reads || []).map((r: any) => r.chat_jid));
+        setReadChatJids(set);
+      }
+    } catch (e) {
+      console.warn('Failed loading read receipts:', e);
+    }
+  }, [user?.id, selectedInboxId]);
+
+  useEffect(() => {
+    loadReadReceipts();
+  }, [loadReadReceipts]);
+
+  // ─── تحميل إعدادات التواقيع وتواقيع الموظفين من قاعدة البيانات ───
+  useEffect(() => {
+    fetch('/api/signatures')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.global) setSignatureConfig(data.global);
+        if (Array.isArray(data.staff)) setStaffSignaturesList(data.staff);
+      })
+      .catch(() => {});
+  }, []);
+
   // 1. Fetch connected instances from Evolution API & custom internal line titles
   const fetchInstances = useCallback(async () => {
     try {
@@ -711,7 +749,7 @@ export function NativeChatInbox() {
                   timeStr = date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
                 }
 
-                const isReadLocally = readChatsSet.current.has(jid);
+                const isReadLocally = readChatJids.has(jid) || readChatsSet.current.has(jid);
                 const unread = isReadLocally ? 0 : (c.unreadCount || 0);
 
                 return {
@@ -908,8 +946,16 @@ export function NativeChatInbox() {
     );
   }, [user]);
 
+  // التحقق هل الموظف غير مسند لأي صندوق محادثات
+  const isStaffWithoutInboxes = useMemo(() => {
+    if (isManager) return false;
+    if (authStatus === 'loading') return false;
+    return inboxesList.length === 0;
+  }, [isManager, authStatus, inboxesList]);
+
   // الخطوط المتاحة والمسموح بها داخل الصندوق المختار فقط وفق جدول الداتابيز
   const availableInstances = useMemo(() => {
+    if (isStaffWithoutInboxes) return [];
     let list = instances;
 
     // 1. إذا تم اختيار صندوق محدد: نقتصر حصراً على الخطوط المسجلة في هذا الصندوق بالداتابيز
@@ -930,10 +976,11 @@ export function NativeChatInbox() {
     }
 
     return list;
-  }, [instances, currentInbox, inboxesList, user, isManager, selectedInboxId]);
+  }, [instances, currentInbox, inboxesList, user, isManager, selectedInboxId, isStaffWithoutInboxes]);
 
   // المحادثات المحصورة في نطاق الصندوق المختار وصلاحيات الموظف (قبل تطبيق التبويبات والبحث والخط)
   const inboxScopedConversations = useMemo(() => {
+    if (isStaffWithoutInboxes) return [];
     let list = conversations;
 
     if (currentInbox) {
@@ -1057,6 +1104,30 @@ export function NativeChatInbox() {
     return filteredConversations[0] || conversations[0] || null;
   }, [filteredConversations, conversations, activeConvId]);
 
+  // ─── التحقق الفوري هل المحادثة الحالية مسجلة في جدول جهات الاتصال ───
+  useEffect(() => {
+    if (!activeConversation?.phone_or_jid) {
+      setIsContactSaved(false);
+      return;
+    }
+    const cleanPhone = activeConversation.phone_or_jid.replace(/[^0-9]/g, '');
+    const searchTarget = cleanPhone || activeConversation.chat_jid;
+    fetch(`/api/contacts?search=${encodeURIComponent(searchTarget)}&limit=5`)
+      .then((r) => r.json())
+      .then((data) => {
+        const items = data.contacts || data.items || [];
+        const isMatch = items.some(
+          (c: any) =>
+            c.primary_phone === activeConversation.phone_or_jid ||
+            c.primary_phone === activeConversation.chat_jid ||
+            c.primary_phone_e164 === activeConversation.phone_or_jid ||
+            (cleanPhone && c.primary_phone && c.primary_phone.includes(cleanPhone))
+        );
+        setIsContactSaved(isMatch);
+      })
+      .catch(() => {});
+  }, [activeConversation?.phone_or_jid, activeConversation?.chat_jid]);
+
   // خط الإرسال الفعلي المعتمد للموظف
   const effectiveSendInstance = useMemo(() => {
     if (sendingLineInstance && allowedSendInstances.some((i) => i.name === sendingLineInstance)) {
@@ -1154,59 +1225,54 @@ export function NativeChatInbox() {
   }, [activeConversation]);
 
 
-  // مؤقت ذكي لتصفير قراءة الرسائل بعد 500ms في المحادثة وإرسالها لـ Evolution API
-  useEffect(() => {
-    if (!activeConversation || activeConversation.unread_count === 0) return;
-
-    const chatJid = activeConversation.chat_jid;
-    // تسجيل فوري بالذاكرة لمنع عودة العداد عند التحديث الدوري
-    readChatsSet.current.add(chatJid);
-
-    const timer = setTimeout(async () => {
-      // 1. تصفير العداد محلياً فوراً لكافة عناصر هذه المحادثة (فردية أو موحدة)
+  // ─── تسجيل قراءة المحادثة محلياً وفي قاعدة البيانات للصندوق الحالي والمستخدم (بدون إرسال لواتساب) ───
+  const markAsReadLocallyAndInDb = useCallback(
+    (chatJid: string) => {
+      readChatsSet.current.add(chatJid);
+      setReadChatJids((prev) => {
+        const next = new Set(prev);
+        next.add(chatJid);
+        return next;
+      });
       setConversations((prev) =>
         prev.map((c) => (c.chat_jid === chatJid ? { ...c, unread_count: 0 } : c))
       );
 
-      // 2. إرسال أمر markMessageAsRead لخادم Evolution API لكافة الخطوط المشتركة
-      const targetLines =
-        activeConversation.available_lines && activeConversation.available_lines.length > 0
-          ? activeConversation.available_lines
-          : [activeConversation.line_id || selectedInstanceName];
-
-      const lastMsg = messages[messages.length - 1];
-
-      for (const instance of targetLines) {
-        try {
-          await fetch(`/api/evolution/instances/${instance}/read`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chatJid: chatJid,
-              messageId: lastMsg?.id,
-              fromMe: lastMsg?.direction === 'out',
-            }),
-          });
-        } catch (e) {
-          console.warn(`Silent read status update failed for line ${instance}:`, e);
-        }
+      if (user?.id) {
+        fetch('/api/inboxes/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            inbox_id: selectedInboxId || 'all',
+            chat_jid: chatJid,
+          }),
+        }).catch((e) => console.warn('Failed saving read receipt in DB:', e));
       }
-    }, 600);
+    },
+    [user?.id, selectedInboxId]
+  );
+
+  // مؤقت لتسجيل القراءة في قاعدة البيانات بمجرد فتح المحادثة (بدون إرسال لواتساب)
+  useEffect(() => {
+    if (!activeConversation || activeConversation.unread_count === 0) return;
+
+    const chatJid = activeConversation.chat_jid;
+    const timer = setTimeout(() => {
+      markAsReadLocallyAndInDb(chatJid);
+    }, 400);
 
     return () => clearTimeout(timer);
-  }, [activeConversation?.id, activeConversation?.chat_jid, activeConversation?.unread_count, activeConversation?.available_lines, activeConversation?.line_id, messages, selectedInstanceName]);
+  }, [activeConversation?.chat_jid, activeConversation?.unread_count, markAsReadLocallyAndInDb]);
 
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);
     setShowMobileChat(true);
 
-    // تصفير فوري لحظي للعداد بمجرد النقر على المحادثة
+    // تصفير فوري لحظي للعداد محلياً وفي الداتابيز بمجرد النقر على المحادثة
     const clicked = conversations.find((c) => c.id === id || id === `unified__${c.chat_jid}`);
     if (clicked) {
-      readChatsSet.current.add(clicked.chat_jid);
-      setConversations((prev) =>
-        prev.map((c) => (c.chat_jid === clicked.chat_jid ? { ...c, unread_count: 0 } : c))
-      );
+      markAsReadLocallyAndInDb(clicked.chat_jid);
       if (clicked.line_id) {
         setSendingLineInstance(clicked.line_id);
       }
@@ -1316,9 +1382,28 @@ export function NativeChatInbox() {
 
     const effectiveLine = effectiveSendInstance;
 
-    const signature = includeSignature
-      ? `\n\n*${user.full_name}* — ${currentInstance?.profileName || effectiveLine}`
-      : '';
+    let signature = '';
+    if (includeSignature && signatureConfig && signatureConfig.send_mode !== 'disabled') {
+      const parts: string[] = [];
+      const staffSig = staffSignaturesList.find(
+        (s) => s.id === user?.id || s.name === user?.full_name || s.email === (user as any)?.email_masked
+      );
+
+      if (signatureConfig.part1?.enabled) {
+        parts.push(staffSig?.custom_part1 || `*${user?.full_name || 'خدمة العملاء'}*`);
+      }
+      if (signatureConfig.part2?.enabled) {
+        parts.push(staffSig?.custom_part2 || `واتساب ${getLineDisplayTitle(effectiveLine)}`);
+      }
+      if (signatureConfig.part3?.enabled) {
+        parts.push(staffSig?.custom_part3 || signatureConfig.part3?.template || 'TripYou للسياحة والسفر ✈️');
+      }
+      if (parts.length > 0) {
+        signature = `\n\n${parts.join(signatureConfig.separator || ' — ')}`;
+      }
+    } else if (includeSignature) {
+      signature = `\n\n*${user?.full_name || 'خدمة العملاء'}* — ${currentInstance?.profileName || getLineDisplayTitle(effectiveLine)}`;
+    }
 
     const fullMessage = `${textToSend}${signature}`;
 
@@ -2168,6 +2253,14 @@ export function NativeChatInbox() {
                 <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
                 <span className="text-xs">جاري تحميل المحادثات الحقيقية من واتساب...</span>
               </div>
+            ) : isStaffWithoutInboxes ? (
+              <div className="p-8 text-center text-amber-400 text-xs flex flex-col items-center justify-center gap-2">
+                <ShieldAlert className="w-8 h-8 text-amber-400/80 mb-1" />
+                <span className="font-bold text-sm">لا يوجد صندوق مخصص لحسابك</span>
+                <span className="text-[11px] text-slate-400 max-w-[220px]">
+                  لم يتم إسناد أي صندوق محادثات لحسابك بعد. يرجى مراجعة إدارة النظام لربطك بالصندوق المطلوب.
+                </span>
+              </div>
             ) : filteredConversations.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-xs">
                 {searchQuery ? 'لا توجد محادثات مطابقة للبحث' : 'لا توجد محادثات على هذا الخط حتى الآن'}
@@ -2426,15 +2519,28 @@ export function NativeChatInbox() {
                     </button>
                   )}
 
-                  {/* 💾 زر حفظ سريع كجهة اتصال مع وسم المصدر */}
-                  <button
-                    onClick={handleQuickSaveContact}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-medium transition-all"
-                    title="حفظ الرقم الحالي في دليل جهات الاتصال مع وسم المصدر"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">حفظ جهة اتصال</span>
-                  </button>
+                  {/* 💾 زر حفظ سريع كجهة اتصال أو شارة جهة مسجلة */}
+                  {isContactSaved ? (
+                    <div
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium cursor-default"
+                      title="هذه الجهة مسجلة بالفعل في دليل جهات الاتصال"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="hidden sm:inline">جهة اتصال مسجلة</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        await handleQuickSaveContact();
+                        setIsContactSaved(true);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-medium transition-all"
+                      title="حفظ الرقم الحالي في دليل جهات الاتصال مع وسم المصدر"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">حفظ جهة اتصال</span>
+                    </button>
+                  )}
 
                   {/* ⭐ زر تمييز المحادثة الحالية كمفضلة (Star Conversation) */}
                   {activeConversation && (() => {
@@ -3051,20 +3157,6 @@ export function NativeChatInbox() {
 
               {/* Chat Input Bar with Risk Guard Checks */}
               <div className="bg-[var(--card-bg)] border-t border-[var(--border-subtle)] p-3 shrink-0 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-[var(--text-muted)]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[var(--text-secondary)] text-[11px] font-semibold">خط الإرسال:</span>
-                    <span className="text-[var(--text-main)] text-xs bg-[var(--card-elevated)] px-2.5 py-0.5 rounded-lg border border-[var(--border-subtle)] font-mono">
-                      {getLineDisplayTitle(effectiveSendInstance)} {currentInstance?.ownerJid ? `(+${currentInstance.ownerJid.replace('@s.whatsapp.net', '')})` : ''}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-purple-300/80 bg-purple-950/40 px-2 py-0.5 rounded-md border border-purple-800/30">
-                      التوقيع الإداري نشط تلقائياً
-                    </span>
-                  </div>
-                </div>
 
                 {/* الرد المقتبس إن وجد */}
                 {replyingToMessage && (
@@ -3234,6 +3326,14 @@ export function NativeChatInbox() {
                 )}
               </div>
             </>
+          ) : isStaffWithoutInboxes ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400" dir="rtl">
+              <ShieldAlert className="w-14 h-14 mb-4 text-amber-400/80" />
+              <h3 className="text-base font-bold text-amber-300 mb-2">لا يوجد أي صندوق مخصص لحسابك</h3>
+              <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
+                لم يتم إسناد أي صندوق محادثات لحسابك حتى الآن. يرجى مراجعة إدارة النظام لتعيينك في الصندوق المناسب.
+              </p>
+            </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500">
               <User className="w-12 h-12 mb-3 text-purple-900/40" />

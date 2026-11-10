@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.sslip.io';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'bc6075e9f95967407faae5d0fa9ac875a8d88a94782172db';
 
@@ -22,7 +25,7 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const instance = searchParams.get('instance') || 'Master';
 
-    // 1. جلب جهات الاتصال، المحادثات، وكافة المجموعات بأسمائها الحقيقية بالتوازي
+    // 1. جلب جهات الاتصال، المحادثات، وكافة المجموعات مع المشاركين بالتوازي
     const [contactsRes, chatsRes, allGroupsRes] = await Promise.allSettled([
       fetch(`${EVOLUTION_URL}/chat/findContacts/${instance}`, {
         method: 'POST',
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
         headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       }),
-      fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=false`, {
+      fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=true`, {
         method: 'GET',
         headers: { apikey: EVOLUTION_API_KEY },
       }),
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
     const rawChats = chatsRes.status === 'fulfilled' && chatsRes.value.ok ? await chatsRes.value.json() : [];
     const rawAllGroups = allGroupsRes.status === 'fulfilled' && allGroupsRes.value.ok ? await allGroupsRes.value.json() : [];
 
-    // خريطة استخراج أرقام هواتف LID
+    // خريطة استخراج أرقام هواتف LID الحقيقية من المحادثات والمجموعات
     const lidToPhone = new Map<string, string>();
     if (Array.isArray(rawChats)) {
       rawChats.forEach((c: any) => {
@@ -59,7 +62,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // خريطة عناوين المجموعات الحقيقية (subject)
+    // خريطة عناوين المجموعات الحقيقية (subject) ومشاركي المجموعات
     const groupMap = new Map<string, { subject: string; pictureUrl?: string }>();
     if (Array.isArray(rawAllGroups)) {
       rawAllGroups.forEach((g: any) => {
@@ -73,19 +76,26 @@ export async function POST(req: NextRequest) {
             });
           }
         }
+        if (Array.isArray(g.participants)) {
+          g.participants.forEach((p: any) => {
+            if (p.id && p.phoneNumber) {
+              lidToPhone.set(p.id, p.phoneNumber);
+            }
+          });
+        }
       });
     }
 
     const supabase = getSupabaseAdmin();
-    let importedCount = 0;
-    let mergedCount = 0;
-    let skippedCount = 0;
-
     const list = Array.isArray(rawContacts) ? rawContacts : [];
+
+    const contactsToUpsert: any[] = [];
+    const seenPhones = new Set<string>();
+    let skippedCount = 0;
 
     for (const c of list) {
       const jid = c.remoteJid || c.id || '';
-      if (!jid || jid.includes('@g.us')) continue; // معالجة المجموعات تالياً
+      if (!jid || jid.includes('@g.us')) continue;
 
       let rawPhone = '';
       if (jid.includes('@s.whatsapp.net')) {
@@ -97,12 +107,12 @@ export async function POST(req: NextRequest) {
       }
 
       const phone = rawPhone ? normalizePhone(rawPhone) : null;
-      if (!phone) {
-        skippedCount++;
+      if (!phone || seenPhones.has(phone)) {
+        if (!phone) skippedCount++;
         continue;
       }
+      seenPhones.add(phone);
 
-      // تحديد الاسم الحقيقي واستبعاد كلمة Você
       let displayName = '';
       if (c.name && c.name.trim() && c.name !== 'Você') {
         displayName = c.name.trim();
@@ -112,7 +122,6 @@ export async function POST(req: NextRequest) {
         displayName = phone;
       }
 
-      // فحص وسوم وتحليل ذكي تلقائي حسب الدولة والاسم
       const tags: string[] = [];
       let countryCode = 'SA';
       if (phone.startsWith('+966')) { tags.push('السعودية'); countryCode = 'SA'; }
@@ -128,7 +137,6 @@ export async function POST(req: NextRequest) {
       if (c.isSaved) tags.push('مسجل في الهاتف');
       tags.push(`خط: ${instance}`);
 
-      // تحليل ذكي لاسم المنشأة والدور التجاري
       let entityType: 'individual' | 'organization' | 'group' = 'individual';
       let commercialRole: 'b2c' | 'b2b' | 'vendor' | 'partner' | 'staff' = 'b2c';
       if (/(فندق|سياح|عمر|حج|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency|resv)/i.test(displayName)) {
@@ -137,52 +145,26 @@ export async function POST(req: NextRequest) {
         tags.push('قطاع سياحي وفندقي');
       }
 
-      // فحص في Supabase (public.contacts)
-      const { data: existing } = await supabase
-        .from('contacts')
-        .select('id, tags, commercial_role, entity_type')
-        .eq('primary_phone', phone)
-        .maybeSingle();
-
-      if (existing) {
-        const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags]));
-        await supabase
-          .from('contacts')
-          .update({
-            display_name: displayName,
-            source_detail: `evolution:${instance} (محدث)`,
-            tags: mergedTags,
-            avatar_url: c.profilePicUrl || undefined,
-            country_code: countryCode,
-            entity_type: existing.entity_type || entityType,
-            commercial_role: existing.commercial_role || commercialRole,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
-        mergedCount++;
-      } else {
-        await supabase
-          .from('contacts')
-          .insert({
-            display_name: displayName,
-            primary_phone: phone,
-            entity_type: entityType,
-            commercial_role: commercialRole,
-            source: 'evolution',
-            source_detail: `evolution:${instance}`,
-            avatar_url: c.profilePicUrl || null,
-            tags: tags,
-            country_code: countryCode,
-          });
-        importedCount++;
-      }
+      contactsToUpsert.push({
+        display_name: displayName,
+        full_name: displayName,
+        primary_phone: phone,
+        primary_phone_e164: phone,
+        entity_type: entityType,
+        commercial_role: commercialRole,
+        source: 'evolution',
+        source_detail: `evolution:${instance}`,
+        avatar_url: c.profilePicUrl || null,
+        tags: tags,
+        country_code: countryCode,
+        updated_at: new Date().toISOString(),
+      });
     }
 
-    // 2. استيراد وتصنيف المجموعات الصريحة بأسمائها الحقيقية من fetchAllGroups و rawChats
+    // 2. استيراد وتصنيف المجموعات الصريحة
     const seenGroups = new Set<string>();
-
-    // أولاً: تجميع كافة المجموعات من fetchAllGroups
     const allGroupEntries: Array<{ jid: string; subject: string; pic?: string }> = [];
+
     if (Array.isArray(rawAllGroups)) {
       rawAllGroups.forEach((g: any) => {
         const jid = g.id || g.jid;
@@ -197,7 +179,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ثانياً: استكمال أي مجموعات موجودة في rawChats ولم تكن في fetchAllGroups
     if (Array.isArray(rawChats)) {
       rawChats.forEach((ch: any) => {
         const jid = ch.remoteJid || ch.id;
@@ -214,7 +195,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    let groupsImported = 0;
     for (const grp of allGroupEntries) {
       const groupJid = grp.jid;
       let groupName = grp.subject;
@@ -223,7 +203,6 @@ export async function POST(req: NextRequest) {
         if (fromMap && fromMap.subject && fromMap.subject !== 'Você') {
           groupName = fromMap.subject;
         } else {
-          // استخراج رقم تقريبي من المعرف إذا تعذر الاسم
           const cleanNum = groupJid.replace('@g.us', '').replace(/\D/g, '');
           groupName = cleanNum ? `مجموعة (${cleanNum.slice(-6)})` : 'مجموعة واتساب';
         }
@@ -236,48 +215,36 @@ export async function POST(req: NextRequest) {
         groupTags.push('قطاع سياحي وفندقي');
       }
 
-      const { data: existingGroup } = await supabase
+      contactsToUpsert.push({
+        display_name: groupName,
+        full_name: groupName,
+        primary_phone: groupJid,
+        primary_phone_e164: groupJid,
+        entity_type: 'group',
+        commercial_role: commRole,
+        source: 'evolution',
+        source_detail: `evolution:${instance}`,
+        tags: groupTags,
+        avatar_url: grp.pic || null,
+        country_code: 'SA',
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    // 3. تنفيذ الإدخال بالدفعات (Batching) بحجم 100 سجل في كل دفعة
+    const BATCH_SIZE = 100;
+    let totalProcessed = 0;
+
+    for (let i = 0; i < contactsToUpsert.length; i += BATCH_SIZE) {
+      const batch = contactsToUpsert.slice(i, i + BATCH_SIZE);
+      const { error } = await supabase
         .from('contacts')
-        .select('id, tags, display_name')
-        .eq('primary_phone', groupJid)
-        .maybeSingle();
+        .upsert(batch, { onConflict: 'primary_phone_e164' });
 
-      if (existingGroup) {
-        const mergedTags = Array.from(new Set([...(existingGroup.tags || []), ...groupTags]));
-        // إذا كان الاسم القديم "مجموعة واتساب" ووجدنا اسماً حقيقياً، نقوم بتحديثه فورياً!
-        const finalName = (existingGroup.display_name && existingGroup.display_name !== 'مجموعة واتساب')
-          ? existingGroup.display_name
-          : groupName;
-
-        await supabase
-          .from('contacts')
-          .update({
-            display_name: finalName,
-            entity_type: 'group',
-            commercial_role: commRole,
-            source_detail: `evolution:${instance} (محدث)`,
-            tags: mergedTags,
-            avatar_url: grp.pic || undefined,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingGroup.id);
-        mergedCount++;
+      if (error) {
+        console.warn('Batch upsert warning:', error.message);
       } else {
-        await supabase
-          .from('contacts')
-          .insert({
-            display_name: groupName,
-            primary_phone: groupJid,
-            entity_type: 'group',
-            commercial_role: commRole,
-            source: 'evolution',
-            source_detail: `evolution:${instance}`,
-            tags: groupTags,
-            avatar_url: grp.pic || null,
-            country_code: 'SA',
-          });
-        importedCount++;
-        groupsImported++;
+        totalProcessed += batch.length;
       }
     }
 
@@ -285,10 +252,9 @@ export async function POST(req: NextRequest) {
       success: true,
       instance,
       total_found: list.length,
-      imported_count: importedCount,
-      merged_count: mergedCount,
+      imported_count: totalProcessed,
+      groups_imported: allGroupEntries.length,
       skipped_count: skippedCount,
-      groups_imported: groupsImported,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

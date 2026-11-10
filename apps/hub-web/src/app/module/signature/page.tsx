@@ -125,48 +125,48 @@ export default function SignatureSettingsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [selectedStaffForPreview, setSelectedStaffForPreview] = useState<StaffSignatureSetting>(INITIAL_STAFF[0]);
 
-  // Load from Supabase or localStorage
+  // Load from Supabase via API
   useEffect(() => {
     async function loadSettings() {
       try {
-        const { data, error } = await supabase
-          .from('signature_settings')
-          .select('*')
-          .eq('scope_type', 'system')
-          .maybeSingle();
-
-        if (data && !error) {
-          setConfig({
-            part1: {
-              enabled: data.part1_enabled ?? true,
-              label_ar: data.part1_label_ar || INITIAL_CONFIG.part1.label_ar,
-              template: data.part1_template || INITIAL_CONFIG.part1.template,
-              editable_by: data.part1_editable_by || 'staff',
-              required: data.part1_required ?? true,
-            },
-            part2: {
-              enabled: data.part2_enabled ?? true,
-              label_ar: data.part2_label_ar || INITIAL_CONFIG.part2.label_ar,
-              template: data.part2_template || INITIAL_CONFIG.part2.template,
-              editable_by: data.part2_editable_by || 'admin',
-              required: data.part2_required ?? false,
-            },
-            part3: {
-              enabled: data.part3_enabled ?? true,
-              label_ar: data.part3_label_ar || INITIAL_CONFIG.part3.label_ar,
-              template: data.part3_template || INITIAL_CONFIG.part3.template,
-              editable_by: data.part3_editable_by || 'admin',
-              required: data.part3_required ?? false,
-            },
-            separator: data.separator || ' — ',
-            send_mode: data.send_mode || 'always',
-          });
-        } else {
-          const cached = localStorage.getItem('hub_signature_config');
-          if (cached) setConfig(JSON.parse(cached));
+        const res = await fetch('/api/signatures', { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.global) {
+            const data = json.global;
+            setConfig({
+              part1: {
+                enabled: data.part1_enabled ?? true,
+                label_ar: data.part1_label_ar || INITIAL_CONFIG.part1.label_ar,
+                template: data.part1_template || INITIAL_CONFIG.part1.template,
+                editable_by: data.part1_editable_by || 'staff',
+                required: data.part1_required ?? true,
+              },
+              part2: {
+                enabled: data.part2_enabled ?? true,
+                label_ar: data.part2_label_ar || INITIAL_CONFIG.part2.label_ar,
+                template: data.part2_template || INITIAL_CONFIG.part2.template,
+                editable_by: data.part2_editable_by || 'admin',
+                required: data.part2_required ?? false,
+              },
+              part3: {
+                enabled: data.part3_enabled ?? true,
+                label_ar: data.part3_label_ar || INITIAL_CONFIG.part3.label_ar,
+                template: data.part3_template || INITIAL_CONFIG.part3.template,
+                editable_by: data.part3_editable_by || 'admin',
+                required: data.part3_required ?? false,
+              },
+              separator: data.separator || ' — ',
+              send_mode: data.send_mode || 'always',
+            });
+          }
+          if (Array.isArray(json.staff) && json.staff.length > 0) {
+            setStaffList(json.staff);
+            setSelectedStaffForPreview(json.staff[0]);
+          }
         }
       } catch (e) {
-        console.warn('Could not load signature settings from DB, using cache', e);
+        console.warn('Could not load signature settings from DB, using defaults', e);
       }
     }
     loadSettings();
@@ -178,33 +178,26 @@ export default function SignatureSettingsPage() {
       localStorage.setItem('hub_signature_config', JSON.stringify(config));
       localStorage.setItem('hub_signature_staff', JSON.stringify(staffList));
 
-      // Sync to Supabase
-      await supabase
-        .from('signature_settings')
-        .upsert({
-          scope_type: 'system',
-          scope_id: null,
-          part1_enabled: config.part1.enabled,
-          part1_template: config.part1.template,
-          part1_editable_by: config.part1.editable_by,
-          part1_required: config.part1.required,
-          part2_enabled: config.part2.enabled,
-          part2_template: config.part2.template,
-          part2_editable_by: config.part2.editable_by,
-          part2_required: config.part2.required,
-          part3_enabled: config.part3.enabled,
-          part3_template: config.part3.template,
-          part3_editable_by: config.part3.editable_by,
-          part3_required: config.part3.required,
-          send_mode: config.send_mode,
-          separator: config.separator,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'scope_type,scope_id' });
+      // Sync to Supabase via API
+      const res = await fetch('/api/signatures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          global: config,
+          staff: staffList,
+        }),
+      });
 
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (e) {
+      if (res.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        const err = await res.json();
+        alert('حدث خطأ أثناء الحفظ: ' + err.error);
+      }
+    } catch (e: any) {
       console.error('Error saving signature settings:', e);
+      alert('خطأ في الاتصال: ' + e.message);
     } finally {
       setSaving(false);
     }
