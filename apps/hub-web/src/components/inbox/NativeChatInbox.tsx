@@ -344,6 +344,7 @@ export function NativeChatInbox() {
 
   // Evolution Real State
   const [instances, setInstances] = useState<EvolutionInstanceSummary[]>([]);
+  const [customLineTitles, setCustomLineTitles] = useState<Record<string, string>>({});
   const [selectedInstanceName, setSelectedInstanceName] = useState<string>('Master');
   const [sendingLineInstance, setSendingLineInstance] = useState<string>('');
   const [loadingInstances, setLoadingInstances] = useState<boolean>(true);
@@ -565,13 +566,30 @@ export function NativeChatInbox() {
     loadInboxes();
   }, [loadInboxes]);
 
-  // 1. Fetch connected instances from Evolution API
+  // 1. Fetch connected instances from Evolution API & custom internal line titles
   const fetchInstances = useCallback(async () => {
     try {
       setLoadingInstances(true);
-      const res = await fetch('/api/evolution/instances');
-      if (res.ok) {
-        const data = await res.json();
+      const [resInst, resLines] = await Promise.allSettled([
+        fetch('/api/evolution/instances'),
+        fetch('/api/lines'),
+      ]);
+
+      if (resLines.status === 'fulfilled' && resLines.value.ok) {
+        const linesData = await resLines.value.json();
+        if (linesData.lines && Array.isArray(linesData.lines)) {
+          const map: Record<string, string> = {};
+          linesData.lines.forEach((l: any) => {
+            if (l.instance_name && l.title_ar) {
+              map[l.instance_name] = l.title_ar;
+            }
+          });
+          setCustomLineTitles(map);
+        }
+      }
+
+      if (resInst.status === 'fulfilled' && resInst.value.ok) {
+        const data = await resInst.value.json();
         if (Array.isArray(data) && data.length > 0) {
           setInstances(data);
           const masterInst = data.find((i: any) => i.name === 'Master' && i.connectionStatus === 'open');
@@ -588,6 +606,15 @@ export function NativeChatInbox() {
       setLoadingInstances(false);
     }
   }, []);
+
+  const getLineDisplayTitle = useCallback((name: string) => {
+    if (!name) return 'الخط الرئيسي (Master)';
+    if (customLineTitles[name]) return customLineTitles[name];
+    if (name === 'Master') return 'الخط الرئيسي (Master)';
+    if (name === 'Sells_2') return 'المبيعات الخط الثاني (Sells_2)';
+    if (name === 'Sells_1') return 'المبيعات الخط الأول (Sells_1)';
+    return name;
+  }, [customLineTitles]);
 
   useEffect(() => {
     fetchInstances();
@@ -721,44 +748,13 @@ export function NativeChatInbox() {
         }
       });
 
-      // ── دمج وتوحيد المحادثات المتكررة عبر الخطوط (مثل المجموعات المشتركة كـ Test5 أو العملاء المشتركين) ──
-      const deduplicatedMap = new Map<string, ConversationItem>();
-      for (const item of allMerged) {
-        const key = item.chat_jid;
-        const existing = deduplicatedMap.get(key);
-        if (!existing) {
-          deduplicatedMap.set(key, {
-            ...item,
-            available_lines: [item.line_id],
-          });
-        } else {
-          // دمج المحادثة المشتركة
-          const mergedLines = Array.from(
-            new Set([...(existing.available_lines || [existing.line_id]), item.line_id])
-          );
-          const existingTs = existing.last_customer_message_timestamp || 0;
-          const newTs = item.last_customer_message_timestamp || 0;
-          const mostRecent = newTs >= existingTs ? item : existing;
+      // نحتفظ ببيانات كل خط كاملة ومستقلة دون أي حذف أو استقطاع لتكون عدادات كل خط دقيقة 100%
+      allMerged.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
 
-          deduplicatedMap.set(key, {
-            ...mostRecent,
-            id: `unified__${key}`,
-            unread_count: (existing.unread_count || 0) + (item.unread_count || 0),
-            available_lines: mergedLines,
-            line_id: mostRecent.line_id,
-            line_title: mergedLines.join(' • '),
-          });
-        }
-      }
-
-      const finalList = Array.from(deduplicatedMap.values());
-      // ترتيب كافة المحادثات تنازلياً حسب توقيت أحدث رسالة
-      finalList.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
-
-      setConversations(finalList);
+      setConversations(allMerged);
       setActiveConvId((curr) => {
-        if (curr && finalList.some((c) => c.id === curr)) return curr;
-        return finalList.length > 0 ? finalList[0].id : '';
+        if (curr && allMerged.some((c) => c.id === curr || curr === `unified__${c.chat_jid}`)) return curr;
+        return allMerged.length > 0 ? allMerged[0].id : '';
       });
     } catch (err) {
       console.error('Failed to load chats:', err);
@@ -896,10 +892,126 @@ export function NativeChatInbox() {
     }
   }, []);
 
-  // Active conversation object
+  // الصندوق الحالي المختار
+  const currentInbox = useMemo(
+    () => inboxesList.find((ib) => ib.id === selectedInboxId),
+    [inboxesList, selectedInboxId]
+  );
+
+  // الخطوط المتاحة والمسموح بها للموظف الحالي داخل الصندوق المختار فقط (لا تظهر أي خطوط غير مخصصة له)
+  const availableInstances = useMemo(() => {
+    let list = instances;
+    if (currentInbox && currentInbox.line_ids && currentInbox.line_ids.length > 0) {
+      list = list.filter((inst) => currentInbox.line_ids.includes(inst.name));
+    }
+    const isManager = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'super_admin' || user?.email_masked?.includes('ayman');
+    if (!isManager && user?.assigned_instances && user.assigned_instances.length > 0) {
+      list = list.filter((inst) => user.assigned_instances!.includes(inst.name));
+    }
+    return list;
+  }, [instances, currentInbox, user]);
+
+  // المحادثات المحصورة في نطاق الصندوق المختار وصلاحيات الموظف (قبل تطبيق التبويبات والبحث والخط)
+  const inboxScopedConversations = useMemo(() => {
+    let list = conversations;
+    if (currentInbox) {
+      list = list.filter((c) => {
+        if (currentInbox.filter_type === 'dm' && c.is_group) return false;
+        if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
+        if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
+          if (!currentInbox.line_ids.includes(c.line_id)) return false;
+        }
+        return true;
+      });
+    }
+
+    const isManager = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'super_admin' || user?.email_masked?.includes('ayman');
+    if (!isManager && user?.assigned_instances && user.assigned_instances.length > 0) {
+      list = list.filter((c) => user.assigned_instances!.includes(c.line_id));
+    }
+
+    return list;
+  }, [conversations, currentInbox, user]);
+
+  // إجمالي عدد المحادثات الفريدة في "جميع الخطوط" بعد الدمج الشكلي
+  const allUniqueCount = useMemo(() => {
+    return new Set(inboxScopedConversations.map((c) => c.chat_jid)).size;
+  }, [inboxScopedConversations]);
+
+  // تصفية المحادثات وتطبيق الدمج الشكلي فقط عندما يكون lineFilter === 'all'
+  const filteredConversations = useMemo(() => {
+    const now = Date.now();
+    let sourceList: ConversationItem[] = [];
+
+    if (lineFilter !== 'all') {
+      // منظور الخط الفردي: نظهر فقط محادثات هذا الخط كما هي دون أي دمج شكلي!
+      sourceList = inboxScopedConversations.filter((c) => c.line_id === lineFilter);
+    } else {
+      // منظور جميع الخطوط: دمج شكلي بصري فقط للمحادثات ذات نفس chat_jid
+      const groupedMap = new Map<string, ConversationItem>();
+      for (const item of inboxScopedConversations) {
+        const key = item.chat_jid;
+        const existing = groupedMap.get(key);
+        if (!existing) {
+          groupedMap.set(key, {
+            ...item,
+            available_lines: [item.line_id],
+          });
+        } else {
+          const mergedLines = Array.from(
+            new Set([...(existing.available_lines || [existing.line_id]), item.line_id])
+          );
+          const existingTs = existing.last_customer_message_timestamp || 0;
+          const newTs = item.last_customer_message_timestamp || 0;
+          const mostRecent = newTs >= existingTs ? item : existing;
+
+          groupedMap.set(key, {
+            ...mostRecent,
+            id: `unified__${key}`,
+            unread_count: (existing.unread_count || 0) + (item.unread_count || 0),
+            available_lines: mergedLines,
+            line_id: mostRecent.line_id,
+            line_title: mergedLines.map((l) => getLineDisplayTitle(l)).join(' • '),
+          });
+        }
+      }
+      sourceList = Array.from(groupedMap.values());
+      sourceList.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
+    }
+
+    return sourceList.filter((c) => {
+      const matchSearch =
+        c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.phone_or_jid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.last_message_text.toLowerCase().includes(searchQuery.toLowerCase());
+
+      if (!matchSearch) return false;
+      if (filterTab === 'mine') return c.assigned_staff_name === user?.full_name;
+      if (filterTab === 'unassigned') return !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند';
+      if (filterTab === 'unread') return c.unread_count > 0;
+      if (filterTab === 'rescue') {
+        const delay = now - (c.last_customer_message_timestamp || 0);
+        return delay >= 15 * 60 * 1000;
+      }
+      if (filterTab === 'direct') return !c.is_group;
+      if (filterTab === 'groups') return c.is_group;
+      if (filterTab === 'escalated') return c.status === 'escalated';
+      return true;
+    });
+  }, [inboxScopedConversations, searchQuery, filterTab, user, lineFilter, getLineDisplayTitle]);
+
+  // Active conversation object (يبحث أولاً في القائمة المفلترة المدمجة)
   const activeConversation = useMemo(() => {
-    return conversations.find((c) => c.id === activeConvId) || conversations[0] || null;
-  }, [conversations, activeConvId]);
+    const inFiltered = filteredConversations.find(
+      (c) => c.id === activeConvId || c.chat_jid === activeConvId.replace('unified__', '')
+    );
+    if (inFiltered) return inFiltered;
+    const inRaw = conversations.find(
+      (c) => c.id === activeConvId || activeConvId === `unified__${c.chat_jid}`
+    );
+    if (inRaw) return inRaw;
+    return filteredConversations[0] || conversations[0] || null;
+  }, [filteredConversations, conversations, activeConvId]);
 
   // خط الإرسال الفعلي المعتمد للموظف
   const effectiveSendInstance = useMemo(() => {
@@ -997,85 +1109,6 @@ export function NativeChatInbox() {
     return { text: `انتظار العميل: (${diffMinutes} د)`, level: 'normal', minutes: diffMinutes };
   }, [activeConversation]);
 
-  // الصندوق الحالي المختار
-  const currentInbox = useMemo(
-    () => inboxesList.find((ib) => ib.id === selectedInboxId),
-    [inboxesList, selectedInboxId]
-  );
-
-  // الخطوط المتاحة والمسموح بها داخل الصندوق المختار فقط
-  const availableInstances = useMemo(() => {
-    if (!currentInbox || !currentInbox.line_ids || currentInbox.line_ids.length === 0) {
-      return instances;
-    }
-    return instances.filter((inst) => currentInbox.line_ids.includes(inst.name));
-  }, [instances, currentInbox]);
-
-  // المحادثات المحصورة في نطاق الصندوق المختار فقط (قبل تطبيق تبويبات الحالة والبحث والخط)
-  const inboxScopedConversations = useMemo(() => {
-    if (currentInbox) {
-      return conversations.filter((c) => {
-        if (currentInbox.filter_type === 'dm' && c.is_group) return false;
-        if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
-        if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
-          const matchLine =
-            currentInbox.line_ids.includes(c.line_id) ||
-            (c.available_lines && c.available_lines.some((l) => currentInbox.line_ids.includes(l)));
-          if (!matchLine) return false;
-        }
-        return true;
-      });
-    }
-
-    // إذا كان الموظف ليس Super Admin، تنحصر محادثاته في خطوط الصناديق المخصصة له فقط
-    if (user?.role !== 'super_admin') {
-      const allowedLines = new Set<string>(user?.assigned_instances || []);
-      inboxesList.forEach((ib) => ib.line_ids.forEach((l) => allowedLines.add(l)));
-      if (allowedLines.size > 0) {
-        return conversations.filter(
-          (c) =>
-            allowedLines.has(c.line_id) ||
-            (c.available_lines && c.available_lines.some((l) => allowedLines.has(l)))
-        );
-      }
-    }
-
-    return conversations;
-  }, [conversations, currentInbox, inboxesList, user]);
-
-  // Filter conversations based on search, tabs, inbox lines and lineFilter
-  const filteredConversations = useMemo(() => {
-    const now = Date.now();
-
-    return inboxScopedConversations.filter((c) => {
-      // 1. فلترة الخط الاختيارية داخل الصندوق
-      if (lineFilter !== 'all') {
-        const matchLine =
-          c.line_id === lineFilter ||
-          (c.available_lines && c.available_lines.includes(lineFilter));
-        if (!matchLine) return false;
-      }
-
-      // 2. فلترة البحث
-      const matchSearch =
-        c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.phone_or_jid.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.last_message_text.toLowerCase().includes(searchQuery.toLowerCase());
-
-      if (!matchSearch) return false;
-      if (filterTab === 'mine') return c.assigned_staff_name === user?.full_name;
-      if (filterTab === 'unassigned') return !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند';
-      if (filterTab === 'unread') return c.unread_count > 0;
-      if (filterTab === 'rescue') {
-        const delay = now - (c.last_customer_message_timestamp || 0);
-        return delay >= 15 * 60 * 1000;
-      }
-      if (filterTab === 'direct') return !c.is_group;
-      if (filterTab === 'groups') return c.is_group;
-      if (filterTab === 'escalated') return c.status === 'escalated';
-      return true;
-    });
-  }, [inboxScopedConversations, searchQuery, filterTab, user, lineFilter]);
 
   // مؤقت ذكي لتصفير قراءة الرسائل بعد ثانية واحدة (1s) في المحادثة وإرسالها لـ Evolution API
   useEffect(() => {
@@ -1917,12 +1950,13 @@ export function NativeChatInbox() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              جميع الخطوط ({inboxScopedConversations.length})
+              جميع الخطوط ({allUniqueCount})
             </button>
             {availableInstances.map((inst) => {
               const count = inboxScopedConversations.filter((c) => c.line_id === inst.name).length;
               const isOpen = inst.connectionStatus === 'open';
               const active = lineFilter === inst.name;
+              const displayTitle = getLineDisplayTitle(inst.name);
               return (
                 <button
                   key={inst.name}
@@ -1933,10 +1967,10 @@ export function NativeChatInbox() {
                       ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 font-bold'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title={`${inst.name} — ${isOpen ? 'متصل' : 'معلق'}`}
+                  title={`${displayTitle} — ${isOpen ? 'متصل' : 'معلق'}`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                  <bdi dir="ltr">{inst.profileName || inst.name}</bdi>
+                  <bdi dir="ltr">{displayTitle}</bdi>
                   <span className="text-[10px] opacity-70 font-mono">({count})</span>
                 </button>
               );
@@ -2133,12 +2167,12 @@ export function NativeChatInbox() {
                         <div className="flex items-center justify-between gap-1">
                           {/* حالة المحادثة في القائمة مع وسام الخط */}
                           <div className="flex items-center gap-1.5">
-                            {conv.available_lines && conv.available_lines.length > 1 ? (
+                            {conv.available_lines && conv.available_lines.length > 1 && lineFilter === 'all' ? (
                               <span
                                 className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-purple-950/70 text-purple-200 border border-purple-700/50 flex items-center gap-1"
-                                title={`محادثة مشتركة عبر الخطوط: ${conv.available_lines.join(', ')}`}
+                                title={`محادثة مشتركة عبر الخطوط: ${conv.available_lines.map((l) => getLineDisplayTitle(l)).join(', ')}`}
                               >
-                                <bdi dir="ltr">{conv.available_lines.join(' • ')}</bdi>
+                                <bdi dir="ltr">{conv.available_lines.map((l) => getLineDisplayTitle(l)).join(' • ')}</bdi>
                               </span>
                             ) : (
                               <span
@@ -2147,9 +2181,9 @@ export function NativeChatInbox() {
                                     ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
                                     : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
                                 }`}
-                                title={`وارد عبر خط: ${conv.line_title || conv.line_id}`}
+                                title={`وارد عبر خط: ${getLineDisplayTitle(conv.line_id)}`}
                               >
-                                <bdi dir="ltr">{conv.line_id || 'Master'}</bdi>
+                                <bdi dir="ltr">{getLineDisplayTitle(conv.line_id || 'Master')}</bdi>
                               </span>
                             )}
 
@@ -2243,21 +2277,21 @@ export function NativeChatInbox() {
                       )}
 
                       {/* شارة الخط الوارد عليه المحادثة أو الخطوط المشتركة */}
-                      {activeConversation.available_lines && activeConversation.available_lines.length > 1 ? (
+                      {activeConversation.available_lines && activeConversation.available_lines.length > 1 && lineFilter === 'all' ? (
                         <span className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold bg-purple-950/80 text-purple-200 border-purple-600/50">
                           <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
                           <span>الخطوط المشتركة:</span>
-                          <bdi dir="ltr">{activeConversation.available_lines.join(' • ')}</bdi>
+                          <bdi dir="ltr">{activeConversation.available_lines.map((l) => getLineDisplayTitle(l)).join(' • ')}</bdi>
                         </span>
                       ) : (
                         <span className={`flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold ${
-                          activeConversation.line_id === 'Master'
+                          (lineFilter !== 'all' ? lineFilter : activeConversation.line_id) === 'Master'
                             ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
                             : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
                         }`}>
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                           <span>الخط:</span>
-                          <bdi dir="ltr">{activeConversation.line_id || 'Master'}</bdi>
+                          <bdi dir="ltr">{getLineDisplayTitle(lineFilter !== 'all' ? lineFilter : (activeConversation.line_id || 'Master'))}</bdi>
                         </span>
                       )}
                     </div>
@@ -2962,7 +2996,7 @@ export function NativeChatInbox() {
                   <div className="flex items-center gap-2">
                     <span className="text-[var(--text-secondary)] text-[11px] font-semibold">خط الإرسال:</span>
                     <span className="text-[var(--text-main)] text-xs bg-[var(--card-elevated)] px-2.5 py-0.5 rounded-lg border border-[var(--border-subtle)] font-mono">
-                      {currentInstance?.profileName || selectedInstanceName} ({currentInstance?.ownerJid ? `+${currentInstance.ownerJid.replace('@s.whatsapp.net', '')}` : selectedInstanceName})
+                      {getLineDisplayTitle(effectiveSendInstance)} {currentInstance?.ownerJid ? `(+${currentInstance.ownerJid.replace('@s.whatsapp.net', '')})` : ''}
                     </span>
                   </div>
 
@@ -3095,7 +3129,7 @@ export function NativeChatInbox() {
                       >
                         {allowedSendInstances.map((inst) => (
                           <option key={inst.name} value={inst.name}>
-                            إرسال عبر: {inst.profileName || inst.name}
+                            إرسال عبر: {getLineDisplayTitle(inst.name)}
                           </option>
                         ))}
                       </select>

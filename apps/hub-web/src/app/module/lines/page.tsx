@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
   PhoneCall, RefreshCw, Wifi, WifiOff, Loader2, QrCode,
-  MoreVertical, PowerOff, Users, MessageSquare, Clock, Plus, ShieldCheck, X, CheckCircle2, Sparkles
+  Users, MessageSquare, Clock, Plus, ShieldCheck, X, CheckCircle2, Sparkles, Edit3, Tag
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 
@@ -37,9 +37,16 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: React.Ele
 
 export default function LinesPage() {
   const [instances, setInstances] = useState<EvolutionInstance[]>([]);
+  const [lineTitles, setLineTitles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Edit Line Name State
+  const [editingInstance, setEditingInstance] = useState<string | null>(null);
+  const [editTitleInput, setEditTitleInput] = useState<string>('');
+  const [savingTitle, setSavingTitle] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // QR Modal State
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -52,10 +59,31 @@ export default function LinesPage() {
   const fetchInstances = async () => {
     setRefreshing(true);
     try {
-      const res = await fetch('/api/evolution/instances');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setInstances(Array.isArray(data) ? data : []);
+      const [resInst, resLines] = await Promise.allSettled([
+        fetch('/api/evolution/instances'),
+        fetch('/api/lines'),
+      ]);
+
+      if (resInst.status === 'fulfilled' && resInst.value.ok) {
+        const data = await resInst.value.json();
+        setInstances(Array.isArray(data) ? data : []);
+      } else {
+        throw new Error('تعذر جلب جلسات واتساب من الخادم');
+      }
+
+      if (resLines.status === 'fulfilled' && resLines.value.ok) {
+        const linesData = await resLines.value.json();
+        if (linesData.lines && Array.isArray(linesData.lines)) {
+          const titleMap: Record<string, string> = {};
+          linesData.lines.forEach((l: any) => {
+            if (l.instance_name && l.title_ar) {
+              titleMap[l.instance_name] = l.title_ar;
+            }
+          });
+          setLineTitles(titleMap);
+        }
+      }
+
       setError(null);
     } catch (e: any) {
       setError(e.message);
@@ -94,9 +122,47 @@ export default function LinesPage() {
     }
   };
 
+  const handleOpenEditTitle = (instanceName: string, currentTitle: string) => {
+    setEditingInstance(instanceName);
+    setEditTitleInput(currentTitle || instanceName);
+  };
+
+  const handleSaveTitle = async () => {
+    if (!editingInstance || !editTitleInput.trim()) return;
+    setSavingTitle(true);
+    try {
+      const res = await fetch('/api/lines', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_name: editingInstance,
+          title_ar: editTitleInput.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'فشل حفظ التسمية');
+      }
+
+      setLineTitles((prev) => ({
+        ...prev,
+        [editingInstance]: editTitleInput.trim(),
+      }));
+
+      setSaveSuccessMsg(`تم تحديث مسمى الخط بنجاح: ${editTitleInput.trim()}`);
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+      setEditingInstance(null);
+    } catch (e: any) {
+      alert(`خطأ: ${e.message}`);
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
   return (
     <AppShell>
-      <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
+      <div dir="rtl" className="text-right p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[var(--border-subtle)]">
           <div>
@@ -104,10 +170,10 @@ export default function LinesPage() {
               <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
                 <PhoneCall className="w-5 h-5 text-emerald-400" />
               </div>
-              إدارة خطوط واتساب
+              <span>إدارة خطوط واتساب والتسميات الداخلية</span>
             </h1>
             <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-              متابعة حالة الخطوط النشطة وربط الأجهزة عبر رمز الاستجابة السريع
+              متابعة حالة الخطوط النشطة، تخصيص التسمية الرسمية للخط داخل النظام للموظفين، وربط الأجهزة عبر <bdi dir="ltr">QR</bdi>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -116,11 +182,18 @@ export default function LinesPage() {
               disabled={refreshing}
               className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] hover:border-emerald-500/40 transition-all text-xs sm:text-sm shadow-sm"
             >
+              <span>تحديث الحالة اللحظية</span>
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-emerald-400' : ''}`} />
-              تحديث الحالة اللحظية
             </button>
           </div>
         </div>
+
+        {saveSuccessMsg && (
+          <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs sm:text-sm flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{saveSuccessMsg}</span>
+          </div>
+        )}
 
         {error && (
           <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm">
@@ -131,17 +204,17 @@ export default function LinesPage() {
         {/* Stats Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="p-5 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-sm">
-            <div className="text-2xl sm:text-3xl font-bold text-[var(--text-main)]">{instances.length}</div>
+            <div className="text-2xl sm:text-3xl font-bold text-[var(--text-main)] font-mono">{instances.length}</div>
             <div className="text-xs text-[var(--text-muted)] mt-1">إجمالي الخطوط المسجلة</div>
           </div>
           <div className="p-5 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-sm">
-            <div className="text-2xl sm:text-3xl font-bold text-emerald-400">
+            <div className="text-2xl sm:text-3xl font-bold text-emerald-400 font-mono">
               {instances.filter(i => (i.connectionStatus || i.instance?.status) === 'open').length}
             </div>
             <div className="text-xs text-emerald-400/80 mt-1">جلسات نشطة ومستقرة</div>
           </div>
           <div className="p-5 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] shadow-sm">
-            <div className="text-2xl sm:text-3xl font-bold text-amber-400">
+            <div className="text-2xl sm:text-3xl font-bold text-amber-400 font-mono">
               {instances.filter(i => (i.connectionStatus || i.instance?.status) !== 'open').length}
             </div>
             <div className="text-xs text-amber-400/80 mt-1">غير متصل / بانتظار الاقتران</div>
@@ -170,6 +243,8 @@ export default function LinesPage() {
                 ? rawOwner.replace('@s.whatsapp.net', '').replace('@g.us', '')
                 : '—';
               
+              const customTitle = lineTitles[name] || (name === 'Master' ? 'الخط الرئيسي (Master)' : name === 'Sells_2' ? 'المبيعات 2 (Sells_2)' : name);
+
               return (
                 <div
                   key={id}
@@ -191,11 +266,11 @@ export default function LinesPage() {
                           </div>
                         )}
                         <div>
-                          <div className="font-bold text-[var(--text-main)] text-sm">
-                            {pName}
+                          <div className="font-bold text-[var(--text-main)] text-sm flex items-center gap-2">
+                            <span>{customTitle}</span>
                           </div>
                           <div className="text-xs text-[var(--text-muted)] font-mono mt-0.5">
-                            {name}
+                            المعرف التقني: <bdi dir="ltr">{name}</bdi>
                           </div>
                         </div>
                       </div>
@@ -203,29 +278,46 @@ export default function LinesPage() {
                       {/* Status Badge */}
                       <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border ${status.color}`}>
                         <StatusIcon className={`w-3.5 h-3.5 ${rawStatus === 'connecting' ? 'animate-spin' : ''}`} />
-                        {status.label}
+                        <span>{status.label}</span>
                       </span>
                     </div>
 
                     {/* Phone Display */}
-                    <div className="text-xs text-[var(--text-main)] font-mono mb-4 bg-[var(--card-elevated)] px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] flex items-center justify-between">
+                    <div className="text-xs text-[var(--text-main)] mb-3 bg-[var(--card-elevated)] px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] flex items-center justify-between">
                       <span className="text-[var(--text-muted)] font-sans">الرقم المرتبط:</span>
-                      <span className="text-emerald-400 font-bold">{phone !== '—' ? `+${phone}` : '(بانتظار مسح QR)'}</span>
+                      <span className="text-emerald-400 font-bold font-mono">
+                        {phone !== '—' ? <bdi dir="ltr">+{phone}</bdi> : '(بانتظار مسح QR)'}
+                      </span>
+                    </div>
+
+                    {/* Custom Title Card / Manager Edit */}
+                    <div className="text-xs mb-4 bg-purple-950/20 px-3.5 py-2.5 rounded-2xl border border-purple-500/20 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-purple-300">
+                        <Tag className="w-3.5 h-3.5" />
+                        <span>المسمى الداخلي للموظفين:</span>
+                      </div>
+                      <button
+                        onClick={() => handleOpenEditTitle(name, customTitle)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 text-[11px] font-bold transition-all border border-purple-500/30"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span>تعديل المسمى</span>
+                      </button>
                     </div>
 
                     {/* Stats */}
                     {inst._count && (
                       <div className="grid grid-cols-3 gap-2 mb-4 p-3 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)]">
                         <div className="text-center">
-                          <div className="text-sm font-bold text-[var(--text-main)]">{inst._count.Chat?.toLocaleString() || 0}</div>
+                          <div className="text-sm font-bold text-[var(--text-main)] font-mono">{inst._count.Chat?.toLocaleString() || 0}</div>
                           <div className="text-[10px] text-[var(--text-muted)]">محادثة</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-sm font-bold text-[var(--text-main)]">{inst._count.Message?.toLocaleString() || 0}</div>
+                          <div className="text-sm font-bold text-[var(--text-main)] font-mono">{inst._count.Message?.toLocaleString() || 0}</div>
                           <div className="text-[10px] text-[var(--text-muted)]">رسالة</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-sm font-bold text-[var(--text-main)]">{inst._count.Contact?.toLocaleString() || 0}</div>
+                          <div className="text-sm font-bold text-[var(--text-main)] font-mono">{inst._count.Contact?.toLocaleString() || 0}</div>
                           <div className="text-[10px] text-[var(--text-muted)]">جهة اتصال</div>
                         </div>
                       </div>
@@ -237,7 +329,7 @@ export default function LinesPage() {
                     {rawStatus === 'open' ? (
                       <button className="flex-1 py-2.5 px-3 rounded-2xl text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center gap-1.5 font-medium cursor-default">
                         <Wifi className="w-3.5 h-3.5" />
-                        الخط يعمل بنجاح
+                        <span>الخط متصل ويعمل بنجاح</span>
                       </button>
                     ) : (
                       <button
@@ -245,7 +337,7 @@ export default function LinesPage() {
                         className="flex-1 py-2.5 px-3 rounded-2xl text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-all flex items-center justify-center gap-1.5 font-bold shadow-sm"
                       >
                         <QrCode className="w-4 h-4" />
-                        ربط عبر رمز QR الآن
+                        <span>ربط عبر رمز QR الآن</span>
                       </button>
                     )}
                   </div>
@@ -263,14 +355,72 @@ export default function LinesPage() {
         )}
       </div>
 
+      {/* --- نافذة تعديل المسمى الداخلي للخط --- */}
+      {editingInstance && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div dir="rtl" className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
+              <div className="flex items-center gap-2">
+                <Tag className="w-5 h-5 text-purple-400" />
+                <h3 className="font-bold text-base text-[var(--text-main)]">
+                  تسمية الخط داخلياً: <bdi dir="ltr">{editingInstance}</bdi>
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingInstance(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              اكتب المسمى العربي الذي ترغب أن يظهر للموظفين وفي صندوق المحادثات بدلاً من الاسم التقني (مثال: <strong>المبيعات الخط الثاني</strong>، <strong>خدمة العملاء</strong>، <strong>الخط الرئيسي</strong>):
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[var(--text-main)]">المسمى الداخلي للخط:</label>
+              <input
+                type="text"
+                dir="rtl"
+                value={editTitleInput}
+                onChange={(e) => setEditTitleInput(e.target.value)}
+                placeholder="مثال: المبيعات الخط الثاني"
+                className="w-full px-4 py-2.5 rounded-2xl bg-[var(--card-elevated)] border border-purple-500/40 text-[var(--text-main)] text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-right"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setEditingInstance(null)}
+                disabled={savingTitle}
+                className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white bg-slate-800/60 transition-all"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleSaveTitle}
+                disabled={savingTitle || !editTitleInput.trim()}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-md disabled:opacity-50"
+              >
+                {savingTitle ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                <span>حفظ التسمية الداخلية</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- نافذة مسح رمز الـ QR Code لربط الخط --- */}
       {qrModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
+          <div dir="rtl" className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <QrCode className="w-5 h-5 text-purple-400" />
-                <h3 className="font-bold text-base text-[var(--text-main)]">ربط جلسة واتساب: {activeInstanceName}</h3>
+                <h3 className="font-bold text-base text-[var(--text-main)]">
+                  ربط جلسة واتساب: <bdi dir="ltr">{activeInstanceName}</bdi>
+                </h3>
               </div>
               <button
                 onClick={() => setQrModalOpen(false)}
@@ -305,7 +455,7 @@ export default function LinesPage() {
                 <div className="text-center py-6">
                   <div className="text-xs text-slate-500 mb-2">رمز الاقتران المباشر:</div>
                   <div className="text-2xl font-mono font-bold tracking-widest text-purple-900 bg-purple-50 px-4 py-2 rounded-xl border border-purple-200">
-                    {pairingCode}
+                    <bdi dir="ltr">{pairingCode}</bdi>
                   </div>
                 </div>
               ) : (
@@ -321,8 +471,8 @@ export default function LinesPage() {
                 disabled={qrLoading}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-medium border border-purple-500/30 transition-all"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${qrLoading ? 'animate-spin' : ''}`} />
                 <span>إعادة توليد الرمز</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${qrLoading ? 'animate-spin' : ''}`} />
               </button>
 
               <button

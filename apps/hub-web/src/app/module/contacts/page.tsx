@@ -440,6 +440,14 @@ export default function ContactsPage() {
         });
         setContacts([]);
         setTotalCount(0);
+        setGlobalStats({
+          total: 0,
+          individuals: 0,
+          orgs: 0,
+          groups: 0,
+          fromEvolution: 0,
+          fromExcel: 0,
+        });
         fetchGlobalStats();
       } else {
         setActionAlert({ type: 'error', message: data.error || 'تعذر مسح جهات الاتصال' });

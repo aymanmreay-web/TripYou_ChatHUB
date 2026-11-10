@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * GET /api/contacts/stats
@@ -62,9 +63,12 @@ export async function GET() {
       by_role: byRole,
       by_source: bySource,
       evolution_lines: evolutionLinesBreakdown,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-
