@@ -31,7 +31,8 @@ function normalizePhoneE164(phone: string): string {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const search = searchParams.get('q') || '';
+    const search = searchParams.get('q') || searchParams.get('search') || '';
+    const phone = searchParams.get('phone') || '';
     const entityType = searchParams.get('entity_type'); // individual | organization | group
     const role = searchParams.get('commercial_role');   // b2c | b2b | vendor | partner | staff
     const source = searchParams.get('source');           // evolution | excel_import | contacts_file | system | manual
@@ -65,6 +66,11 @@ export async function GET(req: NextRequest) {
         updated_at,
         last_activity_at
       `, { count: 'exact' });
+
+    if (phone.trim()) {
+      const p = phone.trim();
+      query = query.or(`primary_phone.eq.${p},primary_phone_e164.eq.${p},primary_phone.ilike.%${p}%`);
+    }
 
     if (entityType && entityType !== 'all') {
       query = query.eq('entity_type', entityType);

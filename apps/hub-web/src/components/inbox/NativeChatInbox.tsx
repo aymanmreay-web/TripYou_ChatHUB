@@ -1106,23 +1106,25 @@ export function NativeChatInbox() {
 
   // ─── التحقق الفوري هل المحادثة الحالية مسجلة في جدول جهات الاتصال ───
   useEffect(() => {
-    if (!activeConversation?.phone_or_jid) {
+    if (!activeConversation) {
       setIsContactSaved(false);
       return;
     }
-    const cleanPhone = activeConversation.phone_or_jid.replace(/[^0-9]/g, '');
-    const searchTarget = cleanPhone || activeConversation.chat_jid;
-    fetch(`/api/contacts?search=${encodeURIComponent(searchTarget)}&limit=5`)
+    const jid = activeConversation.chat_jid;
+    const phoneOrJid = activeConversation.phone_or_jid;
+    const cleanDigits = (phoneOrJid || jid).replace(/[^0-9]/g, '');
+
+    const queryParam = encodeURIComponent(jid);
+    fetch(`/api/contacts?phone=${queryParam}&q=${encodeURIComponent(cleanDigits || jid)}&limit=5`)
       .then((r) => r.json())
       .then((data) => {
-        const items = data.contacts || data.items || [];
-        const isMatch = items.some(
-          (c: any) =>
-            c.primary_phone === activeConversation.phone_or_jid ||
-            c.primary_phone === activeConversation.chat_jid ||
-            c.primary_phone_e164 === activeConversation.phone_or_jid ||
-            (cleanPhone && c.primary_phone && c.primary_phone.includes(cleanPhone))
-        );
+        const items = data.contacts || [];
+        const isMatch = items.some((c: any) => {
+          if (c.primary_phone === jid || c.primary_phone_e164 === jid) return true;
+          if (phoneOrJid && (c.primary_phone === phoneOrJid || c.primary_phone_e164 === phoneOrJid)) return true;
+          if (cleanDigits && c.primary_phone && c.primary_phone.includes(cleanDigits)) return true;
+          return false;
+        });
         setIsContactSaved(isMatch);
       })
       .catch(() => {});
