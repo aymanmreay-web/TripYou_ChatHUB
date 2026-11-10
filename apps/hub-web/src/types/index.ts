@@ -23,6 +23,7 @@ export interface StaffMe {
   working_hours?: string;
   assigned_line_ids?: string[];
   assigned_instances?: string[];
+  assigned_inbox_ids?: string[];
 }
 
 export interface WhatsAppLine {

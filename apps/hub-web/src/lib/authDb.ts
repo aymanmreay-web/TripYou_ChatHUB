@@ -50,22 +50,26 @@ export async function loadAuthState(): Promise<AuthState> {
   const status: AuthStatus =
     staff.status === 'active' ? 'active' : staff.status === 'pending' ? 'pending' : 'blocked';
 
-  // جلب الخطوط المربوطة بالموظف من جدول line_access
+  // جلب الخطوط والصناديق المربوطة بالموظف من الداتابيز
   let assignedLineIds: string[] = [];
   let assignedInstances: string[] = [];
+  let assignedInboxIds: string[] = [];
   try {
-    const { data: lineAcc } = await supabase
-      .from('line_access')
-      .select('line_id, lines(id, instance_name, title_ar)')
-      .eq('staff_id', staff.id);
-    if (lineAcc && Array.isArray(lineAcc)) {
-      assignedLineIds = lineAcc.map((x: any) => x.line_id);
-      assignedInstances = lineAcc
+    const [lineAcc, inboxAcc] = await Promise.all([
+      supabase.from('line_access').select('line_id, lines(id, instance_name, title_ar)').eq('staff_id', staff.id),
+      supabase.from('inbox_access').select('inbox_id').eq('staff_id', staff.id),
+    ]);
+    if (lineAcc.data && Array.isArray(lineAcc.data)) {
+      assignedLineIds = lineAcc.data.map((x: any) => x.line_id);
+      assignedInstances = lineAcc.data
         .map((x: any) => x.lines?.instance_name)
         .filter(Boolean);
     }
+    if (inboxAcc.data && Array.isArray(inboxAcc.data)) {
+      assignedInboxIds = inboxAcc.data.map((x: any) => x.inbox_id);
+    }
   } catch (err) {
-    console.warn('Failed to load line_access for staff:', err);
+    console.warn('Failed to load line_access / inbox_access for staff:', err);
   }
 
   return {
@@ -82,6 +86,7 @@ export async function loadAuthState(): Promise<AuthState> {
       avatar_url: authUser.user_metadata?.avatar_url,
       assigned_line_ids: assignedLineIds,
       assigned_instances: assignedInstances,
+      assigned_inbox_ids: assignedInboxIds,
     },
   };
 }

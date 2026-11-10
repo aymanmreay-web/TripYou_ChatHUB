@@ -552,8 +552,9 @@ export function NativeChatInbox() {
         const inboxes = data.inboxes || [];
         setInboxesList(inboxes);
 
-        // إذا كان الموظف غير مسؤل نظام ولديه صناديق مخصصة، نحدد أول صندوق له تلقائياً
-        if (!data.is_super_admin && inboxes.length > 0) {
+        // إذا كان المستخدم موظفاً غير مدير ولديه صناديق مخصصة، نحدد أول صندوق له تلقائياً
+        const isMgr = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'super_admin' || Boolean(user?.email_masked?.toLowerCase().includes('ayman'));
+        if (!isMgr && inboxes.length > 0) {
           setSelectedInboxId(inboxes[0].id);
         }
       }
@@ -898,40 +899,83 @@ export function NativeChatInbox() {
     [inboxesList, selectedInboxId]
   );
 
-  // الخطوط المتاحة والمسموح بها للموظف الحالي داخل الصندوق المختار فقط (لا تظهر أي خطوط غير مخصصة له)
+  const isManager = useMemo(() => {
+    return (
+      user?.role === 'manager' ||
+      user?.role === 'admin' ||
+      user?.role === 'super_admin' ||
+      Boolean(user?.email_masked?.toLowerCase().includes('ayman'))
+    );
+  }, [user]);
+
+  // الخطوط المتاحة والمسموح بها داخل الصندوق المختار فقط وفق جدول الداتابيز
   const availableInstances = useMemo(() => {
     let list = instances;
-    if (currentInbox && currentInbox.line_ids && currentInbox.line_ids.length > 0) {
-      list = list.filter((inst) => currentInbox.line_ids.includes(inst.name));
+
+    // 1. إذا تم اختيار صندوق محدد: نقتصر حصراً على الخطوط المسجلة في هذا الصندوق بالداتابيز
+    if (currentInbox) {
+      const allowedBoxLines = currentInbox.line_ids || [];
+      list = list.filter((inst) => allowedBoxLines.includes(inst.name));
+    } else if (selectedInboxId === 'all') {
+      // 2. إذا كان "كل الصناديق" والمستخدم موظف غير مدير ولديه صناديق: نقتصر على خطوط صناديقه المخصصة
+      if (!isManager && inboxesList.length > 0) {
+        const staffBoxLines = Array.from(new Set(inboxesList.flatMap((ib) => ib.line_ids || [])));
+        list = list.filter((inst) => staffBoxLines.includes(inst.name));
+      }
     }
-    const isManager = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'super_admin' || user?.email_masked?.includes('ayman');
+
+    // 3. تقييد الموظف بخطوط line_access في الداتابيز
     if (!isManager && user?.assigned_instances && user.assigned_instances.length > 0) {
       list = list.filter((inst) => user.assigned_instances!.includes(inst.name));
     }
+
     return list;
-  }, [instances, currentInbox, user]);
+  }, [instances, currentInbox, inboxesList, user, isManager, selectedInboxId]);
 
   // المحادثات المحصورة في نطاق الصندوق المختار وصلاحيات الموظف (قبل تطبيق التبويبات والبحث والخط)
   const inboxScopedConversations = useMemo(() => {
     let list = conversations;
+
     if (currentInbox) {
-      list = list.filter((c) => {
-        if (currentInbox.filter_type === 'dm' && c.is_group) return false;
-        if (currentInbox.filter_type === 'groups' && !c.is_group) return false;
-        if (currentInbox.line_ids && currentInbox.line_ids.length > 0) {
-          if (!currentInbox.line_ids.includes(c.line_id)) return false;
-        }
-        return true;
-      });
+      // فلترة نوع المحادثات في الصندوق (فردي / مجموعات)
+      if (currentInbox.filter_type === 'dm') list = list.filter((c) => !c.is_group);
+      if (currentInbox.filter_type === 'groups') list = list.filter((c) => c.is_group);
+
+      const allowedBoxLines = currentInbox.line_ids || [];
+      if (allowedBoxLines.length > 0) {
+        list = list.filter(
+          (c) =>
+            allowedBoxLines.includes(c.line_id) ||
+            (c.available_lines && c.available_lines.some((l) => allowedBoxLines.includes(l)))
+        );
+      } else {
+        // إذا كان الصندوق لا يحتوي على أي خط مربوط، تظهر المحادثات فارغة تماماً
+        return [];
+      }
+    } else if (selectedInboxId === 'all' && !isManager && inboxesList.length > 0) {
+      const staffBoxLines = Array.from(new Set(inboxesList.flatMap((ib) => ib.line_ids || [])));
+      if (staffBoxLines.length > 0) {
+        list = list.filter(
+          (c) =>
+            staffBoxLines.includes(c.line_id) ||
+            (c.available_lines && c.available_lines.some((l) => staffBoxLines.includes(l)))
+        );
+      } else {
+        return [];
+      }
     }
 
-    const isManager = user?.role === 'manager' || user?.role === 'admin' || user?.role === 'super_admin' || user?.email_masked?.includes('ayman');
+    // تقييد الموظف بخطوطه المصرح له بها
     if (!isManager && user?.assigned_instances && user.assigned_instances.length > 0) {
-      list = list.filter((c) => user.assigned_instances!.includes(c.line_id));
+      list = list.filter(
+        (c) =>
+          user.assigned_instances!.includes(c.line_id) ||
+          (c.available_lines && c.available_lines.some((l) => user.assigned_instances!.includes(l)))
+      );
     }
 
     return list;
-  }, [conversations, currentInbox, user]);
+  }, [conversations, currentInbox, inboxesList, user, isManager, selectedInboxId]);
 
   // إجمالي عدد المحادثات الفريدة في "جميع الخطوط" بعد الدمج الشكلي
   const allUniqueCount = useMemo(() => {
@@ -1110,47 +1154,62 @@ export function NativeChatInbox() {
   }, [activeConversation]);
 
 
-  // مؤقت ذكي لتصفير قراءة الرسائل بعد ثانية واحدة (1s) في المحادثة وإرسالها لـ Evolution API
+  // مؤقت ذكي لتصفير قراءة الرسائل بعد 500ms في المحادثة وإرسالها لـ Evolution API
   useEffect(() => {
-    if (!activeConvId) return;
-    const active = conversations.find((c) => c.id === activeConvId);
-    if (!active || active.unread_count === 0) return;
+    if (!activeConversation || activeConversation.unread_count === 0) return;
 
-    // تسجيل فوري بالذاكرة لمنع عودة العداد عند التحديث الهادئ
-    readChatsSet.current.add(active.chat_jid);
+    const chatJid = activeConversation.chat_jid;
+    // تسجيل فوري بالذاكرة لمنع عودة العداد عند التحديث الدوري
+    readChatsSet.current.add(chatJid);
 
     const timer = setTimeout(async () => {
-      // 1. تصفير العداد محلياً فوراً
+      // 1. تصفير العداد محلياً فوراً لكافة عناصر هذه المحادثة (فردية أو موحدة)
       setConversations((prev) =>
-        prev.map((c) => (c.id === activeConvId ? { ...c, unread_count: 0 } : c))
+        prev.map((c) => (c.chat_jid === chatJid ? { ...c, unread_count: 0 } : c))
       );
-      // 2. إرسال أمر markMessageAsRead لخادم Evolution API مع معرّف آخر رسالة
-      const instance = active.line_id || selectedInstanceName;
+
+      // 2. إرسال أمر markMessageAsRead لخادم Evolution API لكافة الخطوط المشتركة
+      const targetLines =
+        activeConversation.available_lines && activeConversation.available_lines.length > 0
+          ? activeConversation.available_lines
+          : [activeConversation.line_id || selectedInstanceName];
+
       const lastMsg = messages[messages.length - 1];
-      try {
-        await fetch(`/api/evolution/instances/${instance}/read`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chatJid: active.chat_jid,
-            messageId: lastMsg?.id,
-            fromMe: lastMsg?.direction === 'out',
-          }),
-        });
-      } catch (e) {
-        console.warn('Silent read status update failed:', e);
+
+      for (const instance of targetLines) {
+        try {
+          await fetch(`/api/evolution/instances/${instance}/read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatJid: chatJid,
+              messageId: lastMsg?.id,
+              fromMe: lastMsg?.direction === 'out',
+            }),
+          });
+        } catch (e) {
+          console.warn(`Silent read status update failed for line ${instance}:`, e);
+        }
       }
-    }, 1000);
+    }, 600);
 
     return () => clearTimeout(timer);
-  }, [activeConvId, conversations, messages, selectedInstanceName]);
+  }, [activeConversation?.id, activeConversation?.chat_jid, activeConversation?.unread_count, activeConversation?.available_lines, activeConversation?.line_id, messages, selectedInstanceName]);
 
   const handleSelectConversation = (id: string) => {
     setActiveConvId(id);
     setShowMobileChat(true);
-    const target = conversations.find((c) => c.id === id);
-    if (target?.line_id) {
-      setSendingLineInstance(target.line_id);
+
+    // تصفير فوري لحظي للعداد بمجرد النقر على المحادثة
+    const clicked = conversations.find((c) => c.id === id || id === `unified__${c.chat_jid}`);
+    if (clicked) {
+      readChatsSet.current.add(clicked.chat_jid);
+      setConversations((prev) =>
+        prev.map((c) => (c.chat_jid === clicked.chat_jid ? { ...c, unread_count: 0 } : c))
+      );
+      if (clicked.line_id) {
+        setSendingLineInstance(clicked.line_id);
+      }
     }
   };
 
