@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   LayoutDashboard, RefreshCw, Loader2, MessageSquare, MessagesSquare,
   CheckCircle2, ShieldAlert, AlertTriangle, Bot, Users, Clock,
-  Phone, TrendingUp, ArrowUpRight, Timer, Zap,
+  Phone, TrendingUp, ArrowUpRight, Timer, Zap, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AppShell } from '../../components/layout/AppShell';
@@ -87,6 +87,87 @@ function StatCard({ icon, label, value, sub, tone = 'purple' }: {
   );
 }
 
+/** C4 — بطاقة طلبات إذن الرد من خطوط (للمشرفين): موافقة تُفعّل الخط للطالب / رفض يلزمه بخط الوارد */
+function LineGrantRequestsCard() {
+  const { user } = useApp();
+  const [requests, setRequests] = useState<any[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const isManager = user?.role === 'super_admin' || user?.role === 'sales_lead';
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/line-grants?pending=1', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        setRequests(json.requests || []);
+      }
+    } catch { /* صامت */ }
+  }, []);
+
+  useEffect(() => {
+    if (!isManager) return;
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, [isManager, load]);
+
+  const decide = async (requestId: string, decision: 'approved' | 'rejected') => {
+    setBusyId(requestId);
+    try {
+      const res = await fetch('/api/line-grants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'decide', request_id: requestId, decision, decided_by: user?.id }),
+      });
+      if (res.ok) setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    } catch { /* صامت */ }
+    finally { setBusyId(null); }
+  };
+
+  if (!isManager || requests.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl bg-[var(--card-bg)] border border-amber-500/40 overflow-hidden" dir="rtl">
+      <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
+        <h3 className="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-amber-400" /> طلبات إذن الرد من خطوط أخرى
+        </h3>
+        <span className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 font-bold">{requests.length}</span>
+      </div>
+      <div className="divide-y divide-[var(--border-subtle)]">
+        {requests.map((r) => (
+          <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-[var(--text-main)]">
+                {r.staff_name} ← خط «{r.line_title}»
+              </div>
+              <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                المحادثة: {r.contact_name || r.chat_jid} • {new Date(r.created_at).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => decide(r.id, 'approved')}
+                disabled={busyId === r.id}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 text-[11px] font-bold transition-colors disabled:opacity-50"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" /> موافقة — يُفعّل الخط
+              </button>
+              <button
+                onClick={() => decide(r.id, 'rejected')}
+                disabled={busyId === r.id}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600/15 border border-rose-500/40 text-rose-300 hover:bg-rose-600/25 text-[11px] font-bold transition-colors disabled:opacity-50"
+              >
+                <XCircle className="w-3.5 h-3.5" /> رفض — نفس الرقم إلزامي
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AdminDashboardContent() {
   const { user } = useApp();
   const router = useRouter();
@@ -146,6 +227,9 @@ function AdminDashboardContent() {
             <StatCard icon={<CheckCircle2 className="w-4 h-4" />} label="حُلّت 24س" value={t.resolved_24h ?? 0} tone="emerald" />
             <StatCard icon={<Bot className="w-4 h-4" />} label="ردود آلية 24س" value={t.auto_replies_24h ?? 0} tone="amber" sub="خارج الدوام" />
           </div>
+
+          {/* C4: طلبات إذن الرد من خطوط — للمشرفين فقط */}
+          <LineGrantRequestsCard />
 
           {/* الخطوط الفعلية + سلسلة 14 يوم */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

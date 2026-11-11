@@ -428,18 +428,20 @@ textarea[dir="rtl"]::placeholder {
 @keyframes ring-spin { to { --ring-angle: 360deg; } }
 @keyframes gbar-slide { to { background-position: -300% 0; } }
 
-/* شريط ألوان جوجل المتحرك (أعلى الصفحة أو الحاوية) */
+/* شريط ألوان جوجل المتحرك (أعلى الصفحة أو الحاوية) — يتبع ألوان الثيم الحالي */
 .gbar {
   height: 3px;
-  background: linear-gradient(90deg, var(--g-blue, #4285F4), var(--g-red, #EA4335), var(--g-yellow, #FBBC04), var(--g-green, #34A853), var(--g-blue, #4285F4));
+  background: linear-gradient(90deg, var(--g1, #4285F4), var(--g2, #EA4335), var(--g3, #FBBC04), var(--g4, #34A853), var(--g1, #4285F4));
   background-size: 300% 100%;
-  animation: gbar-slide 9s linear infinite;
+  animation: gbar-slide var(--spd, 9s) linear infinite;
+  animation-play-state: var(--amb, running);
 }
 
-/* حلقة ألوان جوجل الدوّارة حول الأفاتار */
+/* حلقة ألوان الثيم الدوّارة حول الأفاتار والشعار */
 .avatar-ring {
-  background: conic-gradient(from var(--ring-angle), var(--g-blue, #4285F4), var(--g-red, #EA4335), var(--g-yellow, #FBBC04), var(--g-green, #34A853), var(--g-blue, #4285F4));
+  background: conic-gradient(from var(--ring-angle), var(--g1, #4285F4), var(--g2, #EA4335), var(--g3, #FBBC04), var(--g4, #34A853), var(--g1, #4285F4));
   animation: ring-spin 6s linear infinite;
+  animation-play-state: var(--amb, running);
 }
 
 /* هالات الخلفية المتحركة (aurora) */
@@ -448,10 +450,10 @@ textarea[dir="rtl"]::placeholder {
   position: absolute; width: 46vmax; height: 46vmax; border-radius: 50%;
   filter: blur(90px); opacity: 0.28; animation: aurora-drift 26s ease-in-out infinite alternate;
 }
-.aurora i:nth-child(1) { background: var(--g-blue, #4285F4); top: -18%; right: -10%; }
-.aurora i:nth-child(2) { background: var(--g-red, #EA4335); bottom: -22%; right: 18%; animation-duration: 31s; }
-.aurora i:nth-child(3) { background: var(--g-yellow, #FBBC04); top: 6%; left: -14%; animation-duration: 35s; }
-.aurora i:nth-child(4) { background: var(--g-green, #34A853); bottom: -16%; left: 10%; animation-duration: 28s; }
+.aurora i:nth-child(1) { background: var(--g1, #4285F4); top: -18%; right: -10%; }
+.aurora i:nth-child(2) { background: var(--g2, #EA4335); bottom: -22%; right: 18%; animation-duration: 31s; }
+.aurora i:nth-child(3) { background: var(--g3, #FBBC04); top: 6%; left: -14%; animation-duration: 35s; }
+.aurora i:nth-child(4) { background: var(--g4, #34A853); bottom: -16%; left: 10%; animation-duration: 28s; }
 @keyframes aurora-drift { to { transform: translate(8vmax, -6vmax) scale(1.18); } }
 
 /* احترام تفضيل تقليل الحركة */
@@ -461,18 +463,8 @@ textarea[dir="rtl"]::placeholder {
 }
 
 /* ═══════════════════════════════════════════════════════
-   theme-google — طبقة التطبيق على المكونات الحالية
-   (زجاج، خلفية متحركة، وتصحيح الألوان التي كُتبت للثيم الداكن فقط)
+   الهالات في كل الثيمات الآن (طبقة رموز v1 تدير الظهور والشفافية أعلاه)
    ═══════════════════════════════════════════════════════ */
-.aurora { display: none; }
-html.theme-google .aurora { display: block; }
-html.theme-google.light .aurora i { opacity: 0.30; }
-html.theme-google.dark .aurora i { opacity: 0.20; }
-
-/* المحتوى فوق الخلفية المتحركة، والحاويات الجذرية شفافة لتظهر الهالات */
-html.theme-google body { background: var(--bg-main); }
-html.theme-google #__next, html.theme-google body > div { position: relative; z-index: 1; }
-html.theme-google .min-h-screen.bg-\[var\(--bg-main\)\] { background: transparent; }
 
 /* زجاج: الشريط الجانبي والهيدر */
 html.theme-google aside,
@@ -682,7 +674,210 @@ html.theme-google.light [class*=" text-fuchsia-300"],
 html.theme-google.light [class^="text-fuchsia-400"],
 html.theme-google.light [class*=" text-fuchsia-400"] { color: #a21caf; }
 
-/* ── الوضع الداكن ── */
+/* ═══════════════════════════════════════════════════════════════════════
+   طبقة رموز v1 المعتمدة (2026-11-11) — المصدر الحاكم: TripYou ChatHUB.html
+   الهوية المتحركة في كل الثيمات: --g1..--g4 تقود gbar والحلقات والهالات وزر الإرسال
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* خطوط v1 لكل الثيمات: IBM Plex Sans Arabic للنص، Readex Pro للعناوين والأرقام */
+html {
+  --font-ui: 'IBM Plex Sans Arabic', 'Readex Pro Variable', 'Alexandria Variable', system-ui, sans-serif;
+  --font-head: 'Readex Pro Variable', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+}
+
+/* حركة v1 العامة: نابض + سهولة + سرعة الشريط + مفتاح التشغيل */
+:root {
+  --ease: cubic-bezier(0.22, 0.9, 0.24, 1);
+  --spring: cubic-bezier(0.2, 0.9, 0.3, 1.25);
+  --spd: 9s;
+  --amb: running;
+  --r: var(--radius-ui, 22px);
+  --blur: var(--glass-blur, 30px);
+}
+
+/* ألوان الهوية الأربعة لكل ثيم (من إعدادات v1 المعتمدة) */
+html.theme-google   { --g1: #4285F4; --g2: #EA4335; --g3: #FBBC04; --g4: #34A853; --accent-l: #1A73E8; --accent-d: #8AB4F8; }
+html.theme-purple   { --g1: #7C3AED; --g2: #A855F7; --g3: #F59E0B; --g4: #C084FC; --accent-l: #7C3AED; --accent-d: #C4A1FF; }
+html.theme-blue     { --g1: #0EA5E9; --g2: #06B6D4; --g3: #6366F1; --g4: #22D3EE; --accent-l: #0369A1; --accent-d: #7DD3FC; }
+html.theme-emerald  { --g1: #10B981; --g2: #34D399; --g3: #FBBF24; --g4: #059669; --accent-l: #047857; --accent-d: #6EE7B7; }
+html.theme-sunset   { --g1: #F97316; --g2: #EF4444; --g3: #FBBF24; --g4: #EC4899; --accent-l: #C2410C; --accent-d: #FDBA74; }
+html.theme-graphite { --g1: #64748B; --g2: #94A3B8; --g3: #CBD5E1; --g4: #475569; --accent-l: #334155; --accent-d: #CBD5E1; }
+
+/* اللون الرئيسي v1 + حالات النجاح/التحذير/الخطر حسب الوضع */
+html.light { --accent: var(--accent-l, #1A73E8); --ok: #188038; --warn: #B06000; --bad: #C5221F; color-scheme: light; }
+html.dark  { --accent: var(--accent-d, #8AB4F8); --ok: #81C995; --warn: #FDD663; --bad: #F28B82; color-scheme: dark; }
+
+/* سطح الزجاج، النسخة الناعمة من اللون، ولون فقاعة الوارد — تابعة للثيم الحالي */
+html {
+  --surface: color-mix(in srgb, var(--card-bg) 80%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --bubble-in: var(--bubble-peer-bg, #FFFFFF);
+}
+
+/* قوائم الاختيار الأصلية تتبع الثيم في كل الأوضاع */
+select option, select optgroup {
+  background-color: var(--card-bg);
+  color: var(--text-main);
+}
+
+/* ── الهوية المتحركة للكل (كانت حصراً في الثيم الجوجلي) ── */
+body > *:not(.aurora) { position: relative; z-index: 1; }
+.min-h-screen.bg-\[var\(--bg-main\)\] { background: transparent; }
+html.light .aurora i { opacity: 0.30; }
+html.dark .aurora i { opacity: 0.20; }
+
+/* زجاج الشريط الجانبي والترويسة + شريط جوجل المتحرك أعلى الترويسة — في كل الثيمات */
+html:not(.theme-plain) aside,
+html:not(.theme-plain) header {
+  background: color-mix(in srgb, var(--card-bg) 72%, transparent) !important;
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.7);
+  backdrop-filter: blur(var(--blur)) saturate(1.7);
+  border-color: var(--border-subtle);
+}
+html:not(.theme-plain) header { position: sticky; }
+html:not(.theme-plain) header::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 3px; pointer-events: none; z-index: 1;
+  background: linear-gradient(90deg, var(--g1, #4285F4), var(--g2, #EA4335), var(--g3, #FBBC04), var(--g4, #34A853), var(--g1, #4285F4));
+  background-size: 300% 100%; animation: gbar-slide var(--spd) linear infinite; animation-play-state: var(--amb);
+}
+@media (prefers-reduced-motion: reduce) { html:not(.theme-plain) header::before { animation: none; } }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   الثيمات الثلاثة الجديدة من v1: زمرد · غروب · جرافيت
+   (نفس بنية المتغيرات القائمة، فتتبعها كل المكونات فوراً)
+   ═══════════════════════════════════════════════════════════════════════ */
+html.theme-emerald  { --font-ui: 'IBM Plex Sans Arabic', 'Readex Pro Variable', system-ui, sans-serif; --font-head: 'Readex Pro Variable', 'IBM Plex Sans Arabic', system-ui, sans-serif; --radius-ui: 22px; --glass-blur: 30px; }
+html.theme-sunset   { --font-ui: 'IBM Plex Sans Arabic', 'Readex Pro Variable', system-ui, sans-serif; --font-head: 'Readex Pro Variable', 'IBM Plex Sans Arabic', system-ui, sans-serif; --radius-ui: 22px; --glass-blur: 30px; }
+html.theme-graphite { --font-ui: 'IBM Plex Sans Arabic', 'Readex Pro Variable', system-ui, sans-serif; --font-head: 'Readex Pro Variable', 'IBM Plex Sans Arabic', system-ui, sans-serif; --radius-ui: 15px; --glass-blur: 6px; }
+
+/* ── زمرد: فاتح ── */
+html.theme-emerald.light {
+  --bg-main: #EDF7F2; --background: #EDF7F2;
+  --foreground: #0B2018; --text-main: #0B2018; --text-muted: #5B6E64; --text-secondary: #047857;
+  --card-bg: #FFFFFF; --card-elevated: #EDF5F0; --card-surface: #DFEDE6;
+  --card-border: rgba(4, 120, 87, 0.14); --border-subtle: rgba(4, 120, 87, 0.14); --border-glow: rgba(4, 120, 87, 0.35);
+  --primary: #047857; --primary-glow: rgba(4, 120, 87, 0.18);
+  --brand-50: #ECFDF5; --brand-50-rgb: 236 253 245;
+  --brand-100: #D1FAE5; --brand-100-rgb: 209 250 229;
+  --brand-200: #A7F3D0; --brand-200-rgb: 167 243 208;
+  --brand-300: #6EE7B7; --brand-300-rgb: 110 231 183;
+  --brand-400: #34D399; --brand-400-rgb: 52 211 153;
+  --brand-500: #10B981; --brand-500-rgb: 16 185 129;
+  --brand-600: #059669; --brand-600-rgb: 5 150 105;
+  --brand-700: #047857; --brand-700-rgb: 4 120 87;
+  --brand-800: #065F46; --brand-800-rgb: 6 95 70;
+  --brand-900: #064E3B; --brand-900-rgb: 6 78 59;
+  --brand-950: #022C22; --brand-950-rgb: 2 44 34;
+  --bubble-user-bg: #047857; --bubble-user-text: #FFFFFF;
+  --bubble-peer-bg: #FFFFFF; --bubble-peer-border: rgba(4, 120, 87, 0.14); --bubble-peer-text: #0B2018;
+}
+/* ── زمرد: داكن ── */
+html.theme-emerald.dark {
+  --bg-main: #06110D; --background: #06110D;
+  --foreground: #E7F6EF; --text-main: #E7F6EF; --text-muted: #93A79D; --text-secondary: #6EE7B7;
+  --card-bg: #0A1A13; --card-elevated: #0F241A; --card-surface: #143124;
+  --card-border: rgba(52, 211, 153, 0.18); --border-subtle: rgba(52, 211, 153, 0.18); --border-glow: rgba(110, 231, 183, 0.45);
+  --primary: #6EE7B7; --primary-glow: rgba(110, 231, 183, 0.30);
+  --brand-50: #ECFDF5; --brand-50-rgb: 236 253 245;
+  --brand-100: #D1FAE5; --brand-100-rgb: 209 250 229;
+  --brand-200: #A7F3D0; --brand-200-rgb: 167 243 208;
+  --brand-300: #6EE7B7; --brand-300-rgb: 110 231 183;
+  --brand-400: #34D399; --brand-400-rgb: 52 211 153;
+  --brand-500: #10B981; --brand-500-rgb: 16 185 129;
+  --brand-600: #059669; --brand-600-rgb: 5 150 105;
+  --brand-700: #047857; --brand-700-rgb: 4 120 87;
+  --brand-800: #065F46; --brand-800-rgb: 6 95 70;
+  --brand-900: #064E3B; --brand-900-rgb: 6 78 59;
+  --brand-950: #022C22; --brand-950-rgb: 2 44 34;
+  --bubble-user-bg: #6EE7B7; --bubble-user-text: #052E1F;
+  --bubble-peer-bg: rgba(15, 36, 26, 0.9); --bubble-peer-border: rgba(52, 211, 153, 0.22); --bubble-peer-text: #D1FAE5;
+}
+/* ── غروب: فاتح ── */
+html.theme-sunset.light {
+  --bg-main: #FBF1EA; --background: #FBF1EA;
+  --foreground: #2A1409; --text-main: #2A1409; --text-muted: #6E5D53; --text-secondary: #C2410C;
+  --card-bg: #FFFFFF; --card-elevated: #F8EDE4; --card-surface: #F1E2D5;
+  --card-border: rgba(194, 65, 12, 0.14); --border-subtle: rgba(194, 65, 12, 0.14); --border-glow: rgba(194, 65, 12, 0.35);
+  --primary: #C2410C; --primary-glow: rgba(194, 65, 12, 0.18);
+  --brand-50: #FFF7ED; --brand-50-rgb: 255 247 237;
+  --brand-100: #FFEDD5; --brand-100-rgb: 255 237 213;
+  --brand-200: #FED7AA; --brand-200-rgb: 254 215 170;
+  --brand-300: #FDBA74; --brand-300-rgb: 253 186 116;
+  --brand-400: #FB923C; --brand-400-rgb: 251 146 60;
+  --brand-500: #F97316; --brand-500-rgb: 249 115 22;
+  --brand-600: #EA580C; --brand-600-rgb: 234 88 12;
+  --brand-700: #C2410C; --brand-700-rgb: 194 65 12;
+  --brand-800: #9A3412; --brand-800-rgb: 154 52 18;
+  --brand-900: #7C2D12; --brand-900-rgb: 124 45 18;
+  --brand-950: #431407; --brand-950-rgb: 67 20 7;
+  --bubble-user-bg: #C2410C; --bubble-user-text: #FFFFFF;
+  --bubble-peer-bg: #FFFFFF; --bubble-peer-border: rgba(194, 65, 12, 0.14); --bubble-peer-text: #2A1409;
+}
+/* ── غروب: داكن ── */
+html.theme-sunset.dark {
+  --bg-main: #140A06; --background: #140A06;
+  --foreground: #FBEFE8; --text-main: #FBEFE8; --text-muted: #A89890; --text-secondary: #FDBA74;
+  --card-bg: #1D0F08; --card-elevated: #2A170C; --card-surface: #38200F;
+  --card-border: rgba(251, 146, 60, 0.18); --border-subtle: rgba(251, 146, 60, 0.18); --border-glow: rgba(253, 186, 116, 0.45);
+  --primary: #FDBA74; --primary-glow: rgba(253, 186, 116, 0.30);
+  --brand-50: #FFF7ED; --brand-50-rgb: 255 247 237;
+  --brand-100: #FFEDD5; --brand-100-rgb: 255 237 213;
+  --brand-200: #FED7AA; --brand-200-rgb: 254 215 170;
+  --brand-300: #FDBA74; --brand-300-rgb: 253 186 116;
+  --brand-400: #FB923C; --brand-400-rgb: 251 146 60;
+  --brand-500: #F97316; --brand-500-rgb: 249 115 22;
+  --brand-600: #EA580C; --brand-600-rgb: 234 88 12;
+  --brand-700: #C2410C; --brand-700-rgb: 194 65 12;
+  --brand-800: #9A3412; --brand-800-rgb: 154 52 18;
+  --brand-900: #7C2D12; --brand-900-rgb: 124 45 18;
+  --brand-950: #431407; --brand-950-rgb: 67 20 7;
+  --bubble-user-bg: #FDBA74; --bubble-user-text: #3A1608;
+  --bubble-peer-bg: rgba(42, 23, 12, 0.9); --bubble-peer-border: rgba(251, 146, 60, 0.22); --bubble-peer-text: #FFEDD5;
+}
+/* ── جرافيت: فاتح ── */
+html.theme-graphite.light {
+  --bg-main: #EEF0F3; --background: #EEF0F3;
+  --foreground: #15181E; --text-main: #15181E; --text-muted: #566070; --text-secondary: #334155;
+  --card-bg: #FFFFFF; --card-elevated: #F6F7F9; --card-surface: #EAEDF1;
+  --card-border: rgba(20, 24, 30, 0.10); --border-subtle: rgba(20, 24, 30, 0.10); --border-glow: rgba(51, 65, 85, 0.30);
+  --primary: #334155; --primary-glow: rgba(51, 65, 85, 0.15);
+  --brand-50: #F8FAFC; --brand-50-rgb: 248 250 252;
+  --brand-100: #F1F5F9; --brand-100-rgb: 241 245 249;
+  --brand-200: #E2E8F0; --brand-200-rgb: 226 232 240;
+  --brand-300: #CBD5E1; --brand-300-rgb: 203 213 225;
+  --brand-400: #94A3B8; --brand-400-rgb: 148 163 184;
+  --brand-500: #64748B; --brand-500-rgb: 100 116 139;
+  --brand-600: #475569; --brand-600-rgb: 71 85 105;
+  --brand-700: #334155; --brand-700-rgb: 51 65 85;
+  --brand-800: #1E293B; --brand-800-rgb: 30 41 59;
+  --brand-900: #0F172A; --brand-900-rgb: 15 23 42;
+  --brand-950: #020617; --brand-950-rgb: 2 6 23;
+  --bubble-user-bg: #334155; --bubble-user-text: #FFFFFF;
+  --bubble-peer-bg: #FFFFFF; --bubble-peer-border: rgba(20, 24, 30, 0.10); --bubble-peer-text: #15181E;
+}
+/* ── جرافيت: داكن ── */
+html.theme-graphite.dark {
+  --bg-main: #0B0C0E; --background: #0B0C0E;
+  --foreground: #EDF0F3; --text-main: #EDF0F3; --text-muted: #99A3AD; --text-secondary: #CBD5E1;
+  --card-bg: #14171B; --card-elevated: #1B1F25; --card-surface: #232830;
+  --card-border: rgba(255, 255, 255, 0.10); --border-subtle: rgba(255, 255, 255, 0.10); --border-glow: rgba(203, 213, 225, 0.40);
+  --primary: #CBD5E1; --primary-glow: rgba(203, 213, 225, 0.25);
+  --brand-50: #F8FAFC; --brand-50-rgb: 248 250 252;
+  --brand-100: #F1F5F9; --brand-100-rgb: 241 245 249;
+  --brand-200: #E2E8F0; --brand-200-rgb: 226 232 240;
+  --brand-300: #CBD5E1; --brand-300-rgb: 203 213 225;
+  --brand-400: #94A3B8; --brand-400-rgb: 148 163 184;
+  --brand-500: #64748B; --brand-500-rgb: 100 116 139;
+  --brand-600: #475569; --brand-600-rgb: 71 85 105;
+  --brand-700: #334155; --brand-700-rgb: 51 65 85;
+  --brand-800: #1E293B; --brand-800-rgb: 30 41 59;
+  --brand-900: #0F172A; --brand-900-rgb: 15 23 42;
+  --brand-950: #020617; --brand-950-rgb: 2 6 23;
+  --bubble-user-bg: #CBD5E1; --bubble-user-text: #101418;
+  --bubble-peer-bg: rgba(27, 31, 37, 0.9); --bubble-peer-border: rgba(255, 255, 255, 0.12); --bubble-peer-text: #EDF0F3;
+}
+
+/* ── الوضع الداكن (جسر الثيم الجوجلي — يبقى كما هو) ── */
 html.theme-google.dark [class^="bg-purple-900"],
 html.theme-google.dark [class*=" bg-purple-900"],
 html.theme-google.dark [class^="bg-purple-950"],

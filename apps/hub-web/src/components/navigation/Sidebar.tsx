@@ -187,12 +187,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           {!collapsed ? (
             <Link href="/inbox" className="flex items-center gap-2.5 overflow-hidden">
               {companyBranding.logo_url ? (
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 border border-purple-500/30 flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-md">
+                <div className="w-10 h-10 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-md">
                   <img src={companyBranding.logo_url} alt="Logo" className="w-full h-full object-contain" />
                 </div>
               ) : (
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-md text-white font-black text-lg shrink-0">
-                  {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                <div className="w-10 h-10 rounded-2xl avatar-ring p-[2px] shrink-0 shadow-md">
+                  <div className="w-full h-full rounded-[14px] bg-[var(--card-bg)] flex items-center justify-center text-[var(--text-main)] font-black text-lg">
+                    {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                  </div>
                 </div>
               )}
               <div className="flex flex-col min-w-0">
@@ -207,12 +209,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           ) : (
             <Link href="/inbox" className="mx-auto">
               {companyBranding.logo_url ? (
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 border border-purple-500/30 flex items-center justify-center p-1 overflow-hidden shadow-md">
+                <div className="w-10 h-10 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] flex items-center justify-center p-1 overflow-hidden shadow-md">
                   <img src={companyBranding.logo_url} alt="Logo" className="w-full h-full object-contain" />
                 </div>
               ) : (
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-black text-base shadow-md">
-                  {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                <div className="w-10 h-10 rounded-2xl avatar-ring p-[2px] shadow-md">
+                  <div className="w-full h-full rounded-[14px] bg-[var(--card-bg)] flex items-center justify-center text-[var(--text-main)] font-black text-base">
+                    {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                  </div>
                 </div>
               )}
             </Link>

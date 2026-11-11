@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageCircle, Pin, Megaphone, Moon as MoonIcon, Info, CheckSquare, CalendarClock, Truck, Receipt, WifiOff, Star, ShieldAlert } from 'lucide-react';
+import { MessageCircle, Pin, Megaphone, Moon as MoonIcon, Info, CheckSquare, CalendarClock, Truck, Receipt, WifiOff, Star, ShieldAlert, ShieldCheck } from 'lucide-react';
 
 /**
  * سجل عرض الإشعارات الموحد (الجرس + صفحة الإشعارات).
@@ -32,6 +32,8 @@ export const KIND_ICON: Record<string, React.ReactNode> = {
   payment_received: <Receipt className="w-4 h-4 text-teal-400" />,
   line_offline: <WifiOff className="w-4 h-4 text-red-400" />,
   access_request: <ShieldAlert className="w-4 h-4 text-amber-300" />,
+  line_permission_request: <ShieldAlert className="w-4 h-4 text-amber-400" />,
+  line_permission_result: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
 };
 
 export const KIND_LABEL: Record<string, string> = {
@@ -47,6 +49,8 @@ export const KIND_LABEL: Record<string, string> = {
   payment_received: 'دفعة واردة',
   line_offline: 'انقطاع خط',
   access_request: 'طلب وصول/إسناد',
+  line_permission_request: 'طلب إذن رد من خط',
+  line_permission_result: 'نتيجة إذن رد',
 };
 
 export function kindLabel(kind: string): string {

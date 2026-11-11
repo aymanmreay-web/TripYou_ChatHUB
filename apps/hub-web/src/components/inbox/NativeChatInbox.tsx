@@ -431,6 +431,33 @@ export function NativeChatInbox() {
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   // م8-ج3: قائمة خيارات الجهة (اسم المحادثة قابل للنقر)
   const [contactMenuOpen, setContactMenuOpen] = useState(false);
+
+  // ─── C4: قواعد الرد عبر الخطوط ───
+  // منح المدير: خطوط يُسمح للموظف الرد منها رغم أنها ليست خط الوارد (بعد موافقة صريحة)
+  const [grantedLines, setGrantedLines] = useState<Set<string>>(new Set());
+  const [grantRequestState, setGrantRequestState] = useState<'none' | 'sending' | 'sent'>('none');
+  // عضوية المجموعة: أرقام الخطوط الأعضاء في مجموعة المحادثة الحالية (قانون واتساب)
+  const [groupMemberDigits, setGroupMemberDigits] = useState<Set<string> | null>(null);
+
+  // جلب منح الموظف الحالي (يُحدَّث بعد كل طلب/قرار) + خريطة اسم الخط → uuid للطلبات
+  const [lineIdMap, setLineIdMap] = useState<Record<string, string>>({});
+  const refreshGrants = useCallback(() => {
+    if (!user?.id) return;
+    fetch(`/api/line-grants?staff_id=${encodeURIComponent(user.id)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.granted) setGrantedLines(new Set(j.granted as string[])); })
+      .catch(() => {});
+    fetch('/api/lines', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const map: Record<string, string> = {};
+        ((j?.lines || []) as any[]).forEach((l) => { if (l.instance_name && l.id) map[l.instance_name] = l.id; });
+        setLineIdMap(map);
+      })
+      .catch(() => {});
+  }, [user?.id]);
+
+  useEffect(() => { refreshGrants(); }, [refreshGrants]);
   const [tagFilter, setTagFilter] = useState<string>(''); // فلتر وسم بالشريط العلوي
 
   // تحميل سجل الوسوم مرة واحدة (من hub.hub_tags عبر دوال hubDb)
@@ -1287,21 +1314,72 @@ export function NativeChatInbox() {
   }, [activeConversation?.phone_or_jid, activeConversation?.chat_jid]);
 
   // خط الإرسال الفعلي المعتمد للموظف
+  // ─── C3: خط الوارد الأخير — الرد الافتراضي يتبع آخر رقم كتبك منه العميل ───
+  const lastIncomingLine = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].direction === 'in' && messages[i].line_id) return messages[i].line_id;
+    }
+    return activeConversation?.line_id || null;
+  }, [messages, activeConversation?.line_id]);
+
+  // ─── C4: صلاحية كل خط للإرسال في المحادثة الحالية ───
+  // فردية: فقط خط الوارد — إلا إذا وُجد منح من المدير (line_send_grants)
+  // مجموعة: يجب أن يكون الخط عضوًا في المجموعة (قانون واتساب) + مصرحًا للموظف
+  const sendLineStatus = useMemo(() => {
+    const map = new Map<string, { allowed: boolean; reason: string }>();
+    const incoming = lastIncomingLine || activeConversation?.line_id || '';
+    const isGroup = !!activeConversation?.is_group;
+    for (const inst of allowedSendInstances) {
+      const name = inst.name;
+      if (isGroup) {
+        // المجموعات: العضوية شرط تقني، والترخيص للموظف شرط صلاحية — لا حاجة لمنح المدير
+        // (رسالة المجموعة تظهر للجميع بأسماء الأعضاء — لا التباس هوية)
+        if (groupMemberDigits && groupMemberDigits.size > 0) {
+          const lineDigits = (name === 'Master' ? '' : '').replace(/\D/g, '') || '';
+          // رقم الخط من قائمة الخطوط (phone)
+          const phoneDigits = (instances.find((i) => i.name === name)?.ownerJid || '').replace(/@.*$/, '').replace(/\D/g, '');
+          const member = !phoneDigits || groupMemberDigits.has(phoneDigits);
+          const authorized = allowedSendInstances.some((i) => i.name === name);
+          map.set(name, {
+            allowed: member && authorized,
+            reason: !authorized ? 'الخط غير مصرح لك به' : !member ? 'الخط ليس عضوًا في هذه المجموعة' : 'متاح',
+          });
+        } else {
+          map.set(name, { allowed: true, reason: 'متاح' });
+        }
+      } else {
+        const isIncoming = name === incoming;
+        const authorized = allowedSendInstances.some((i) => i.name === name);
+        const granted = grantedLines.has(name);
+        if (isIncoming && authorized) {
+          map.set(name, { allowed: true, reason: 'خط الوارد — متاح' });
+        } else if (granted) {
+          map.set(name, { allowed: true, reason: 'مصرح من المدير' });
+        } else {
+          map.set(name, {
+            allowed: false,
+            reason: isIncoming
+              ? 'خط الوارد لكنه غير مصرح لك به — يلزم إذن المدير'
+              : 'رقم مختلف عن الذي راسله العميل — يلزم إذن المدير',
+          });
+        }
+      }
+    }
+    return map;
+  }, [allowedSendInstances, lastIncomingLine, activeConversation, grantedLines, groupMemberDigits, instances]);
+
   const effectiveSendInstance = useMemo(() => {
-    if (sendingLineInstance && allowedSendInstances.some((i) => i.name === sendingLineInstance)) {
+    // الافتراضي: آخر خط ورد منه العميل إن كان متاحًا
+    const incoming = lastIncomingLine || activeConversation?.line_id || '';
+    if (incoming && sendLineStatus.get(incoming)?.allowed) return incoming;
+    // يدوي صريح متاح؟
+    if (sendingLineInstance && sendLineStatus.get(sendingLineInstance)?.allowed) {
       return sendingLineInstance;
     }
-    if (activeConversation) {
-      if (allowedSendInstances.some((i) => i.name === activeConversation.line_id)) {
-        return activeConversation.line_id;
-      }
-      if (activeConversation.available_lines) {
-        const matched = allowedSendInstances.find((i) => activeConversation.available_lines?.includes(i.name));
-        if (matched) return matched.name;
-      }
-    }
-    return allowedSendInstances[0]?.name || 'Master';
-  }, [allowedSendInstances, sendingLineInstance, activeConversation]);
+    // أول متاح
+    const firstAllowed = allowedSendInstances.find((i) => sendLineStatus.get(i.name)?.allowed);
+    return firstAllowed?.name || '';
+  }, [sendLineStatus, lastIncomingLine, sendingLineInstance, activeConversation, allowedSendInstances]);
 
   // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
   useEffect(() => {
@@ -1693,6 +1771,16 @@ export function NativeChatInbox() {
   const executeSendMessage = async (textToSend: string) => {
     if (!activeConversation || isSending) return;
 
+    // C4: حارس خط الإرسال — لا إرسال من خط غير مصرح (خط الوارد فقط أو بمنح مدير)
+    if (sendLineStatus.get(effectiveSendInstance)?.allowed === false) {
+      toast({
+        title: '⛔ الإرسال من هذا الخط محظور — يلزم إذن المدير',
+        body: 'استخدم خط الوارد، أو اطلب إذناً من المدير عبر التنبيه أعلى صندوق الإرسال',
+        kind: 'error',
+      });
+      return;
+    }
+
     // تدقيق قاطع الدائرة
     if (isBreakerTripped) {
       alert('قاطع الدائرة مفعل! تم تعليق الإرسال التلقائي لحماية الخط من الحظر. يرجى إعادة الضبط يدوياً بعد التأكد من صحة الرقم والاتصال.');
@@ -1928,6 +2016,32 @@ export function NativeChatInbox() {
       unpin_message_id: msgId,
     });
   };
+
+  // ─── C4: فحص عضوية المجموعة عند فتح محادثة مجموعة — أرقام الخطوط الأعضاء فقط ترسل ───
+  useEffect(() => {
+    if (!activeConversation?.is_group || !activeConversation?.chat_jid) {
+      setGroupMemberDigits(null);
+      return;
+    }
+    const inst = activeConversation.line_id || selectedInstanceName;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/evolution/instances/${encodeURIComponent(inst)}/group-members?jid=${encodeURIComponent(activeConversation.chat_jid)}`,
+          { cache: 'no-store' }
+        );
+        if (!res.ok || !alive) return;
+        const json = await res.json();
+        const digits = new Set<string>(
+          ((json.members || []) as string[]).map((m: string) => m.replace(/@.*$/, '').replace(/\D/g, '')).filter(Boolean)
+        );
+        if (alive) setGroupMemberDigits(digits);
+      } catch { if (alive) setGroupMemberDigits(null); }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.chat_jid, activeConversation?.is_group]);
 
   // م8-ج3: ترطيب المثبتات من القاعدة عند فتح المحادثة — تظهر دائماً
   useEffect(() => {
@@ -3755,6 +3869,19 @@ export function NativeChatInbox() {
                           <div
                             className="flex items-center justify-end gap-1.5 text-[10px] mt-1.5 opacity-75 tabular-nums"
                           >
+                            {/* C3: شارة الخط — من أي رقم وردت/أُرسلت هذه الرسالة في العرض الموحد */}
+                            {msg.line_id && activeConversation?.available_lines && activeConversation.available_lines.length > 1 && (
+                              <span
+                                className={`text-[8px] px-1 py-0.5 rounded font-mono font-bold border ${
+                                  msg.line_id === 'Master'
+                                    ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
+                                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
+                                }`}
+                                title={`عبر خط: ${getLineDisplayTitle(msg.line_id)}`}
+                              >
+                                <bdi dir="ltr">{getLineDisplayTitle(msg.line_id)}</bdi>
+                              </span>
+                            )}
                             <span>{msg.created_at}</span>
                             {isOut && (
                               <span>
@@ -3776,6 +3903,70 @@ export function NativeChatInbox() {
 
               {/* Chat Input Bar with Risk Guard Checks */}
               <div className="bg-[var(--card-bg)] border-t border-[var(--border-subtle)] p-3 shrink-0 space-y-2">
+
+                {/* C4: تحذير صارم — لا إرسال من رقم مختلف عن خط الوارد دون إذن مدير */}
+                {activeConversation && sendLineStatus.get(effectiveSendInstance)?.allowed === false && (() => {
+                  const st = sendLineStatus.get(effectiveSendInstance);
+                  const isIncomingNoAuth = st?.reason?.includes('خط الوارد');
+                  return (
+                    <div className="rounded-2xl border border-rose-500/50 bg-rose-950/40 px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap" dir="rtl">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-rose-200">
+                            الإرسال من هذا الخط محظور — {st?.reason || 'يلزم إذن المدير'}
+                          </div>
+                          <div className="text-[10px] text-rose-300/80 mt-0.5 leading-relaxed">
+                            {isIncomingNoAuth
+                              ? 'المحادثة وردت على هذا الخط وهو مرتبط بصندوقك، لكنه غير مصرح لك به شخصياً — اطلب إذناً من المدير ليُفعَّل لك.'
+                              : 'العميل راسلك من رقم آخر — الرد من رقم مختلف يربكه ويتطلب موافقة المدير. عند الرفض يلزمك الرد من نفس الرقم الوارد.'}
+                          </div>
+                        </div>
+                      </div>
+                      {grantRequestState === 'sent' ? (
+                        <span className="text-[10px] px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold shrink-0">
+                          ⏳ طلبك معلق بموافقة المدير — ستصلك النتيجة إشعاراً
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!user?.id || !activeConversation) return;
+                            const lineId = lineIdMap[effectiveSendInstance];
+                            if (!lineId) { toast({ title: 'تعذر تحديد الخط — حاول تحديث الصفحة', kind: 'error' }); return; }
+                            setGrantRequestState('sending');
+                            try {
+                              const res = await fetch('/api/line-grants', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'request',
+                                  staff_id: user.id,
+                                  line_id: lineId,
+                                  chat_jid: activeConversation.chat_jid,
+                                  reason: st?.reason || 'رد من خط غير الوارد',
+                                }),
+                              });
+                              const json = await res.json();
+                              if (res.ok) {
+                                setGrantRequestState('sent');
+                                toast({ title: json.already_pending ? 'طلبك معلق بالفعل بموافقة المدير' : 'أُرسل طلب الإذن إلى المدير', kind: 'success' });
+                              } else {
+                                toast({ title: json.error || 'فشل إرسال الطلب', kind: 'error' });
+                                setGrantRequestState('none');
+                              }
+                            } catch { setGrantRequestState('none'); }
+                          }}
+                          disabled={grantRequestState === 'sending'}
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white text-[11px] font-bold shadow-md transition-colors shrink-0"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5" />
+                          {grantRequestState === 'sending' ? 'جاري الإرسال...' : 'طلب إذن من المدير'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* الرد المقتبس إن وجد */}
                 {replyingToMessage && (
@@ -3953,19 +4144,26 @@ export function NativeChatInbox() {
                       )}
                     </div>
 
-                    {/* محدد خط الإرسال المقيد بالخطوط المسموح بها للموظف فقط */}
+                    {/* C4: محدد خط الإرسال — خط الوارد متاح دائماً؛ الخطوط الأخرى تتطلب منح المدير */}
                     <div className="flex items-center gap-1 shrink-0">
                       <select
                         value={effectiveSendInstance}
                         onChange={(e) => setSendingLineInstance(e.target.value)}
-                        className="h-10 px-2 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-semibold outline-none focus:border-purple-400 font-mono"
-                        title="الخطوط المصرح لك الإرسال منها وفق قائمة الموظفين"
+                        className={`h-10 px-2 rounded-xl border text-xs font-semibold outline-none font-mono ${
+                          sendLineStatus.get(effectiveSendInstance)?.allowed === false
+                            ? 'bg-rose-950/60 border-rose-500/50 text-rose-200'
+                            : 'bg-purple-950/60 border-purple-500/40 text-purple-200 focus:border-purple-400'
+                        }`}
+                        title="خط الإرسال — الرد الافتراضي من آخر رقم ورد منه العميل"
                       >
-                        {allowedSendInstances.map((inst) => (
-                          <option key={inst.name} value={inst.name}>
-                            إرسال عبر: {getLineDisplayTitle(inst.name)}
-                          </option>
-                        ))}
+                        {allowedSendInstances.map((inst) => {
+                          const st = sendLineStatus.get(inst.name);
+                          return (
+                            <option key={inst.name} value={inst.name} disabled={st ? !st.allowed : false}>
+                              {st?.allowed === false ? '⛔' : ''} إرسال عبر: {getLineDisplayTitle(inst.name)}{st && !st.allowed ? ' — يحتاج إذن' : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
