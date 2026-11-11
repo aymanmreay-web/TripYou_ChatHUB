@@ -100,7 +100,15 @@ export async function GET(req: NextRequest) {
         )
       : [];
 
-    return NextResponse.json({ conversation, tags });
+    // م8: الرسائل المثبتة — محفوظة في metadata حتى تصمد بعد الخروج والعودة
+    const pinned = conversation
+      ? (await q<{ meta: any }>(
+          `select metadata as meta from hub.conversations where id = $1`,
+          [conversation.id]
+        ))[0]?.meta?.pinned || []
+      : [];
+
+    return NextResponse.json({ conversation, tags, pinned });
   } catch (err: any) {
     console.error('[conversations GET]', err?.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -165,6 +173,34 @@ export async function PATCH(req: NextRequest) {
     // ─── تصفير غير المقروء ───
     if (body.mark_read) {
       await q(`update hub.conversations set unread_count = 0 where id = $1`, [convId]);
+    }
+
+    // ─── م8: تثبيت/إزالة رسالة — محفوظ في metadata.pinned (حتى 5) ويصمد بعد الخروج ───
+    if (body.pin || body.unpin_message_id) {
+      const cur = (await q<{ meta: any }>(`select metadata as meta from hub.conversations where id = $1`, [convId]))[0]?.meta || {};
+      let pinned: any[] = Array.isArray(cur.pinned) ? cur.pinned : [];
+
+      if (body.pin && body.pin.message_id) {
+        pinned = [
+          {
+            id: String(body.pin.message_id),
+            body: String(body.pin.body || '').slice(0, 160),
+            sender: body.pin.sender || null,
+            duration: body.pin.duration || '7d',
+            pinned_at: new Date().toISOString(),
+          },
+          ...pinned.filter((p) => p.id !== body.pin.message_id),
+        ].slice(0, 5); // حد واتساب: 5 رسائل مثبتة كحد أقصى
+      }
+
+      if (body.unpin_message_id) {
+        pinned = pinned.filter((p) => p.id !== body.unpin_message_id);
+      }
+
+      await q(
+        `update hub.conversations set metadata = jsonb_set(coalesce(metadata, '{}'::jsonb), '{pinned}', $2::jsonb, true), updated_at = now() where id = $1`,
+        [convId, JSON.stringify(pinned)]
+      );
     }
 
     // ─── الإسناد / إلغاء الإسناد ───

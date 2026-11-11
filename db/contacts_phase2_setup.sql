@@ -103,13 +103,15 @@ begin
 end $$;
 
 -- ─── 5) واجهات public للجداول الجديدة ───
-create or replace view public.whatsapp_groups as select * from hub.whatsapp_groups;
-create or replace view public.contact_phones as select * from hub.contact_phones;
-create or replace view public.contact_tags as select * from hub.contact_tags;
+-- security_invoker = true إلزامي: بدونها تتجاوز الواجهة RLS على جداول hub
+-- (تحذير Security Definer View الحرج من Advisor)
+create or replace view public.whatsapp_groups with (security_invoker = true) as select * from hub.whatsapp_groups;
+create or replace view public.contact_phones with (security_invoker = true) as select * from hub.contact_phones;
+create or replace view public.contact_tags with (security_invoker = true) as select * from hub.contact_tags;
 grant select on public.whatsapp_groups, public.contact_phones, public.contact_tags to anon, authenticated;
 
 -- عمود wa_jid في واجهة public.contacts
-create or replace view public.contacts as
+create or replace view public.contacts with (security_invoker = true) as
   select c.id, c.kind, c.full_name, c.primary_phone_e164, c.normalized_phone, c.email,
          c.organization, c.org_tree_path, c.role_tag, c.country_code, c.city, c.vip_level,
          c.tags, c.notes, c.created_at, c.updated_at, c.entity_type, c.commercial_role,

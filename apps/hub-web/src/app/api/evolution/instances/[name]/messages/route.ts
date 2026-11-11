@@ -40,16 +40,22 @@ export async function POST(req: Request, { params }: { params: { name: string } 
   try {
     const { name } = params;
     const body = await req.json();
-    const { to, text, type = 'text', staff_id, signature } = body;
+    const { to, text, type = 'text', staff_id, signature, quoted_message_id } = body;
 
     if (!to || !text) {
       return NextResponse.json({ error: 'to and text are required' }, { status: 400 });
     }
 
+    // م8: الرد المقتبس — Evolution v2 يدعم quotedMessageId في كائن options
+    const payload: Record<string, any> = { number: to, text };
+    if (quoted_message_id) {
+      payload.options = { quotedMessageId: quoted_message_id };
+    }
+
     const res = await fetch(`${EVOLUTION_URL}/message/sendText/${name}`, {
       method: 'POST',
       headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: to, text }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const text2 = await res.text();

@@ -47,6 +47,7 @@ import {
   Star,
   Tags,
   Reply,
+  ExternalLink,
   Share2,
   Copy,
   FileSpreadsheet,
@@ -59,6 +60,7 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useRouter } from 'next/navigation';
 import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
 import { Button } from '@tripyou/ui';
 import { supabase } from '../../lib/supabase';
@@ -340,6 +342,7 @@ const AVAILABLE_STAFF_FALLBACK = [{ id: '', name: 'غير مسند (عام)', ro
 
 export function NativeChatInbox() {
   const { user, authStatus } = useApp();
+  const router = useRouter();
 
   // م7: قائمة الموظفين الحقيقية من القاعدة
   const [availableStaff, setAvailableStaff] = useState<{ id: string; name: string; role: string }[]>(AVAILABLE_STAFF_FALLBACK);
@@ -426,6 +429,8 @@ export function NativeChatInbox() {
   const [dbTags, setDbTags] = useState<{ id: string; name: string; hex_color: string }[]>([]);
   const [activeConvTagIds, setActiveConvTagIds] = useState<string[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  // م8-ج3: قائمة خيارات الجهة (اسم المحادثة قابل للنقر)
+  const [contactMenuOpen, setContactMenuOpen] = useState(false);
   const [tagFilter, setTagFilter] = useState<string>(''); // فلتر وسم بالشريط العلوي
 
   // تحميل سجل الوسوم مرة واحدة (من hub.hub_tags عبر دوال hubDb)
@@ -637,39 +642,45 @@ export function NativeChatInbox() {
 
   // ─── تحميل سجل المقروء من قاعدة البيانات لهذا الصندوق والمستخدم ───
   // م8-ج2: يملأ أيضاً أطواب القراءة (lastReadAt) ويعيد تصفير العدادات فوراً —
-  // القراءة خاصة بكل مستخدم (user_id) ولا يعود العداد بعد تحديث الصفحة
+  // القراءة خاصة بكل مستخدم فقط — بلا فلتر صندوق (المحادثة المقروءة مقروءة في كل الصناديق)
+  // والاعتماد الكامل على طابع زمني لكل محادثة: العداد = رسائل أحدث من آخر قراءة
+  const hydratedReadsRef = useRef<Promise<void> | null>(null);
   const loadReadReceipts = useCallback(async () => {
     if (!user?.id) return;
-    try {
-      const res = await fetch(`/api/inboxes/read?inbox_id=${selectedInboxId || 'all'}&user_id=${user.id}`);
-      if (res.ok) {
-        const json = await res.json();
-        const reads: { chat_jid: string; last_read_at: string }[] = json.reads || [];
-        const set = new Set<string>(reads.map((r) => r.chat_jid));
-        setReadChatJids(set);
-        // مزامنة الـ ref الدائم حتى يعتمد عليه جلب المحادثات المتأخر (سباق التحميل الأولي)
-        set.forEach((jid) => readChatsSet.current.add(jid));
-        for (const r of reads) {
-          const ts = r.last_read_at ? new Date(r.last_read_at).getTime() : 0;
-          if (ts > 0) lastReadAtRef.current.set(r.chat_jid, ts);
-        }
-        // تطبيق فوري على القائمة الحالية — بلا انتظار جلب الخطوط التالي
-        setConversations((prev) => {
-          let changed = false;
-          const next = prev.map((c) => {
-            if (set.has(c.chat_jid) && c.unread_count !== 0) {
-              changed = true;
-              return { ...c, unread_count: 0 };
-            }
-            return c;
+    const doLoad = async () => {
+      try {
+        // بلا inbox_id — كل سجلات هذا المستخدم عبر جميع الصناديق
+        const res = await fetch(`/api/inboxes/read?user_id=${user.id}`);
+        if (res.ok) {
+          const json = await res.json();
+          const reads: { chat_jid: string; last_read_at: string }[] = json.reads || [];
+          const set = new Set<string>(reads.map((r) => r.chat_jid));
+          setReadChatJids(set);
+          set.forEach((jid) => readChatsSet.current.add(jid));
+          for (const r of reads) {
+            const ts = r.last_read_at ? new Date(r.last_read_at).getTime() : 0;
+            if (ts > 0) lastReadAtRef.current.set(r.chat_jid, ts);
+          }
+          // تطبيق فوري على القائمة الحالية — بلا انتظار جلب الخطوط التالي
+          setConversations((prev) => {
+            let changed = false;
+            const next = prev.map((c) => {
+              if (set.has(c.chat_jid) && c.unread_count !== 0) {
+                changed = true;
+                return { ...c, unread_count: 0 };
+              }
+              return c;
+            });
+            return changed ? next : prev;
           });
-          return changed ? next : prev;
-        });
+        }
+      } catch (e) {
+        console.warn('Failed loading read receipts:', e);
       }
-    } catch (e) {
-      console.warn('Failed loading read receipts:', e);
-    }
-  }, [user?.id, selectedInboxId]);
+    };
+    hydratedReadsRef.current = doLoad();
+    await hydratedReadsRef.current;
+  }, [user?.id]);
 
   useEffect(() => {
     loadReadReceipts();
@@ -744,6 +755,8 @@ export function NativeChatInbox() {
   const fetchChats = useCallback(async (targetInstances?: string[]) => {
     try {
       setLoadingChats(true);
+      // م8-ج2: انتظر ترطيب سجلات القراءة أولاً — العدادات ترسم صح من أول مرة
+      if (hydratedReadsRef.current) await hydratedReadsRef.current;
 
       // تحديد الخطوط المستهدفة للجلب
       let instancesToFetch = targetInstances;
@@ -998,7 +1011,14 @@ export function NativeChatInbox() {
         let docFileName: string | undefined = undefined;
 
         if (m.message) {
-          const msgObj = m.message;
+          // م8: فتح أغلفة واتساب — الملصقات و"عرض لمرة واحدة" والرسائل المؤقتة مغلفة
+          const msgObj =
+            m.message.viewOnceMessageV2?.message ||
+            m.message.viewOnceMessageV2Extension?.message ||
+            m.message.viewOnceMessage?.message ||
+            m.message.ephemeralMessage?.message ||
+            m.message.documentWithCaptionMessage?.message ||
+            m.message;
           if (msgObj.conversation) {
             text = msgObj.conversation;
           } else if (msgObj.extendedTextMessage?.text) {
@@ -1715,6 +1735,10 @@ export function NativeChatInbox() {
         body: JSON.stringify({
           to: activeConversation.chat_jid,
           text: fullMessage,
+          // م8: الرد المقتبس — الرسالة تُرسل كرد مباشر على الرسالة الأصلية في واتساب
+          ...(replyingToMessage?.id && !replyingToMessage.id.startsWith('msg-')
+            ? { quoted_message_id: replyingToMessage.id }
+            : {}),
         }),
       });
 
@@ -1738,6 +1762,7 @@ export function NativeChatInbox() {
         };
 
         setMessages((prev) => [...prev, newMsg]);
+        setReplyingToMessage(null); // الرد أُرسل — إزالة شريط الاقتباس
 
         // تحديث حالة المحادثة
         setConversations((prev) =>
@@ -1857,6 +1882,19 @@ export function NativeChatInbox() {
   };
 
   // ─── إدارة تثبيت الرسائل (حتى 5 رسائل بخيارات مدة واتساب) ───
+  // م8-ج3: التثبيت محفوظ في القاعدة (metadata.pinned) — يصمد بعد الخروج وتحديث الصفحة
+  const persistPins = async (chatJid: string, instance: string, patch: { pin?: any; unpin_message_id?: string }) => {
+    try {
+      await fetch('/api/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_jid: chatJid, instance, ...patch }),
+      });
+    } catch (err) {
+      console.warn('[persistPins] non-critical:', err);
+    }
+  };
+
   const handlePinMessage = (msg: ChatMessage, duration: '24h' | '7d' | '30d') => {
     if (!activeConversation) return;
     const convId = activeConversation.id;
@@ -1864,7 +1902,7 @@ export function NativeChatInbox() {
       const current = prev[convId] || [];
       const filtered = current.filter((m) => m.id !== msg.id);
       if (filtered.length >= 5) {
-        alert('يمكنك تثبيت ما يصل إلى 5 رسائل كحد أقصى في كل محادثة.');
+        toast({ title: 'يمكنك تثبيت ما يصل إلى 5 رسائل كحد أقصى في كل محادثة', kind: 'error' });
         return prev;
       }
       return {
@@ -1873,6 +1911,10 @@ export function NativeChatInbox() {
       };
     });
     setPinModalMsg(null);
+    // حفظ دائم بالقاعدة — snippets كافية للعرض حتى لو خرجت الرسالة عن آخر 50
+    persistPins(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
+      pin: { message_id: msg.id, body: msg.body || `[${msg.media_type || 'وسائط'}]`, sender: msg.sender_name || null, duration },
+    });
   };
 
   const handleUnpinMessage = (msgId: string) => {
@@ -1882,7 +1924,56 @@ export function NativeChatInbox() {
       ...prev,
       [convId]: (prev[convId] || []).filter((m) => m.id !== msgId),
     }));
+    persistPins(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
+      unpin_message_id: msgId,
+    });
   };
+
+  // م8-ج3: ترطيب المثبتات من القاعدة عند فتح المحادثة — تظهر دائماً
+  useEffect(() => {
+    if (!activeConversation?.chat_jid) return;
+    const convId = activeConversation.id;
+    if (pinnedMessagesMap[convId]) return; // محملة مسبقاً لهذه الجلسة
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/conversations?chat_jid=${encodeURIComponent(activeConversation.chat_jid)}&instance=${encodeURIComponent(activeConversation.line_id || selectedInstanceName)}`,
+          { cache: 'no-store' }
+        );
+        if (!res.ok || !alive) return;
+        const json = await res.json();
+        const pins: any[] = json.pinned || [];
+        if (!alive || pins.length === 0) return;
+        const messagesList = messages;
+        const hydrated: ChatMessage[] = pins.map((p) => {
+          const live = messagesList.find((m) => m.id === p.id);
+          return live
+            ? { ...live, is_pinned: true, pinned_duration: p.duration }
+              : ({
+                  id: p.id,
+                  conversation_id: convId,
+                  chat_jid: activeConversation.chat_jid,
+                  direction: 'in',
+                  body: p.body || 'رسالة مثبتة',
+                  sender_name: p.sender || '',
+                  media_type: 'text',
+                  status: 'delivered',
+                  line_id: activeConversation.line_id || selectedInstanceName,
+                  created_at: p.pinned_at ? new Date(p.pinned_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : '',
+                  timestamp: p.pinned_at,
+                  is_pinned: true,
+                  pinned_duration: p.duration,
+                } as unknown as ChatMessage);
+        });
+        if (alive && hydrated.length > 0) {
+          setPinnedMessagesMap((prev) => (prev[convId] ? prev : { ...prev, [convId]: hydrated }));
+        }
+      } catch { /* صامت */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.chat_jid]);
 
   // ─── م8: حفظ سريع كجهة اتصال — يدعم المجموعات بالـ jid الحقيقي + فحص التسجيل من القاعدة ───
   const handleQuickSaveContact = async () => {
@@ -2824,9 +2915,76 @@ export function NativeChatInbox() {
 
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-[var(--text-main)]">
-                        {activeConversation.title}
-                      </span>
+                      {/* م8-ج3: اسم المحادثة قابل للضغط — قائمة خيارات سريعة */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setContactMenuOpen((v) => !v)}
+                          className="font-bold text-sm text-[var(--text-main)] hover:text-purple-300 transition-colors flex items-center gap-1"
+                          title="خيارات هذه الجهة"
+                        >
+                          {activeConversation.title}
+                          <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                        </button>
+
+                        {contactMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setContactMenuOpen(false)} />
+                            <div className="absolute right-0 mt-2 w-56 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-50 p-1.5" dir="rtl">
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  if (!isContactSaved) handleQuickSaveContact();
+                                }}
+                                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                                  isContactSaved ? 'text-emerald-300 bg-emerald-500/10 cursor-default' : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                                }`}
+                              >
+                                {isContactSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+                                {isContactSaved ? 'جهة اتصال مسجلة ✓' : 'حفظ كجهة اتصال'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  handleToggleFavorite(
+                                    {
+                                      id: activeConversation.id,
+                                      title: activeConversation.title,
+                                      subtitle: activeConversation.phone_or_jid,
+                                      meta: { chat_jid: activeConversation.chat_jid, instance_name: activeConversation.line_id || selectedInstanceName, is_group: activeConversation.is_group },
+                                    },
+                                    activeConversation.is_group ? 'group' : 'direct_chat'
+                                  );
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-amber-300 transition-colors"
+                              >
+                                <Star className="w-3.5 h-3.5" />
+                                إضافة للمفضلة
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  navigator.clipboard.writeText(activeConversation.phone_or_jid || activeConversation.chat_jid);
+                                  toast({ title: 'تم نسخ الرقم/المعرف', kind: 'success' });
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                نسخ الرقم / المعرف
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  setTagMenuOpen(true);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-cyan-300 transition-colors"
+                              >
+                                <Tags className="w-3.5 h-3.5" />
+                                وسوم المحادثة
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                       {activeConversation.is_group && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/40 text-purple-300 border border-purple-700/50">
                           {activeConversation.participant_count ? `مجموعة (${activeConversation.participant_count} عضو)` : 'مجموعة'}
@@ -4403,13 +4561,40 @@ export function NativeChatInbox() {
                         )}
                         <div className="text-[9px] text-purple-400/80 mt-1">{item.createdAt}</div>
                       </div>
-                      <button
-                        onClick={() => setFavoritesList((prev) => prev.filter((x) => x.id !== item.id))}
-                        className="text-slate-500 hover:text-rose-400 p-1 opacity-60 group-hover:opacity-100 transition-opacity"
-                        title="إزالة من المفضلة"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {/* م8-ج3: فتح العنصر — ينقل للمحادثة عبر الرابط العميق أو لجهات الاتصال */}
+                        <button
+                          onClick={() => {
+                            const meta: any = (item as any).meta || {};
+                            const jid = meta.chat_jid || meta.chatJid;
+                            setFavoritesDrawerOpen(false);
+                            if (jid) {
+                              router.push(`/inbox?chat=${encodeURIComponent(jid)}`);
+                            } else if (item.category === 'contact') {
+                              router.push('/module/contacts');
+                            } else {
+                              toast({ title: 'لا يوجد رابط محادثة محفوظ لهذا العنصر', kind: 'info' });
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-purple-600/20 text-purple-300 hover:bg-purple-600/40 transition-colors"
+                          title="فتح في المحادثة"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setFavoritesList((prev) => prev.filter((x) => x.id !== item.id));
+                            try {
+                              localStorage.setItem('hub_favorites_v1', JSON.stringify(favoritesList.filter((x) => x.id !== item.id)));
+                            } catch {}
+                            fetch(`/api/favorites?item_id=${encodeURIComponent(item.id)}&category=${item.category}`, { method: 'DELETE' }).catch(() => {});
+                          }}
+                          className="text-slate-500 hover:text-rose-400 p-1 opacity-60 group-hover:opacity-100 transition-opacity"
+                          title="إزالة من المفضلة"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))
               )}

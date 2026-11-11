@@ -17,7 +17,7 @@ alter table hub.contacts add column if not exists opt_out boolean not null defau
 alter table hub.conversations add column if not exists updated_at timestamptz not null default now();
 
 -- تحديث واجهة public.conversations لتشمل updated_at (نفس التعريف الحالي + العمود الجديد في النهاية)
-create or replace view public.conversations as
+create or replace view public.conversations with (security_invoker = true) as
   select id, chat_jid, line_id, contact_id, group_id, title, is_group,
          last_message_text, last_message_at, last_customer_message_at, unread_count,
          assigned_staff_id, status, locked_line_id, sla_warning_sent, escalated_at,
