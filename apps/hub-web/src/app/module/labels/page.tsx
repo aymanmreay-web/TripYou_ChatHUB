@@ -35,6 +35,7 @@ interface TagItem {
   name: string;
   hex_color: string;
   count: number;
+  scope?: 'contact' | 'conversation' | 'both';
 }
 
 interface StatusDef {
@@ -58,7 +59,10 @@ export default function LabelsAndTagsPage() {
   // New & Edit Tag
   const [newTagName, setNewTagName] = useState('');
   const [newTagHex, setNewTagHex] = useState('#8b5cf6');
+  // م8: نطاق الوسم — يحدد أين يظهر (جهات / محادثات / كلاهما)
+  const [newTagScope, setNewTagScope] = useState<'contact' | 'conversation' | 'both'>('both');
   const [editingTag, setEditingTag] = useState<TagItem | null>(null);
+  const [editingTagScope, setEditingTagScope] = useState<'contact' | 'conversation' | 'both'>('both');
 
   // Status Edit & Create Modal
   const [editingStatus, setEditingStatus] = useState<StatusDef | null>(null);
@@ -102,8 +106,9 @@ export default function LabelsAndTagsPage() {
   const handleAddTag = async () => {
     if (!newTagName.trim()) return;
     try {
-      await createTag(newTagName, newTagHex, tags.length + 1);
+      await createTag(newTagName, newTagHex, tags.length + 1, newTagScope);
       setNewTagName('');
+      setNewTagScope('both');
       await reloadTags();
       showNotification('تمت إضافة الوسم');
     } catch (e: any) {
@@ -115,7 +120,7 @@ export default function LabelsAndTagsPage() {
   const handleSaveEditTag = async () => {
     if (!editingTag || !editingTag.name.trim()) return;
     try {
-      await updateTag(editingTag.id, editingTag.name, editingTag.hex_color);
+      await updateTag(editingTag.id, editingTag.name, editingTag.hex_color, editingTagScope);
       setEditingTag(null);
       await reloadTags();
       showNotification('تم تعديل الوسم');
@@ -301,7 +306,28 @@ export default function LabelsAndTagsPage() {
                   />
                 </div>
 
-                <div className="sm:col-span-2">
+                {/* م8: نطاق تطبيق الوسم */}
+                <div className="sm:col-span-6 space-y-1">
+                  <label className="text-xs text-slate-300">نطاق التطبيق — أين يظهر هذا الوسم؟</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([['contact', '🏷 جهات الاتصال'], ['conversation', '💬 المحادثات'], ['both', '🔀 كلاهما']] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setNewTagScope(val)}
+                        className={`py-2 rounded-xl text-[11px] font-bold transition-all ${
+                          newTagScope === val
+                            ? 'bg-purple-600 text-white shadow-md'
+                            : 'bg-slate-900 border border-slate-700 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="sm:col-span-6">
                   <button
                     onClick={handleAddTag}
                     className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md"
@@ -346,14 +372,22 @@ export default function LabelsAndTagsPage() {
                     <div>
                       <span className="text-xs font-bold text-[var(--text-main)]">{t.name}</span>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {t.count} محادثة
+                        {t.count} استخدام
                       </div>
+                      {t.scope && t.scope !== 'both' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 mt-1 inline-block">
+                          {t.scope === 'contact' ? '🏷 جهات' : '💬 محادثات'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => setEditingTag(t)}
+                      onClick={() => {
+                        setEditingTag(t);
+                        setEditingTagScope(t.scope || 'both');
+                      }}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10 transition-colors"
                       title="تعديل"
                     >
@@ -399,6 +433,27 @@ export default function LabelsAndTagsPage() {
                       onChange={(hex) => setEditingTag({ ...editingTag, hex_color: hex })}
                       label="اللون المختار:"
                     />
+                  </div>
+
+                  {/* م8: نطاق التطبيق */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">نطاق التطبيق:</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([['contact', '🏷 جهات'], ['conversation', '💬 محادثات'], ['both', '🔀 كلاهما']] as const).map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setEditingTagScope(val)}
+                          className={`py-1.5 rounded-xl text-[10px] font-bold transition-all ${
+                            editingTagScope === val
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-slate-900 border border-slate-700 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-purple-900/30">

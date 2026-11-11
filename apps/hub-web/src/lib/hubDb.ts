@@ -156,35 +156,54 @@ export interface TagRow {
   name: string;
   hex_color: string;
   count: number;
+  /** نطاق التطبيق: contact | conversation | both (م8: الوسوم الموسعة) */
+  scope?: 'contact' | 'conversation' | 'both';
 }
 
 export async function fetchTags(): Promise<TagRow[]> {
-  const [tg, ct] = await Promise.all([
+  const [tg, ct, ctt] = await Promise.all([
     supabase.from('hub_tags').select('*').neq('kind', 'whatsapp').order('sort_order').order('created_at'),
     supabase.from('conversation_tags').select('tag_id'),
+    supabase.from('contact_tags').select('tag_id'),
   ]);
   const tags = check(tg) as any[];
-  const used = check(ct) as any[];
+  const usedConv = check(ct) as any[];
+  const usedContact = check(ctt) as any[];
   return (tags ?? []).map((t) => ({
     id: t.id,
     name: t.name_ar,
     hex_color: t.color || '#8b5cf6',
-    count: (used ?? []).filter((u) => u.tag_id === t.id).length,
+    scope: (t.scope as TagRow['scope']) || 'both',
+    count:
+      (usedConv ?? []).filter((u) => u.tag_id === t.id).length +
+      (usedContact ?? []).filter((u) => u.tag_id === t.id).length,
   }));
 }
 
-export async function createTag(name: string, hex: string, sortOrder = 0): Promise<void> {
+export async function createTag(
+  name: string,
+  hex: string,
+  sortOrder = 0,
+  scope: 'contact' | 'conversation' | 'both' = 'both'
+): Promise<void> {
   check(
     await supabase
       .from('hub_tags')
-      .insert({ key: `tag_${Date.now().toString(36)}`, name_ar: name.trim(), color: hex, kind: 'custom', sort_order: sortOrder })
+      .insert({ key: `tag_${Date.now().toString(36)}`, name_ar: name.trim(), color: hex, kind: 'custom', sort_order: sortOrder, scope })
       .select('id')
   );
 }
 
-export async function updateTag(id: string, name: string, hex: string): Promise<void> {
+export async function updateTag(
+  id: string,
+  name: string,
+  hex: string,
+  scope?: 'contact' | 'conversation' | 'both'
+): Promise<void> {
+  const payload: Record<string, any> = { name_ar: name.trim(), color: hex };
+  if (scope) payload.scope = scope;
   const rows = check(
-    await supabase.from('hub_tags').update({ name_ar: name.trim(), color: hex }).eq('id', id).select('id')
+    await supabase.from('hub_tags').update(payload).eq('id', id).select('id')
   ) as any[];
   if (!rows || rows.length === 0) throw new Error('الوسم غير موجود');
 }

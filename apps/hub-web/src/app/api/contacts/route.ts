@@ -6,6 +6,8 @@ import { getSupabaseAdmin } from '../../../lib/supabase';
  * تدعم الأرقام السعودية والخليجية والدولية
  */
 function normalizePhoneE164(phone: string): string {
+  // م8: معرفات المجموعات وغيرها من jids تُمرر كما هي دون تخريب
+  if (phone.includes('@')) return phone.trim();
   let cleaned = phone.replace(/[^0-9]/g, '');
   if (!cleaned) return '';
 
@@ -38,8 +40,25 @@ export async function GET(req: NextRequest) {
     const source = searchParams.get('source');           // evolution | excel_import | contacts_file | system | manual
     const city = searchParams.get('city');
     const isFavorite = searchParams.get('favorite');
+    const tagFilter = searchParams.get('tag') || ''; // م8: فلتر وسم مركزي (بالاسم من قسم الوسوم)
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 500);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
+
+    // م8: فلترة بالوسم المركزي — نحصل على معرفات الجهات من hub.contact_tags مباشرة
+    let filteredByTagIds: string[] | null = null;
+    if (tagFilter.trim()) {
+      const { q: pgQ } = await import('../../../lib/pg');
+      const rows = await pgQ<{ contact_id: string }>(
+        `select ct.contact_id from hub.contact_tags ct
+         join hub.hub_tags t on t.id = ct.tag_id
+         where t.name_ar = $1 limit 5000`,
+        [tagFilter.trim()]
+      );
+      filteredByTagIds = rows.map((r) => r.contact_id);
+      if (filteredByTagIds.length === 0) {
+        return NextResponse.json({ contacts: [], total: 0, limit, offset });
+      }
+    }
 
     const supabase = getSupabaseAdmin();
     let query = supabase
@@ -74,6 +93,10 @@ export async function GET(req: NextRequest) {
 
     if (entityType && entityType !== 'all') {
       query = query.eq('entity_type', entityType);
+    }
+    // م8: تطبيق فلتر الوسم المركزي على معرفات الجهات
+    if (filteredByTagIds) {
+      query = query.in('id', filteredByTagIds);
     }
     if (role && role !== 'all') {
       query = query.eq('commercial_role', role);
@@ -130,6 +153,7 @@ export async function POST(req: NextRequest) {
       source = 'manual',
       source_detail,
       primary_phone,
+      wa_jid, // م8: معرف واتساب حقيقي (للمجموعات وأفراد LID) — يُخزن في العمود المخصص
       email,
       country_code = 'SA',
       city,
@@ -140,15 +164,43 @@ export async function POST(req: NextRequest) {
       tags = [],
     } = body;
 
-    if (!display_name && !primary_phone) {
+    const isWaJid = typeof wa_jid === 'string' && wa_jid.includes('@');
+
+    if (!display_name && !primary_phone && !wa_jid) {
       return NextResponse.json({ error: 'الاسم أو رقم الهاتف مطلوب على الأقل' }, { status: 400 });
     }
 
     const normalizedPhone = primary_phone ? normalizePhoneE164(primary_phone) : null;
     const supabase = getSupabaseAdmin();
 
+    // ── م8: فحص عدم التكرار أولاً عبر معرف واتساب (للمجموعات) ──
+    if (isWaJid) {
+      const { data: byJid } = await supabase
+        .from('contacts')
+        .select('id, display_name')
+        .eq('wa_jid', wa_jid)
+        .maybeSingle();
+
+      if (byJid) {
+        const { data: updated, error: updateErr } = await supabase
+          .from('contacts')
+          .update({
+            display_name: display_name || byJid.display_name,
+            source_detail: source_detail || undefined,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', byJid.id)
+          .select()
+          .single();
+        if (updateErr) {
+          return NextResponse.json({ error: updateErr.message }, { status: 500 });
+        }
+        return NextResponse.json({ contact: updated, is_merged: true });
+      }
+    }
+
     // ── فحص عدم التكرار (Deduplication) عبر رقم الهاتف ──
-    if (normalizedPhone) {
+    if (normalizedPhone && !normalizedPhone.includes('@')) {
       const { data: existing } = await supabase
         .from('contacts')
         .select('id, display_name, source, source_detail')
@@ -186,14 +238,16 @@ export async function POST(req: NextRequest) {
     }
 
     // ── إنشاء جهة اتصال جديدة بالكامل ──
-    const insertPayload = {
-      display_name: display_name || normalizedPhone || 'جهة اتصال جديدة',
+    const insertPayload: Record<string, any> = {
+      display_name: display_name || normalizedPhone || wa_jid || 'جهة اتصال جديدة',
       company: company || null,
       entity_type,
       commercial_role,
       source,
       source_detail: source_detail || (source === 'manual' ? 'إدخال يدوي من لوحة التحكم' : null),
-      primary_phone: normalizedPhone,
+      primary_phone: normalizedPhone && !normalizedPhone.includes('@') ? normalizedPhone : null,
+      // م8: معرف واتساب في عموده المخصص — المجموعات لا تُخزن jid في حقل الهاتف
+      wa_jid: isWaJid ? wa_jid : null,
       email: email || null,
       country_code,
       city: city || null,
@@ -206,6 +260,10 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
       last_activity_at: new Date().toISOString(),
     };
+    // kind مطلوب بقيد القاعدة
+    if (entity_type === 'group') insertPayload.kind = 'group_entity';
+    else if (entity_type === 'organization') insertPayload.kind = 'business';
+    else insertPayload.kind = 'individual';
 
     const { data: newContact, error: insertErr } = await supabase
       .from('contacts')

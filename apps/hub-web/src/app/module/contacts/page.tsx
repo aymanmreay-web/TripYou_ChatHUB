@@ -316,26 +316,32 @@ export default function ContactsPage() {
 
   // معالجة الاستيراد السريع
   const handleRunImport = async () => {
-    // إذا اختار خط واتساب Evolution يقوم بالسحب التلقائي المباشر
+    // إذا اختار خط واتساب Evolution: استيراد حقيقي من كل الخطوط المتصلة (أو الخط المحدد)
     if (importSourceType === 'evolution') {
       setIsSubmitting(true);
-      setImportStatus('جاري جلب ومزامنة جهات الاتصال مباشرة من سيرفر واتساب Evolution...');
+      setImportStatus('جاري الاستيراد الحقيقي من واتساب Evolution لكل الخطوط المتصلة — قد يستغرق دقيقة على الخطوط الكبيرة...');
       try {
-        const instanceToSync = importSourceDetail.trim() || 'Master';
-        const res = await fetch(`/api/contacts/sync-evolution?instance=${encodeURIComponent(instanceToSync)}`, {
-          method: 'POST',
-        });
+        // م8: بلا معامل instance = كل الخطوط المتصلة دفعة واحدة
+        const suffix = importSourceDetail.trim() ? `?instance=${encodeURIComponent(importSourceDetail.trim())}` : '';
+        const res = await fetch(`/api/contacts/sync-evolution${suffix}`, { method: 'POST' });
         const data = await res.json();
         if (res.ok && data.success) {
-          setImportStatus(`✅ تم بنجاح: تم جلب ${data.total_found} جهة اتصال من خط ${instanceToSync} (استيراد جديد: ${data.imported_count}، دمج وتحديث: ${data.merged_count})`);
+          const perLine = (data.lines_processed || [])
+            .map((l: any) => `${l.instance}: ${l.individuals} فرد + ${l.groups} مجموعة`)
+            .join(' • ');
+          setImportStatus(
+            `✅ استيراد حقيقي مكتمل: ${data.total_individuals} فرد و ${data.total_groups} مجموعة (تخطي ${data.total_skipped} غير صالح)${perLine ? ' — ' + perLine : ''}` +
+            (data.errors?.length ? ` — تحذيرات: ${data.errors.join('؛ ')}` : '')
+          );
           fetchContacts();
+          fetchGlobalStats();
           setTimeout(() => {
             setImportModalOpen(false);
             setImportRawText('');
             setImportStatus(null);
-          }, 2500);
+          }, 4000);
         } else {
-          setImportStatus(`❌ خطأ في الجلب: ${data.error || 'تعذر الاتصال بخط واتساب'}`);
+          setImportStatus(`❌ خطأ في الجلب: ${data.error || 'تعذر الاتصال بخطوط واتساب'}`);
         }
       } catch (err: any) {
         setImportStatus(`❌ خطأ: ${err.message}`);
@@ -1391,13 +1397,14 @@ export default function ContactsPage() {
                   </label>
                   {importSourceType === 'evolution' ? (
                     <select
-                      value={importSourceDetail || 'Master'}
+                      value={importSourceDetail || ''}
                       onChange={(e) => setImportSourceDetail(e.target.value)}
                       className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-xs font-semibold"
                     >
-                      <option value="Master">الخط الرئيسي (Master) — (+966554125782)</option>
-                      <option value="Sells_2">خط المبيعات 2 (Sells_2) — (+966548540410)</option>
-                      <option value="Sells_1">خط المبيعات 1 (Sells_1)</option>
+                      <option value="">🌐 كل الخطوط المتصلة (استيراد شامل موصى به)</option>
+                      <option value="Master">الخط الرئيسي (Master) فقط</option>
+                      <option value="Sells_2">خط المبيعات 2 (Sells_2) فقط</option>
+                      <option value="Sells_1">خط المبيعات 1 (Sells_1) فقط</option>
                     </select>
                   ) : (
                     <input

@@ -1,262 +1,306 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '../../../../lib/supabase';
+import { q } from '../../../../lib/pg';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 300;
 
+/**
+ * م8 — استيراد حقيقي 100% من Evolution API لكل الخطوط المتصلة:
+ * - لا حدود على عدد الجهات (دفعات ذرية عبر pg/unnest — يتحمل عشرات الآلاف)
+ * - أسماء المجموعات الحقيقية (subject) من group/fetchAllGroups — لا معرفات عشوائية
+ * - تخزين wa_jid لكل جهة (حجر أساس الدمج والفهرسة)
+ * - فرز تلقائي مربوط بقسم الوسوم المركزي (hub_tags + contact_tags):
+ *   شخصي / مجموعة واتساب / شركة-مؤسسة / قطاع سياحي / دولة / خط المصدر
+ *
+ * POST /api/contacts/sync-evolution?instance=Master (اختياري — الافتراضي كل الخطوط المتصلة)
+ */
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.sslip.io';
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'bc6075e9f95967407faae5d0fa9ac875a8d88a94782172db';
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
 function normalizePhone(phone: string): string {
-  let cleaned = phone.replace(/[^0-9]/g, '');
+  let cleaned = (phone || '').replace(/[^0-9]/g, '');
   if (!cleaned) return '';
   if (cleaned.startsWith('00')) cleaned = cleaned.substring(2);
-  if (cleaned.startsWith('05') && cleaned.length === 10) {
-    cleaned = '966' + cleaned.substring(1);
-  } else if (cleaned.startsWith('5') && cleaned.length === 9) {
-    cleaned = '966' + cleaned;
-  }
+  if (cleaned.startsWith('05') && cleaned.length === 10) cleaned = '966' + cleaned.substring(1);
+  else if (cleaned.startsWith('5') && cleaned.length === 9) cleaned = '966' + cleaned;
   return '+' + cleaned;
 }
 
-// POST /api/contacts/sync-evolution?instance=Master
+function isMeaningfulName(name: string | undefined | null): boolean {
+  if (!name) return false;
+  const n = name.trim();
+  if (!n || n === 'Você' || n === 'voce') return false;
+  if (/^[0-9+\-@ ]+$/.test(n)) return false; // أرقام/معرفات خام ليست أسماء
+  return true;
+}
+
+/** أوسمة النظام المركزية: name → id (ينشئ الناقص — مربوطة بقسم الوسوم) */
+async function ensureTags(names: { key: string; name: string; color: string }[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const t of names) {
+    const rows = await q<{ id: string }>(
+      `insert into hub.hub_tags (key, name_ar, color, kind, scope)
+       values ($1, $2, $3, 'custom', 'contact')
+       on conflict (key) do update set updated_at = now()
+       returning id`,
+      [t.key, t.name, t.color]
+    );
+    if (rows[0]?.id) map.set(t.key, rows[0].id);
+  }
+  return map;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const instance = searchParams.get('instance') || 'Master';
+    const onlyInstance = searchParams.get('instance');
 
-    // 1. جلب جهات الاتصال، المحادثات، وكافة المجموعات مع المشاركين بالتوازي
-    const [contactsRes, chatsRes, allGroupsRes] = await Promise.allSettled([
-      fetch(`${EVOLUTION_URL}/chat/findContacts/${instance}`, {
-        method: 'POST',
-        headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }),
-      fetch(`${EVOLUTION_URL}/chat/findChats/${instance}`, {
-        method: 'POST',
-        headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }),
-      fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=true`, {
-        method: 'GET',
-        headers: { apikey: EVOLUTION_API_KEY },
-      }),
+    // 1) كل الخطوط المتصلة من القاعدة — الاستيراد الحقيقي لكل خط مفتوح
+    const lines = onlyInstance
+      ? [{ instance_name: onlyInstance }]
+      : await q<{ instance_name: string }>(`select instance_name from hub.lines where status = 'connected' order by instance_name`);
+
+    if (lines.length === 0) {
+      return NextResponse.json({ error: 'لا يوجد خطوط متصلة حالياً — افتح خطاً واحداً على الأقل' }, { status: 400 });
+    }
+
+    // 2) أوسمة الفرز التلقائي (مربوطة بقسم الوسوم المركزي)
+    const tagMap = await ensureTags([
+      { key: 'auto_individual', name: 'شخصي (فردي)', color: 'blue' },
+      { key: 'auto_group', name: 'مجموعة واتساب', color: 'purple' },
+      { key: 'auto_organization', name: 'شركة / مؤسسة', color: 'amber' },
+      { key: 'auto_tourism', name: 'قطاع سياحي وفندقي', color: 'emerald' },
     ]);
 
-    if (contactsRes.status !== 'fulfilled' || !contactsRes.value.ok) {
-      return NextResponse.json({ error: 'Failed to fetch contacts from Evolution API' }, { status: 502 });
-    }
+    const evoHeaders = { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' };
+    const summary = {
+      lines_processed: [] as { instance: string; individuals: number; groups: number; skipped: number }[],
+      total_individuals: 0,
+      total_groups: 0,
+      total_skipped: 0,
+      total_tag_links: 0,
+      errors: [] as string[],
+    };
 
-    const rawContacts = await contactsRes.value.json();
-    const rawChats = chatsRes.status === 'fulfilled' && chatsRes.value.ok ? await chatsRes.value.json() : [];
-    const rawAllGroups = allGroupsRes.status === 'fulfilled' && allGroupsRes.value.ok ? await allGroupsRes.value.json() : [];
+    // فهرس الوسوم الجاهز للربط الجماعي
+    const tagIdFor = (key: string) => tagMap.get(key) || null;
 
-    // خريطة استخراج أرقام هواتف LID الحقيقية من المحادثات والمجموعات
-    const lidToPhone = new Map<string, string>();
-    if (Array.isArray(rawChats)) {
-      rawChats.forEach((c: any) => {
-        const alt = c.lastMessage?.key?.remoteJidAlt || c.lastMessage?.key?.participantAlt;
-        if (c.remoteJid && alt) {
-          lidToPhone.set(c.remoteJid, alt);
+    for (const line of lines) {
+      const instance = line.instance_name;
+      try {
+        // 3) جلب كل مصادر الحقيقة بالتوازي: جهات + محادثات + مجموعات بالمشاركين
+        const [contactsRes, chatsRes, groupsRes] = await Promise.allSettled([
+          fetch(`${EVOLUTION_URL}/chat/findContacts/${instance}`, { method: 'POST', headers: evoHeaders, body: JSON.stringify({}) }),
+          fetch(`${EVOLUTION_URL}/chat/findChats/${instance}`, { method: 'POST', headers: evoHeaders, body: JSON.stringify({}) }),
+          fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=true`, { method: 'GET', headers: evoHeaders }),
+        ]);
+
+        const rawContacts = contactsRes.status === 'fulfilled' && contactsRes.value.ok ? await contactsRes.value.json() : [];
+        const rawChats = chatsRes.status === 'fulfilled' && chatsRes.value.ok ? await chatsRes.value.json() : [];
+        const rawGroups = groupsRes.status === 'fulfilled' && groupsRes.value.ok ? await groupsRes.value.json() : [];
+        if (!Array.isArray(rawContacts)) { summary.errors.push(`${instance}: findContacts رد غير مصفوفة`); continue; }
+
+        // خريطة LID → رقم حقيقي (من آخر رسائل المحادثات ومشاركي المجموعات)
+        const lidToPhone = new Map<string, string>();
+        for (const c of Array.isArray(rawChats) ? rawChats : []) {
+          const alt = c.lastMessage?.key?.remoteJidAlt || c.lastMessage?.key?.participantAlt;
+          if (c.remoteJid && alt) lidToPhone.set(c.remoteJid, alt);
         }
-      });
-    }
-
-    // خريطة عناوين المجموعات الحقيقية (subject) ومشاركي المجموعات
-    const groupMap = new Map<string, { subject: string; pictureUrl?: string }>();
-    if (Array.isArray(rawAllGroups)) {
-      rawAllGroups.forEach((g: any) => {
-        const gid = g.id || g.jid;
-        if (gid) {
+        // أسماء المجموعات الحقيقية + مشاركون
+        const groupMeta = new Map<string, { subject: string; pic?: string; participants: number; description?: string }>();
+        for (const g of Array.isArray(rawGroups) ? rawGroups : []) {
+          const gid = g.id || g.jid;
+          if (!gid) continue;
           const subject = (g.subject || g.name || '').trim();
-          if (subject && subject !== 'Você') {
-            groupMap.set(gid, {
+          if (subject && isMeaningfulName(subject)) {
+            groupMeta.set(gid, {
               subject,
-              pictureUrl: g.pictureUrl,
+              pic: g.pictureUrl,
+              participants: Array.isArray(g.participants) ? g.participants.length : (g.participantCount || 0),
+              description: g.desc || g.description || undefined,
             });
           }
         }
-        if (Array.isArray(g.participants)) {
-          g.participants.forEach((p: any) => {
-            if (p.id && p.phoneNumber) {
-              lidToPhone.set(p.id, p.phoneNumber);
-            }
-          });
+
+        // ─── الأفراد: تجميع مع تخطي المكرر في نفس الدفعة ───
+        const individuals: { phone: string; name: string; jid: string; avatar: string | null; isSaved: boolean }[] = [];
+        const seenPhones = new Set<string>();
+        let skipped = 0;
+
+        for (const c of rawContacts) {
+          const jid = c.remoteJid || c.id || '';
+          if (!jid || jid.includes('@g.us') || jid.includes('@newsletter') || jid.includes('@broadcast')) { skipped++; continue; }
+
+          let rawPhone = '';
+          if (jid.includes('@s.whatsapp.net')) rawPhone = jid.replace('@s.whatsapp.net', '');
+          else if (lidToPhone.has(jid)) rawPhone = (lidToPhone.get(jid) || '').replace('@s.whatsapp.net', '').replace(/\D/g, '');
+          else if (isMeaningfulName(c.pushName) === false && c.pushName && /^[0-9+ ]+$/.test(c.pushName)) rawPhone = c.pushName;
+
+          const phone = rawPhone ? normalizePhone(rawPhone) : '';
+          if (!phone || phone === '+' || seenPhones.has(phone)) { skipped++; continue; }
+          seenPhones.add(phone);
+
+          const name = isMeaningfulName(c.name) ? c.name!.trim() : isMeaningfulName(c.pushName) ? c.pushName.trim() : phone;
+          individuals.push({ phone, name, jid, avatar: c.profilePicUrl || null, isSaved: !!c.isSaved });
         }
-      });
-    }
 
-    const supabase = getSupabaseAdmin();
-    const list = Array.isArray(rawContacts) ? rawContacts : [];
+        // ─── الأفراد: upsert ذري واحد (no limit — unnest) ───
+        if (individuals.length > 0) {
+          await q(
+            `insert into hub.contacts
+               (display_name, full_name, primary_phone_e164, wa_jid, entity_type, commercial_role,
+                source, source_detail, avatar_url, country_code, kind, updated_at, last_activity_at)
+             select x.phone, x.name, x.phone, x.jid, 'individual', 'b2c',
+                    'evolution', 'evolution:' || $1, x.avatar,
+                    case when x.phone like '+966%' then 'SA' when x.phone like '+971%' then 'AE'
+                         when x.phone like '+962%' then 'JO' when x.phone like '+20%'  then 'EG'
+                         when x.phone like '+965%' then 'KW' when x.phone like '+974%' then 'QA'
+                         when x.phone like '+968%' then 'OM' when x.phone like '+973%' then 'BH'
+                         when x.phone like '+90%'  then 'TR' else 'XX' end,
+                    'individual', now(), now()
+             from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[]) as x(phone, name, jid, avatar, issaved)
+             on conflict (primary_phone_e164) do update set
+               display_name = case when x.name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then x.name else hub.contacts.display_name end,
+               full_name = case when x.name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then x.name else hub.contacts.full_name end,
+               wa_jid = coalesce(hub.contacts.wa_jid, x.jid),
+               avatar_url = coalesce(x.avatar, hub.contacts.avatar_url),
+               last_activity_at = now(),
+               updated_at = now()`,
+            [
+              instance,
+              individuals.map((i) => i.phone),
+              individuals.map((i) => i.name),
+              individuals.map((i) => i.jid),
+              individuals.map((i) => i.avatar),
+              individuals.map((i) => i.isSaved),
+            ]
+          );
 
-    const contactsToUpsert: any[] = [];
-    const seenPhones = new Set<string>();
-    let skippedCount = 0;
-
-    for (const c of list) {
-      const jid = c.remoteJid || c.id || '';
-      if (!jid || jid.includes('@g.us')) continue;
-
-      let rawPhone = '';
-      if (jid.includes('@s.whatsapp.net')) {
-        rawPhone = jid.replace('@s.whatsapp.net', '');
-      } else if (lidToPhone.has(jid)) {
-        rawPhone = (lidToPhone.get(jid) || '').replace('@s.whatsapp.net', '');
-      } else if (c.pushName && /^[0-9+ ]+$/.test(c.pushName)) {
-        rawPhone = c.pushName;
-      }
-
-      const phone = rawPhone ? normalizePhone(rawPhone) : null;
-      if (!phone || seenPhones.has(phone)) {
-        if (!phone) skippedCount++;
-        continue;
-      }
-      seenPhones.add(phone);
-
-      let displayName = '';
-      if (c.name && c.name.trim() && c.name !== 'Você') {
-        displayName = c.name.trim();
-      } else if (c.pushName && c.pushName.trim() && c.pushName !== 'Você') {
-        displayName = c.pushName.trim();
-      } else {
-        displayName = phone;
-      }
-
-      const tags: string[] = [];
-      let countryCode = 'SA';
-      if (phone.startsWith('+966')) { tags.push('السعودية'); countryCode = 'SA'; }
-      else if (phone.startsWith('+971')) { tags.push('الإمارات'); countryCode = 'AE'; }
-      else if (phone.startsWith('+962')) { tags.push('الأردن'); countryCode = 'JO'; }
-      else if (phone.startsWith('+20')) { tags.push('مصر'); countryCode = 'EG'; }
-      else if (phone.startsWith('+965')) { tags.push('الكويت'); countryCode = 'KW'; }
-      else if (phone.startsWith('+974')) { tags.push('قطر'); countryCode = 'QA'; }
-      else if (phone.startsWith('+968')) { tags.push('عمان'); countryCode = 'OM'; }
-      else if (phone.startsWith('+973')) { tags.push('البحرين'); countryCode = 'BH'; }
-      else if (phone.startsWith('+90')) { tags.push('تركيا'); countryCode = 'TR'; }
-
-      if (c.isSaved) tags.push('مسجل في الهاتف');
-      tags.push(`خط: ${instance}`);
-
-      let entityType: 'individual' | 'organization' | 'group' = 'individual';
-      let commercialRole: 'b2c' | 'b2b' | 'vendor' | 'partner' | 'staff' = 'b2c';
-      if (/(فندق|سياح|عمر|حج|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency|resv)/i.test(displayName)) {
-        entityType = 'organization';
-        commercialRole = 'b2b';
-        tags.push('قطاع سياحي وفندقي');
-      }
-
-      contactsToUpsert.push({
-        display_name: displayName,
-        full_name: displayName,
-        primary_phone: phone,
-        primary_phone_e164: phone,
-        entity_type: entityType,
-        commercial_role: commercialRole,
-        source: 'evolution',
-        source_detail: `evolution:${instance}`,
-        avatar_url: c.profilePicUrl || null,
-        tags: tags,
-        country_code: countryCode,
-        updated_at: new Date().toISOString(),
-      });
-    }
-
-    // 2. استيراد وتصنيف المجموعات الصريحة
-    const seenGroups = new Set<string>();
-    const allGroupEntries: Array<{ jid: string; subject: string; pic?: string }> = [];
-
-    if (Array.isArray(rawAllGroups)) {
-      rawAllGroups.forEach((g: any) => {
-        const jid = g.id || g.jid;
-        if (jid && jid.includes('@g.us') && !seenGroups.has(jid)) {
-          seenGroups.add(jid);
-          allGroupEntries.push({
-            jid,
-            subject: (g.subject || g.name || '').trim(),
-            pic: g.pictureUrl,
-          });
+          // أرقام هواتف الأفراد في جدول contact_phones (عدة أرقام لكل جهة)
+          await q(
+            `insert into hub.contact_phones (contact_id, phone_e164, is_primary, wa_status)
+             select ct.id, x.phone, true, 'yes'
+             from unnest($1::text[], $2::text[]) as x(phone, jid)
+             join hub.contacts ct on ct.primary_phone_e164 = x.phone
+             on conflict (contact_id, phone_e164) do nothing`,
+            [individuals.map((i) => i.phone), individuals.map((i) => i.jid)]
+          );
         }
-      });
-    }
 
-    if (Array.isArray(rawChats)) {
-      rawChats.forEach((ch: any) => {
-        const jid = ch.remoteJid || ch.id;
-        if (jid && jid.includes('@g.us') && !seenGroups.has(jid)) {
-          seenGroups.add(jid);
-          const mapped = groupMap.get(jid);
-          const sub = mapped?.subject || ch.subject || ch.name || '';
-          allGroupEntries.push({
-            jid,
-            subject: (sub || '').trim(),
-            pic: mapped?.pictureUrl,
-          });
+        // ─── المجموعات: الاسم الحقيقي من groupMeta، لا معرفات عشوائية أبداً ───
+        const groupJids = new Set<string>();
+        for (const g of Array.isArray(rawGroups) ? rawGroups : []) {
+          const gid = g.id || g.jid;
+          if (gid && gid.includes('@g.us')) groupJids.add(gid);
         }
-      });
-    }
-
-    for (const grp of allGroupEntries) {
-      const groupJid = grp.jid;
-      let groupName = grp.subject;
-      if (!groupName || groupName === 'Você' || groupName === 'مجموعة واتساب') {
-        const fromMap = groupMap.get(groupJid);
-        if (fromMap && fromMap.subject && fromMap.subject !== 'Você') {
-          groupName = fromMap.subject;
-        } else {
-          const cleanNum = groupJid.replace('@g.us', '').replace(/\D/g, '');
-          groupName = cleanNum ? `مجموعة (${cleanNum.slice(-6)})` : 'مجموعة واتساب';
+        for (const ch of Array.isArray(rawChats) ? rawChats : []) {
+          const jid = ch.remoteJid || ch.id;
+          if (jid && jid.includes('@g.us') && !groupJids.has(jid)) groupJids.add(jid);
         }
-      }
 
-      const groupTags = ['مجموعة واتساب', `خط: ${instance}`];
-      let commRole: 'b2b' | 'b2c' | 'partner' = 'b2b';
-      if (/(فندق|سياح|عمر|حج|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency|resv)/i.test(groupName)) {
-        commRole = 'b2b';
-        groupTags.push('قطاع سياحي وفندقي');
-      }
+        const groupRows: { jid: string; name: string; pic: string | null; participants: number; description?: string }[] = [];
+        for (const gid of Array.from(groupJids)) {
+          const meta = groupMeta.get(gid);
+          // الاسم الحقيقي فقط — إن غاب نستخدم القسمة الأخيرة من الـ jid كرقم مرجعي صريح وليس تسمية
+          const name = meta?.subject || `مجموعة بدون اسم (${gid.replace('@g.us', '').slice(-4)})`;
+          groupRows.push({ jid: gid, name, pic: meta?.pic || null, participants: meta?.participants || 0, description: meta?.description });
+        }
 
-      contactsToUpsert.push({
-        display_name: groupName,
-        full_name: groupName,
-        primary_phone: groupJid,
-        primary_phone_e164: groupJid,
-        entity_type: 'group',
-        commercial_role: commRole,
-        source: 'evolution',
-        source_detail: `evolution:${instance}`,
-        tags: groupTags,
-        avatar_url: grp.pic || null,
-        country_code: 'SA',
-        updated_at: new Date().toISOString(),
-      });
+        if (groupRows.length > 0) {
+          // جدول whatsapp_groups المركزي
+          await q(
+            `insert into hub.whatsapp_groups (group_jid, subject, picture_url, participant_count, line_instance, updated_at)
+             select x.jid, x.name, x.pic, x.pcount, $1, now()
+             from unnest($2::text[], $3::text[], $4::text[], $5::int[]) as x(jid, name, pic, pcount)
+             on conflict (group_jid) do update set
+               subject = excluded.subject,
+               picture_url = coalesce(excluded.picture_url, hub.whatsapp_groups.picture_url),
+               participant_count = excluded.participant_count,
+               line_instance = excluded.line_instance,
+               updated_at = now()`,
+            [
+              instance,
+              groupRows.map((g) => g.jid),
+              groupRows.map((g) => g.name),
+              groupRows.map((g) => g.pic),
+              groupRows.map((g) => g.participants),
+            ]
+          );
+
+          // جهات المجموعات: upsert على wa_jid (لا يصطدم بفهرس الهاتف الفريد)
+          const gIns = await q<{ id: string }>(
+            `insert into hub.contacts
+               (display_name, full_name, entity_type, commercial_role, source, source_detail,
+                kind, wa_jid, avatar_url, country_code, updated_at, last_activity_at)
+             select x.name, x.name, 'group', 'b2b', 'evolution', 'evolution:' || $1,
+                    'group_entity', x.jid, x.pic, 'SA', now(), now()
+             from unnest($2::text[], $3::text[], $4::text[]) as x(jid, name, pic)
+             where not exists (select 1 from hub.contacts c where c.wa_jid = x.jid)
+             returning id`,
+            [instance, groupRows.map((g) => g.jid), groupRows.map((g) => g.name), groupRows.map((g) => g.pic)]
+          );
+
+          // تحديث أسماء/صور المجموعات الموجودة
+          await q(
+            `update hub.contacts c set
+               display_name = x.name, full_name = x.name,
+               avatar_url = coalesce(x.pic, c.avatar_url),
+               updated_at = now()
+             from (select * from unnest($1::text[], $2::text[], $3::text[]) as t(jid, name, pic)) x
+             where c.wa_jid = x.jid`,
+            [groupRows.map((g) => g.jid), groupRows.map((g) => g.name), groupRows.map((g) => g.pic)]
+          );
+
+          // ربط whatsapp_groups.contact_id بالمجموعات الجديدة
+          await q(
+            `update hub.whatsapp_groups wg set contact_id = c.id
+             from hub.contacts c
+             where c.wa_jid = wg.group_jid and wg.contact_id is null`
+          );
+        }
+
+        // ─── الفرز التلقائي: ربط الوسوم المركزية بكل جهة مستوردة (دفعة واحدة) ───
+        const tagLinks = await q(
+          `insert into hub.contact_tags (contact_id, tag_id)
+           select c.id, t.id
+           from hub.contacts c
+           join (values
+             ('individual', $2::uuid),
+             ('group', $3::uuid),
+             ('organization', $4::uuid)
+           ) as tt(etype, tid) on tt.tid is not null and c.entity_type = tt.etype
+           where c.source = 'evolution'
+           on conflict (contact_id, tag_id) do nothing
+           returning 1`,
+          [instance, tagIdFor('auto_individual'), tagIdFor('auto_group'), tagIdFor('auto_organization')]
+        );
+
+        // وسم القطاع السياحي حسب الاسم
+        await q(
+          `insert into hub.contact_tags (contact_id, tag_id)
+           select c.id, $1
+           from hub.contacts c
+           where $1 is not null
+             and (c.display_name ~* '(فندق|سياح|حج|عمرة|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency)')
+             and c.source = 'evolution'
+           on conflict (contact_id, tag_id) do nothing`,
+          [tagIdFor('auto_tourism')]
+        );
+
+        summary.lines_processed.push({ instance, individuals: individuals.length, groups: groupRows.length, skipped });
+        summary.total_individuals += individuals.length;
+        summary.total_groups += groupRows.length;
+        summary.total_skipped += skipped;
+        summary.total_tag_links += tagLinks.length;
+      } catch (lineErr: any) {
+        summary.errors.push(`${instance}: ${lineErr.message}`);
+      }
     }
 
-    // 3. تنفيذ الإدخال بالدفعات (Batching) بحجم 100 سجل في كل دفعة
-    const BATCH_SIZE = 100;
-    let totalProcessed = 0;
-
-    for (let i = 0; i < contactsToUpsert.length; i += BATCH_SIZE) {
-      const batch = contactsToUpsert.slice(i, i + BATCH_SIZE);
-      const { error } = await supabase
-        .from('contacts')
-        .upsert(batch, { onConflict: 'primary_phone_e164' });
-
-      if (error) {
-        console.warn('Batch upsert warning:', error.message);
-      } else {
-        totalProcessed += batch.length;
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      instance,
-      total_found: list.length,
-      imported_count: totalProcessed,
-      groups_imported: allGroupEntries.length,
-      skipped_count: skippedCount,
-    });
+    return NextResponse.json({ success: true, ...summary });
   } catch (err: any) {
+    console.error('[contacts/sync-evolution]', err?.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -10,7 +10,7 @@ export const RAW_MODULES: ModuleContract[] = [
   { key: 'tasks', area: 'user', title_ar: 'المهام', status: 'coming_soon', required_permission: 'tasks.view', sort: 30 },
   { key: 'meetings', area: 'user', title_ar: 'الاجتماعات', status: 'coming_soon', required_permission: 'meetings.view', sort: 40 },
   { key: 'my_reports', area: 'user', title_ar: 'تقاريري', status: 'coming_soon', required_permission: 'reports.view_own', sort: 50 },
-  { key: 'campaigns', area: 'user', title_ar: 'الحملات', status: 'coming_soon', required_permission: 'campaigns.view', sort: 60 },
+  { key: 'campaigns', area: 'user', title_ar: 'الحملات', status: 'live', required_permission: 'campaigns.view', sort: 60 },
   { key: 'canned', area: 'user', title_ar: 'الردود الجاهزة', status: 'live', required_permission: null, sort: 65 },
   { key: 'notifications', area: 'user', title_ar: 'الإشعارات', status: 'live', required_permission: null, sort: 70 },
   { key: 'profile', area: 'user', title_ar: 'ملفي', status: 'live', required_permission: null, sort: 80 },

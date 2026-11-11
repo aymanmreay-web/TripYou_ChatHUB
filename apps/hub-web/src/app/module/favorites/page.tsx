@@ -324,10 +324,11 @@ export default function FavoritesPage() {
                         </a>
                       )}
 
-                      {fav.meta?.chat_jid && (
+                      {(fav.meta?.chat_jid || fav.meta?.chatJid) && (
                         <Link
-                          href={`/inbox?chat=${encodeURIComponent(fav.meta.chat_jid)}`}
+                          href={`/inbox?chat=${encodeURIComponent(fav.meta.chat_jid || fav.meta.chatJid)}`}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/30 transition-colors"
+                          title={fav.meta.instance_name ? `الخط: ${fav.meta.instance_name}` : undefined}
                         >
                           <span>فتح في المحادثة</span>
                           <ExternalLink className="w-3.5 h-3.5" />
