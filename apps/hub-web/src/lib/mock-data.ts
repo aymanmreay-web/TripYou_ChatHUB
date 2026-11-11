@@ -21,7 +21,7 @@ export const RAW_MODULES: ModuleContract[] = [
   { key: 'labels', area: 'admin', title_ar: 'الوسوم والحالات', status: 'live', required_permission: 'inboxes.manage', sort: 135 },
   { key: 'groups_admin', area: 'admin', title_ar: 'المجموعات', status: 'coming_soon', required_permission: 'groups.manage', sort: 140 },
   { key: 'staff', area: 'admin', title_ar: 'الموظفون', status: 'live', required_permission: 'staff.view', sort: 150 },
-  { key: 'roles', area: 'admin', title_ar: 'الأدوار والصلاحيات', status: 'coming_soon', required_permission: 'roles.manage', sort: 160 },
+  { key: "roles", area: 'admin', title_ar: 'الأدوار والصلاحيات', status: "live", required_permission: 'roles.manage', sort: 160 },
   { key: 'signature', area: 'admin', title_ar: 'إدارة التوقيع', status: 'live', required_permission: 'signature.manage', sort: 170 },
   { key: 'contacts_admin', area: 'admin', title_ar: 'إدارة جهات الاتصال', status: 'live', required_permission: 'contacts.manage', sort: 180 },
   { key: 'channels', area: 'admin', title_ar: 'قنوات التواصل', status: 'coming_soon', required_permission: 'channels.manage', sort: 190 },

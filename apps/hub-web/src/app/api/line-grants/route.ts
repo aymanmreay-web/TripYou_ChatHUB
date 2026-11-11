@@ -92,13 +92,13 @@ export async function POST(req: NextRequest) {
       const staffName = meta[0]?.staff_name || 'موظف';
       const lineTitle = meta[0]?.line_title || 'خط';
 
-      // إخطار المشرفين (super_admin + supervisor)
+      // إخطار المشرف والمدير (الأدوار الحقيقية في القاعدة: sales_lead = مشرف، super_admin = مدير)
       await q(
         `insert into public.notifications (staff_id, kind, title, body, link, chat_jid)
          select s.id, 'line_permission_request', $2, $3, '/admin_dashboard?approvals=1', $4
          from hub.staff s
          join hub.roles r on r.id = s.role_id
-         where r.key in ('super_admin', 'supervisor') and s.status = 'active'`,
+         where r.key in ('super_admin', 'sales_lead') and s.status = 'active'`,
         [
           `🔐 طلب إذن رد من خط آخر`,
           `${staffName} يطلب الرد من «${lineTitle}» على محادثة خارج خطها الوارد — راجع الطلبات في لوحة الإدارة`,

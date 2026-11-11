@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ items: [] });
       }
       const items = await q(
-        `select c.chat_jid, c.status, s.full_name as assigned_staff_name,
+        `select c.chat_jid, c.status, s.full_name as assigned_staff_name, c.assigned_staff_id,
                 coalesce(
                   json_agg(json_build_object('id', t.id, 'name', t.name_ar, 'color', t.color)
                     order by t.sort_order nulls last, t.name_ar)
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
          left join hub.conversation_tags ct on ct.conversation_id = c.id
          left join hub.hub_tags t on t.id = ct.tag_id
          where c.chat_jid = any($1::text[]) and l.instance_name = any($2::text[])
-         group by c.id, c.chat_jid, c.status, s.full_name`,
+         group by c.id, c.chat_jid, c.status, s.full_name, c.assigned_staff_id`,
         [jids, instances]
       );
       return NextResponse.json({ items });
@@ -258,7 +258,7 @@ export async function PATCH(req: NextRequest) {
            select s.id, 'escalation', '🚨 محادثة مصعدة للإشراف', $2, $3, $4, $5
            from hub.staff s
            join hub.roles r on r.id = s.role_id
-           where r.key in ('super_admin', 'supervisor') and s.status = 'active'`,
+           where r.key in ('super_admin', 'sales_lead') and s.status = 'active'`,
           [
             body.escalation_note || 'مصعدة يدوياً من صندوق المحادثات',
             `/inbox?chat=${encodeURIComponent(chat_jid)}`,

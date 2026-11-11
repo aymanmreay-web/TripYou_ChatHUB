@@ -30,7 +30,6 @@ import {
   Lock,
   Unlock,
   Moon,
-  ArrowUpRight,
   FileText,
   Image as ImageIcon,
   Music,
@@ -66,262 +65,12 @@ import { Button } from '@tripyou/ui';
 import { supabase } from '../../lib/supabase';
 import { fetchTags } from '../../lib/hubDb';
 import { toast } from '../common/Toaster';
-
-// ─────────────────────────────────────────────
-// 🔧 مساعد: تحويل معرف الرسالة أو الرابط إلى رابط وكيل لفك التشفير
-// ─────────────────────────────────────────────
-function getProxiedUrl(mediaUrl: string | undefined, instanceName: string, messageId?: string, fileName?: string): string | null {
-  const fnParam = fileName ? `&fileName=${encodeURIComponent(fileName)}` : '';
-  if (messageId) {
-    return `/api/evolution/instances/${instanceName}/media/proxy?id=${encodeURIComponent(messageId)}${fnParam}`;
-  }
-  if (!mediaUrl) return null;
-  if (mediaUrl.startsWith('data:')) return mediaUrl;
-  return `/api/evolution/instances/${instanceName}/media/proxy?url=${encodeURIComponent(mediaUrl)}${fnParam}`;
-}
-
-// ─────────────────────────────────────────────
-// 🎵 مساعد: توليد ارتفاعات أعمدة موجة صوتية (شبه عشوائي من معرّف الرسالة)
-// ─────────────────────────────────────────────
-function getWaveformBars(seed: string, count = 32): number[] {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) & 0xffffffff;
-  return Array.from({ length: count }, () => {
-    hash = (hash * 1664525 + 1013904223) & 0xffffffff;
-    return 20 + (Math.abs(hash) % 60); // ارتفاع 20% – 80%
-  });
-}
-
-// ─────────────────────────────────────────────
-// 🎵 مكوّن: مشغّل الصوت المخصص مع شريط الموجة
-// ─────────────────────────────────────────────
-interface AudioPlayerProps {
-  src: string;
-  msgId: string;
-  isOut: boolean;
-}
-
-function formatMessageWithLinks(content: string) {
-  if (!content) return null;
-  // مطابقة الروابط URL (http, https, www, أو t.me / wa.me)
-  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|wa\.me\/[^\s]+|t\.me\/[^\s]+)/gi;
-  const parts = content.split(urlRegex);
-
-  return parts.map((part, index) => {
-    if (part.match(urlRegex)) {
-      const href = part.startsWith('http') ? part : `https://${part}`;
-      return (
-        <a
-          key={index}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="text-purple-300 hover:text-purple-200 underline underline-offset-2 break-all font-mono font-medium inline-flex items-center gap-0.5 mx-0.5 transition-colors"
-          dir="ltr"
-        >
-          <span>{part}</span>
-          <ArrowUpRight className="w-3 h-3 inline-block shrink-0 opacity-80" />
-        </a>
-      );
-    }
-    return <span key={index}>{part}</span>;
-  });
-}
-
-function getFileCardMeta(fileName: string) {
-  const name = fileName || '';
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) {
-    return {
-      type: 'Excel',
-      ext: 'XLSX',
-      badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-      cardBg: 'bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-500/60',
-      iconColor: 'text-emerald-400',
-      isSheet: true,
-    };
-  }
-  if (lower.endsWith('.pdf')) {
-    return {
-      type: 'PDF',
-      ext: 'PDF',
-      badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
-      cardBg: 'bg-rose-950/40 border-rose-500/30 hover:border-rose-500/60',
-      iconColor: 'text-rose-400',
-      isPdf: true,
-    };
-  }
-  if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
-    return {
-      type: 'Word',
-      ext: 'DOCX',
-      badge: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-      cardBg: 'bg-blue-950/40 border-blue-500/30 hover:border-blue-500/60',
-      iconColor: 'text-blue-400',
-      isWord: true,
-    };
-  }
-  if (lower.endsWith('.zip') || lower.endsWith('.rar') || lower.endsWith('.7z') || lower.endsWith('.tar')) {
-    return {
-      type: 'Archive',
-      ext: 'ZIP',
-      badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-      cardBg: 'bg-amber-950/40 border-amber-500/30 hover:border-amber-500/60',
-      iconColor: 'text-amber-400',
-      isArchive: true,
-    };
-  }
-  return {
-    type: 'Document',
-    ext: lower.split('.').pop()?.toUpperCase() || 'FILE',
-    badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-    cardBg: 'bg-purple-950/40 border-purple-500/30 hover:border-purple-500/60',
-    iconColor: 'text-purple-400',
-    isGeneric: true,
-  };
-}
-
-function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const bars = useMemo(() => getWaveformBars(msgId), [msgId]);
-
-  const togglePlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch((e) => console.warn('Play error:', e));
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (!audioRef.current) return;
-    const dur = audioRef.current.duration || duration || 0;
-    const cur = audioRef.current.currentTime;
-    setCurrentTime(cur);
-    setProgress(dur > 0 ? (cur / dur) * 100 : 0);
-  };
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-      setDuration(audioRef.current.duration);
-    }
-  };
-
-  const handleEnded = () => {
-    setIsPlaying(false);
-    setProgress(0);
-    setCurrentTime(0);
-  };
-
-  const handleSeekPct = (pct: number) => {
-    if (!audioRef.current) return;
-    const dur = audioRef.current.duration || duration || 0;
-    if (!dur) return;
-    const target = Math.max(0, Math.min(dur, pct * dur));
-    audioRef.current.currentTime = target;
-    setCurrentTime(target);
-    setProgress(pct * 100);
-    if (!isPlaying) {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  };
-
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    handleSeekPct(pct);
-  };
-
-  const handleBarClick = (i: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const pct = i / bars.length;
-    handleSeekPct(pct);
-  };
-
-  const formatTime = (s: number) =>
-    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-  return (
-    <div
-      className={`flex items-center gap-2.5 p-2.5 rounded-2xl min-w-[230px] max-w-[320px] border border-white/5 transition-all ${
-        isOut ? 'bg-purple-700/40 shadow-inner' : 'bg-slate-800/80 shadow-inner'
-      }`}
-    >
-      <audio
-        ref={audioRef}
-        src={src}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={handleEnded}
-        preload="metadata"
-      />
-
-      {/* زر التشغيل / الإيقاف */}
-      <button
-        onClick={togglePlay}
-        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md ${
-          isOut
-            ? 'bg-purple-500 hover:bg-purple-400 text-white'
-            : 'bg-purple-600 hover:bg-purple-500 text-white'
-        }`}
-        title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التسجيل الصوتي'}
-      >
-        {isPlaying ? (
-          <svg className="w-4 h-4 text-[var(--text-main)]" fill="currentColor" viewBox="0 0 24 24">
-            <rect x="6" y="4" width="4" height="16" />
-            <rect x="14" y="4" width="4" height="16" />
-          </svg>
-        ) : (
-          <svg className="w-4 h-4 ml-0.5 text-[var(--text-main)]" fill="currentColor" viewBox="0 0 24 24">
-            <polygon points="5,3 19,12 5,21" />
-          </svg>
-        )}
-      </button>
-
-      {/* الموجة الصوتية + شريط التقدم التفاعلي */}
-      <div className="flex-1 flex flex-col gap-1 min-w-0">
-        <div
-          className="flex items-end gap-[2px] h-9 cursor-pointer select-none py-1 group/wave"
-          onClick={handleProgressClick}
-          title="اضغط أو اسحب للانتقال إلى أي نقطة في التسجيل"
-        >
-          {bars.map((h, i) => {
-            const barPct = (i / bars.length) * 100;
-            const isActive = barPct <= progress;
-            return (
-              <div
-                key={i}
-                onClick={(e) => handleBarClick(i, e)}
-                className={`flex-1 rounded-full transition-all cursor-pointer ${
-                  isActive
-                    ? isOut
-                      ? 'bg-purple-200 shadow-sm'
-                      : 'bg-emerald-400 shadow-sm'
-                    : isOut
-                    ? 'bg-purple-400/40 hover:bg-purple-300'
-                    : 'bg-slate-500/40 hover:bg-slate-400'
-                }`}
-                style={{ height: `${h}%` }}
-              />
-            );
-          })}
-        </div>
-        {/* الوقت */}
-        <div className="flex justify-between text-[10px] text-slate-300 font-mono tabular-nums px-0.5">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { getProxiedUrl, getFileCardMeta, formatMessageWithLinks } from '../../lib/inbox/messages';
+import { AudioMessagePlayer } from './AudioMessagePlayer';
+import { SlaTimer } from './SlaTimer';
+import { ConversationRow } from './ConversationRow';
+import { Modal } from './Modal';
+import { isQuietHoursNow } from '../../lib/inbox/time';
 
 interface EvolutionInstanceSummary {
   id: string;
@@ -642,13 +391,18 @@ export function NativeChatInbox() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // حساب ساعات الهدوء بتوقيت مكة المكرمة (+3)
-  const isQuietHoursActive = useMemo(() => {
-    const now = new Date();
-    // UTC + 3 hours for KSA
-    const ksaHour = (now.getUTCHours() + 3) % 24;
-    return ksaHour >= 1 && ksaHour < 7;
-  }, []);
+  // حساب ساعات الهدوء بتوقيت مكة المكرمة (+3) — المنطق النقي في lib/inbox/time.ts
+  const isQuietHoursActive = useMemo(() => isQuietHoursNow(), []);
+
+  // Esc يغلق عارض الوسائط فعلياً (كان مكتوباً في نص الواجهة دون ربط)
+  useEffect(() => {
+    if (!lightboxMedia) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxMedia(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [lightboxMedia]);
 
   // تحميل الصناديق حصراً من API الخادم المحمي بجدول inbox_access ودور الموظف في قاعدة البيانات
   const loadInboxes = useCallback(async () => {
@@ -732,7 +486,18 @@ export function NativeChatInbox() {
     fetch('/api/signatures')
       .then((r) => r.json())
       .then((data) => {
-        if (data.global) setSignatureConfig(data.global);
+        if (data.global) {
+          // م8: تسوية الشكل — الـ API يعيد حقولاً مسطحة (part1_enabled) والصندوق يقرأ كائناً متداخلاً
+          const g = data.global;
+          setSignatureConfig({
+            ...g,
+            part1: { enabled: g.part1_enabled ?? true, label_ar: g.part1_label_ar, editable_by: g.part1_editable_by, required: g.part1_required },
+            part2: { enabled: g.part2_enabled ?? true, label_ar: g.part2_label_ar, editable_by: g.part2_editable_by, required: g.part2_required },
+            part3: { enabled: g.part3_enabled ?? true, label_ar: g.part3_label_ar, editable_by: g.part3_editable_by, required: g.part3_required },
+            separator: g.separator || ' — ',
+            send_mode: g.send_mode || 'always',
+          });
+        }
         if (Array.isArray(data.staff)) setStaffSignaturesList(data.staff);
       })
       .catch(() => {});
@@ -1144,10 +909,12 @@ export function NativeChatInbox() {
   );
 
   const isManager = useMemo(() => {
+    // الأدوار الثلاثة المعتمدة: مدير (super_admin) / مشرف (sales_lead) / موظف (البقية)
     return (
       user?.role === 'manager' ||
       user?.role === 'admin' ||
       user?.role === 'super_admin' ||
+      user?.role === 'sales_lead' ||
       Boolean(user?.email_masked?.toLowerCase().includes('ayman'))
     );
   }, [user]);
@@ -1230,6 +997,16 @@ export function NativeChatInbox() {
     // م3: فلتر الوسم المختار من الشريط العلوي
     if (tagFilter) {
       list = list.filter((c) => (c.tags || []).includes(tagFilter));
+    }
+
+    // قرار المالك: الموظف يرى المحادثات المسندة إليه فقط —
+    // المحادثات غير المسندة تظهر للمدير والمشرف حصراً (تجمع الإسناد)
+    if (!isManager && user?.id) {
+      list = list.filter((c) => {
+        const sid = (c as any).assigned_staff_id;
+        if (sid) return sid === user.id;
+        return c.assigned_staff_name === user.full_name;
+      });
     }
 
     return list;
@@ -1341,7 +1118,8 @@ export function NativeChatInbox() {
 
   // ─── C4: صلاحية كل خط للإرسال في المحادثة الحالية ───
   // فردية: فقط خط الوارد — إلا إذا وُجد منح من المدير (line_send_grants)
-  // مجموعة: يجب أن يكون الخط عضوًا في المجموعة (قانون واتساب) + مصرحًا للموظف
+  // مجموعة: قيد العضوية باقٍ (قرار المالك) — عبر أرقام الهواتف الحقيقية من Evolution،
+  //         والمتساهل فقط حين لا تصل أرقام الأعضاء إطلاقاً (نظام LID)
   const sendLineStatus = useMemo(() => {
     const map = new Map<string, { allowed: boolean; reason: string }>();
     const incoming = lastIncomingLine || activeConversation?.line_id || '';
@@ -1349,21 +1127,18 @@ export function NativeChatInbox() {
     for (const inst of allowedSendInstances) {
       const name = inst.name;
       if (isGroup) {
-        // المجموعات: العضوية شرط تقني، والترخيص للموظف شرط صلاحية — لا حاجة لمنح المدير
-        // (رسالة المجموعة تظهر للجميع بأسماء الأعضاء — لا التباس هوية)
+        const authorized = allowedSendInstances.some((i) => i.name === name);
+        let member = true;
+        let reason = 'متاح — خط مصرح';
         if (groupMemberDigits && groupMemberDigits.size > 0) {
-          const lineDigits = (name === 'Master' ? '' : '').replace(/\D/g, '') || '';
-          // رقم الخط من قائمة الخطوط (phone)
           const phoneDigits = (instances.find((i) => i.name === name)?.ownerJid || '').replace(/@.*$/, '').replace(/\D/g, '');
-          const member = !phoneDigits || groupMemberDigits.has(phoneDigits);
-          const authorized = allowedSendInstances.some((i) => i.name === name);
-          map.set(name, {
-            allowed: member && authorized,
-            reason: !authorized ? 'الخط غير مصرح لك به' : !member ? 'الخط ليس عضوًا في هذه المجموعة' : 'متاح',
-          });
-        } else {
-          map.set(name, { allowed: true, reason: 'متاح' });
+          member = !phoneDigits || groupMemberDigits.has(phoneDigits);
+          if (!member) reason = 'الخط ليس عضوًا في هذه المجموعة';
         }
+        map.set(name, {
+          allowed: authorized && member,
+          reason: !authorized ? 'الخط غير مصرح لك به' : reason,
+        });
       } else {
         const isIncoming = name === incoming;
         const authorized = allowedSendInstances.some((i) => i.name === name);
@@ -1488,23 +1263,7 @@ export function NativeChatInbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // --- حساب عداد الاستجابة (SLA Response Timer) ---
-  const slaStatus = useMemo(() => {
-    if (!activeConversation) return { text: 'جاهز', level: 'normal', minutes: 0 };
-    const ts = activeConversation.last_customer_message_timestamp || Date.now();
-    const diffMinutes = Math.max(0, Math.floor((Date.now() - ts) / 60000));
-
-    if (activeConversation.status === 'resolved') {
-      return { text: 'تم الحل وإغلاق التذكرة', level: 'resolved', minutes: diffMinutes };
-    }
-    if (diffMinutes >= 10) {
-      return { text: `تجاوز مهلة الرد (${diffMinutes} دقيقة) — يلزم التصعيد!`, level: 'critical', minutes: diffMinutes };
-    }
-    if (diffMinutes >= 5) {
-      return { text: `تنبيه المشرف: انتظار (${diffMinutes} دقيقة)`, level: 'warning', minutes: diffMinutes };
-    }
-    return { text: `انتظار العميل: (${diffMinutes} د)`, level: 'normal', minutes: diffMinutes };
-  }, [activeConversation]);
+  // --- عداد الاستجابة (SLA): انتقل إلى مكوّن SlaTimer الحي — ينبض كل ثانية بنمط v1 المعتمد ---
 
 
   // ─── تسجيل قراءة المحادثة محلياً وفي قاعدة البيانات للصندوق الحالي والمستخدم (بدون إرسال لواتساب) ───
@@ -1658,7 +1417,7 @@ export function NativeChatInbox() {
       );
       if (!res.ok) return;
       const data = await res.json();
-      const items: { chat_jid: string; status?: string; assigned_staff_name?: string; tags?: { id: string; name: string; color: string }[] }[] = data.items || [];
+      const items: { chat_jid: string; status?: string; assigned_staff_name?: string; assigned_staff_id?: string; tags?: { id: string; name: string; color: string }[] }[] = data.items || [];
       const byJid = new Map(items.map((x) => [x.chat_jid, x]));
       setConversations((prev) => {
         let changed = false;
@@ -1669,16 +1428,18 @@ export function NativeChatInbox() {
           const mergedTags = Array.from(new Set([...(c.tags || []), ...dbTagNames]));
           const newStatus = (db.status as ConversationStatus) || c.status;
           const newAssignee = db.assigned_staff_name || c.assigned_staff_name;
+          const newAssigneeId = db.assigned_staff_id || (c as any).assigned_staff_id;
           // تجاهل الصف إن لم يتغير فعلاً — منع إعادة الرسم المزعجة للقائمة
           if (
             mergedTags.length === (c.tags || []).length &&
             newStatus === c.status &&
-            newAssignee === c.assigned_staff_name
+            newAssignee === c.assigned_staff_name &&
+            newAssigneeId === (c as any).assigned_staff_id
           ) {
             return c;
           }
           changed = true;
-          return { ...c, tags: mergedTags, status: newStatus, assigned_staff_name: newAssignee };
+          return { ...c, tags: mergedTags, status: newStatus, assigned_staff_name: newAssignee, assigned_staff_id: newAssigneeId } as ConversationItem;
         });
         return changed ? next : prev;
       });
@@ -1738,9 +1499,9 @@ export function NativeChatInbox() {
     patchConversationDb(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, { status: newStatus });
   };
 
-  // --- دورة الإسناد: إسناد المحادثة لموظف (محلي + قاعدة حقيقية) ---
+  // --- دورة الإسناد: إسناد المحادثة لموظف (محلي + قاعدة حقيقية) — للمدير والمشرف فقط (قرار المالك) ---
   const handleAssignStaff = (staffName: string) => {
-    if (!activeConversation) return;
+    if (!activeConversation || !isManager) return;
     const staffMember = availableStaff.find((s) => s.name === staffName);
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_staff_name: staffName, assigned_staff_id: staffMember?.id } : c))
@@ -1748,6 +1509,10 @@ export function NativeChatInbox() {
     // حفظ في القاعدة بشكل غير متزامن — الإسناد يولّد إشعاراً للموظف المختار
     patchConversationDb(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
       staff_id: staffMember?.id || null,
+    });
+    toast({
+      title: staffMember?.id ? `أُسندت المحادثة إلى ${staffName}` : 'أُلغي الإسناد — عادت للصندوق العام',
+      kind: 'success',
     });
   };
 
@@ -1800,7 +1565,7 @@ export function NativeChatInbox() {
 
     // تدقيق قاطع الدائرة
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل! تم تعليق الإرسال التلقائي لحماية الخط من الحظر. يرجى إعادة الضبط يدوياً بعد التأكد من صحة الرقم والاتصال.');
+      toast({ title: 'قاطع الدائرة مفعل! تم تعليق الإرسال التلقائي لحماية الخط من الحظر. يرجى إعادة الضبط يدوياً بعد التأكد من صحة الرقم والاتصال.', kind: 'error', durationMs: 8000 });
       return;
     }
 
@@ -1892,9 +1657,9 @@ export function NativeChatInbox() {
 
         if (newErrCount >= 3) {
           setIsBreakerTripped(true);
-          alert(`⚡ تحذير قاطع الدائرة (Circuit Breaker): تم إيقاف الإرسال بعد 3 أخطاء متتالية لحماية خط واتساب من الحظر!`);
+          toast({ title: `⚡ تحذير قاطع الدائرة (Circuit Breaker): تم إيقاف الإرسال بعد 3 أخطاء متتالية لحماية خط واتساب من الحظر!`, kind: 'error', durationMs: 8000 });
         } else {
-          alert(`فشل الإرسال عبر واتساب (محاولة ${newErrCount}/3): ${errData.error || res.statusText}`);
+          toast({ title: `فشل الإرسال عبر واتساب (محاولة ${newErrCount}/3): ${errData.error || res.statusText}`, kind: 'error' });
         }
       }
     } catch (err: any) {
@@ -1903,7 +1668,7 @@ export function NativeChatInbox() {
       if (newErrCount >= 3) {
         setIsBreakerTripped(true);
       }
-      alert(`خطأ في الاتصال أثناء الإرسال: ${err.message}`);
+      toast({ title: `خطأ في الاتصال أثناء الإرسال: ${err.message}`, kind: 'error' });
     } finally {
       setIsSending(false);
       setQuietConfirmOpen(false);
@@ -1972,7 +1737,7 @@ export function NativeChatInbox() {
     if (!trimmed || !activeConversation || isSending) return;
 
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل حالياً! اضغط على زر إعادة ضبط القاطع في الأعلى بعد مراجعة اتصال الخط.');
+      toast({ title: 'قاطع الدائرة مفعل حالياً! اضغط على زر إعادة ضبط القاطع في الأعلى بعد مراجعة اتصال الخط.', kind: 'error', durationMs: 8000 });
       return;
     }
 
@@ -2197,35 +1962,57 @@ export function NativeChatInbox() {
   };
 
   // ─── م8: تحويل رسالة إلى محادثة أخرى — رسمي لكل الأنواع عبر key الأصلي ───
-  // خط المصدر = الخط الذي وردت منه الرسالة (msg.line_id) — النسخة الأصلية في ذاكرته فقط.
-  // الهدف = معرف المحادثة الهدف (رقم العميل/المجموعة) كما يظهر في القائمة الموحدة.
+  // تصحيح المالك: المجموعات موجودة في ذاكرة كل خط عضو — نجرّب خط رسالتها أولاً
+  // ثم نتدرج عبر باقي الخطوط المتاحة للمحادثة/المصرحة حتى ينجح أحدها.
   const handleForwardMessage = async (targetConv: ConversationItem) => {
     if (!forwardModalMsg || isSending) return;
     setIsSending(true);
     try {
-      const sourceInstance = forwardModalMsg.line_id || selectedInstanceName;
       const targetJid = targetConv.chat_jid;
 
-      // رسالة حقيقية من واتساب → تحويل رسمي (يحمل الوسائط والملصقات والمستندات كما هي)
       if (forwardModalMsg.msg_key_id) {
-        const res = await fetch(`/api/evolution/instances/${encodeURIComponent(sourceInstance)}/forward`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: targetJid,
-            key: {
-              remoteJid: forwardModalMsg.chat_jid,
-              fromMe: forwardModalMsg.key_from_me ?? forwardModalMsg.direction === 'out',
-              id: forwardModalMsg.msg_key_id,
-              participant: forwardModalMsg.key_participant || undefined,
-            },
-          }),
-        });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || errData.error || `فشل التحويل (${res.status}) — تأكد أن رقم المصدر يملك محادثة مع الهدف`);
+        const primary = forwardModalMsg.line_id || selectedInstanceName;
+        const candidates: string[] = [primary];
+        const extras = [
+          ...(activeConversation?.available_lines || []),
+          ...(targetConv.available_lines || []),
+          ...allowedSendInstances.map((i) => i.name),
+        ];
+        for (const l of extras) {
+          if (l && !candidates.includes(l)) candidates.push(l);
         }
-        toast({ title: `تم التحويل إلى «${targetConv.title}» من ${getLineDisplayTitle(sourceInstance)}`, kind: 'success' });
+
+        let lastErr = '';
+        let succeeded = false;
+        for (const sourceInstance of candidates) {
+          try {
+            const res = await fetch(`/api/evolution/instances/${encodeURIComponent(sourceInstance)}/forward`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: targetJid,
+                key: {
+                  remoteJid: forwardModalMsg.chat_jid,
+                  fromMe: forwardModalMsg.key_from_me ?? forwardModalMsg.direction === 'out',
+                  id: forwardModalMsg.msg_key_id,
+                  participant: forwardModalMsg.key_participant || undefined,
+                },
+              }),
+            });
+            if (res.ok) {
+              toast({ title: `تم التحويل إلى «${targetConv.title}» من ${getLineDisplayTitle(sourceInstance)}`, kind: 'success' });
+              succeeded = true;
+              break;
+            }
+            const errData = await res.json().catch(() => ({}));
+            lastErr = errData.detail || errData.error || `HTTP ${res.status}`;
+          } catch (e: any) {
+            lastErr = e.message;
+          }
+        }
+        if (!succeeded) {
+          throw new Error(lastErr || 'فشل التحويل على كل الخطوط المتاحة');
+        }
       } else {
         // رسالة صادرة محلية (لم تصدر لها key بعد) — إرسال نصي بديل
         await fetch(`/api/evolution/instances/${encodeURIComponent(targetConv.line_id || selectedInstanceName)}/messages`, {
@@ -2288,15 +2075,15 @@ export function NativeChatInbox() {
     }
 
     if (imageCount > 25) {
-      alert('الحد الأقصى للصور دفعة واحدة هو 25 صورة.');
+      toast({ title: 'الحد الأقصى للصور دفعة واحدة هو 25 صورة.', kind: 'info' });
       return;
     }
     if (videoCount > 5) {
-      alert('الحد الأقصى لمقاطع الفيديو دفعة واحدة هو 5 مقاطع.');
+      toast({ title: 'الحد الأقصى لمقاطع الفيديو دفعة واحدة هو 5 مقاطع.', kind: 'info' });
       return;
     }
     if (docCount > 5) {
-      alert('الحد الأقصى للمستندات دفعة واحدة هو 5 ملفات.');
+      toast({ title: 'الحد الأقصى للمستندات دفعة واحدة هو 5 ملفات.', kind: 'info' });
       return;
     }
 
@@ -2397,7 +2184,7 @@ export function NativeChatInbox() {
       setBatchCaption('');
       setMultiSendModalOpen(false);
     } catch (err: any) {
-      alert(`خطأ أثناء إرسال الدفعة: ${err.message}`);
+      toast({ title: `خطأ أثناء إرسال الدفعة: ${err.message}`, kind: 'error' });
     } finally {
       setIsSendingMedia(false);
     }
@@ -2436,7 +2223,7 @@ export function NativeChatInbox() {
     if (!selectedAttachment || !activeConversation || isSendingMedia) return;
 
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل حالياً! لا يمكن إرسال المرفقات قبل إعادة الضبط.');
+      toast({ title: 'قاطع الدائرة مفعل حالياً! لا يمكن إرسال المرفقات قبل إعادة الضبط.', kind: 'error', durationMs: 8000 });
       return;
     }
 
@@ -2494,10 +2281,10 @@ export function NativeChatInbox() {
         setSelectedAttachment(null);
       } else {
         const errData = await res.json();
-        alert(`فشل إرسال المرفق: ${errData.error || res.statusText}`);
+        toast({ title: `فشل إرسال المرفق: ${errData.error || res.statusText}`, kind: 'error' });
       }
     } catch (err: any) {
-      alert(`خطأ في الاتصال أثناء إرسال المرفق: ${err.message}`);
+      toast({ title: `خطأ في الاتصال أثناء إرسال المرفق: ${err.message}`, kind: 'error' });
     } finally {
       setIsSendingMedia(false);
     }
@@ -2512,7 +2299,7 @@ export function NativeChatInbox() {
   // ─── بدء تسجيل الصوت الحي ───
   const handleStartVoiceRecording = async () => {
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل حالياً! لا يمكن التسجيل.');
+      toast({ title: 'قاطع الدائرة مفعل حالياً! لا يمكن التسجيل.', kind: 'error', durationMs: 8000 });
       return;
     }
     try {
@@ -2535,7 +2322,7 @@ export function NativeChatInbox() {
         setRecordingSeconds((prev) => prev + 1);
       }, 1000);
     } catch (err: any) {
-      alert(`تعذر الوصول إلى الميكروفون: ${err.message || 'يرجى تفعيل صلاحية الميكروفون في المتصفح'}`);
+      toast({ title: `تعذر الوصول إلى الميكروفون: ${err.message || 'يرجى تفعيل صلاحية الميكروفون في المتصفح'}`, kind: 'error' });
     }
   };
 
@@ -2613,17 +2400,17 @@ export function NativeChatInbox() {
               );
             } else {
               const err = await res.json();
-              alert(`فشل إرسال البصمة الصوتية: ${err.error || res.statusText}`);
+              toast({ title: `فشل إرسال البصمة الصوتية: ${err.error || res.statusText}`, kind: 'error' });
             }
           } catch (err: any) {
-            alert(`خطأ أثناء إرسال التسجيل: ${err.message}`);
+            toast({ title: `خطأ أثناء إرسال التسجيل: ${err.message}`, kind: 'error' });
           } finally {
             setIsSendingMedia(false);
           }
         };
         reader.readAsDataURL(audioBlob);
       } catch (err: any) {
-        alert(`خطأ في معالجة الصوت: ${err.message}`);
+        toast({ title: `خطأ في معالجة الصوت: ${err.message}`, kind: 'error' });
       }
     };
 
@@ -2897,132 +2684,17 @@ export function NativeChatInbox() {
               </div>
             ) : (
               <>
-                {filteredConversations.slice(0, visibleCount).map((conv) => {
-                  const isSelected = conv.id === activeConvId;
-                  return (
-                    <button
-                      key={conv.id}
-                      onClick={() => handleSelectConversation(conv.id)}
-                      className={`w-full p-3 text-right flex items-start gap-3 transition-colors ${
-                        isSelected
-                          ? 'bg-purple-950/40 border-r-4 border-purple-500'
-                          : 'hover:bg-purple-950/20'
-                      }`}
-                    >
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 overflow-hidden border ${
-                          conv.is_group
-                            ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
-                            : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
-                        }`}
-                      >
-                        {conv.avatar_url ? (
-                          <img src={conv.avatar_url} alt={conv.title} className="w-full h-full object-cover" />
-                        ) : conv.is_group ? (
-                          <Users className="w-5 h-5" />
-                        ) : (
-                          initialsOrLetter(conv.title, conv.avatar_letter)
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-1">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="font-semibold text-xs text-[var(--text-main)] truncate">
-                              {conv.title}
-                            </span>
-                            {conv.participant_count && (
-                              <span className="text-[10px] text-purple-300/80 shrink-0 font-normal">
-                                ({conv.participant_count})
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-400 shrink-0 font-mono">
-                            {conv.last_message_at}
-                          </span>
-                        </div>
-
-                        <p className="text-[11px] text-slate-300 truncate mb-1.5 leading-snug">
-                          {conv.last_message_text}
-                        </p>
-
-                        <div className="flex items-center justify-between gap-1">
-                          {/* حالة المحادثة في القائمة مع وسام الخط */}
-                          <div className="flex items-center gap-1.5">
-                            {conv.available_lines && conv.available_lines.length > 1 && lineFilter === 'all' ? (
-                              <span
-                                className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-purple-950/70 text-purple-200 border border-purple-700/50 flex items-center gap-1"
-                                title={`محادثة مشتركة عبر الخطوط: ${conv.available_lines.map((l) => getLineDisplayTitle(l)).join(', ')}`}
-                              >
-                                <bdi dir="ltr">{conv.available_lines.map((l) => getLineDisplayTitle(l)).join(' • ')}</bdi>
-                              </span>
-                            ) : (
-                              <span
-                                className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border ${
-                                  conv.line_id === 'Master'
-                                    ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                                }`}
-                                title={`وارد عبر خط: ${getLineDisplayTitle(conv.line_id)}`}
-                              >
-                                <bdi dir="ltr">{getLineDisplayTitle(conv.line_id || 'Master')}</bdi>
-                              </span>
-                            )}
-
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                              conv.status === 'resolved'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : conv.status === 'escalated'
-                                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse'
-                                : conv.status === 'in_progress'
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                            }`}>
-                              {conv.status === 'resolved' ? 'تم الحل' : conv.status === 'escalated' ? 'مصعدة' : conv.status === 'in_progress' ? 'قيد المعالجة' : 'مفتوحة'}
-                            </span>
-
-                            <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
-                              {conv.assigned_staff_name || 'عام'}
-                            </span>
-
-                            {/* م3: شارات الوسوم من القاعدة (أول وسمين + عدّاد) */}
-                            {(conv.tags || []).length > 0 && (
-                              <span className="flex items-center gap-1">
-                                {(conv.tags || []).slice(0, 2).map((tagName) => {
-                                  const t = dbTags.find((x) => x.name === tagName);
-                                  return (
-                                    <span
-                                      key={tagName}
-                                      className="text-[9px] px-1.5 py-0.5 rounded font-semibold border"
-                                      style={{
-                                        background: `${t?.hex_color || '#8b5cf6'}22`,
-                                        color: t?.hex_color || '#8b5cf6',
-                                        borderColor: `${t?.hex_color || '#8b5cf6'}55`,
-                                      }}
-                                    >
-                                      🏷 {tagName}
-                                    </span>
-                                  );
-                                })}
-                                {(conv.tags || []).length > 2 && (
-                                  <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400 font-mono">
-                                    +{(conv.tags || []).length - 2}
-                                  </span>
-                                )}
-                              </span>
-                            )}
-                          </div>
-
-                          {conv.unread_count > 0 && (
-                            <span className="w-4 h-4 rounded-full bg-purple-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                              {conv.unread_count}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+                {filteredConversations.slice(0, visibleCount).map((conv) => (
+                  <ConversationRow
+                    key={conv.id}
+                    conv={conv}
+                    isSelected={conv.id === activeConvId}
+                    onSelect={handleSelectConversation}
+                    dbTags={dbTags}
+                    getLineDisplayTitle={getLineDisplayTitle}
+                    multiLine={lineFilter === 'all'}
+                  />
+                ))}
 
                 {filteredConversations.length > visibleCount && (
                   <div className="p-3 text-center">
@@ -3176,38 +2848,37 @@ export function NativeChatInbox() {
                       <span className="font-mono text-[var(--text-secondary)]">{activeConversation.phone_or_jid}</span>
                       <span>•</span>
                       
-                      {/* عداد الاستجابة الذكي SLA Timer */}
-                      <span className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.2 rounded-full border ${
-                        slaStatus.level === 'critical'
-                          ? 'text-rose-400 bg-rose-500/10 border-rose-500/30 animate-pulse'
-                          : slaStatus.level === 'warning'
-                          ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-                          : slaStatus.level === 'resolved'
-                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                          : 'text-purple-300 bg-purple-500/10 border-purple-500/30'
-                      }`}>
-                        <Clock className="w-3 h-3" />
-                        <span>{slaStatus.text}</span>
-                      </span>
+                      {/* عداد الاستجابة الحي SLA Timer — ينبض كل ثانية (نمط v1) */}
+                      <SlaTimer
+                        since={activeConversation.last_customer_message_timestamp}
+                        status={activeConversation.status}
+                        showLabel
+                      />
                     </div>
                   </div>
                 </div>
 
-                {/* عناصر تحكم دورة الإسناد السريعة */}
+                {/* عناصر تحكم دورة الإسناد السريعة — الإسناد للمدير والمشرف فقط (قرار المالك) */}
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1.5 text-xs bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-2 py-1">
                     <UserPlus className="w-3.5 h-3.5 text-purple-400" />
-                    <select
-                      value={activeConversation.assigned_staff_name || 'غير مسند (عام)'}
-                      onChange={(e) => handleAssignStaff(e.target.value)}
-                      className="bg-transparent text-xs text-[var(--text-main)] outline-none font-medium cursor-pointer"
-                    >
-                      {availableStaff.map((s) => (
-                        <option key={s.id || 'unassigned'} value={s.name} className="bg-[var(--card-bg)] text-[var(--text-main)]">
-                          {s.name} ({s.role.split(' ')[0]})
-                        </option>
-                      ))}
-                    </select>
+                    {isManager ? (
+                      <select
+                        value={activeConversation.assigned_staff_name || 'غير مسند (عام)'}
+                        onChange={(e) => handleAssignStaff(e.target.value)}
+                        className="bg-transparent text-xs text-[var(--text-main)] outline-none font-medium cursor-pointer"
+                      >
+                        {availableStaff.map((s) => (
+                          <option key={s.id || 'unassigned'} value={s.name} className="bg-[var(--card-bg)] text-[var(--text-main)]">
+                            {s.name} ({s.role.split(' ')[0]})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-[var(--text-main)] font-medium">
+                        {activeConversation.assigned_staff_name || 'غير مسند'}
+                      </span>
+                    )}
                   </div>
 
                   <select
@@ -3629,7 +3300,7 @@ export function NativeChatInbox() {
                             type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(msg.body || '');
-                              alert('تم نسخ النص إلى الحافظة بنجاح');
+                              toast({ title: 'تم نسخ النص إلى الحافظة بنجاح', kind: 'success' });
                             }}
                             className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
                             title="نسخ النص"
@@ -3663,7 +3334,7 @@ export function NativeChatInbox() {
                           {msg.media_type === 'sticker' && (() => {
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=sticker.webp`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, 'sticker.webp') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="my-1 flex items-center justify-center">
@@ -3692,7 +3363,7 @@ export function NativeChatInbox() {
                             // ✅ نستخدم msg_key_id (المعرّف الحقيقي لواتساب) لبناء رابط الوكيل
                             // وللرسائل الصادرة المؤقتة (blob:) نستخدم media_url مباشرةً
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(msg.body || 'image.jpg')}`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, msg.body || 'image.jpg') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="mb-1">
@@ -3730,7 +3401,7 @@ export function NativeChatInbox() {
                             const meta = getFileCardMeta(rawFileName);
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(rawFileName)}&download=true`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, rawFileName, true) ?? null)
                               : (msg.media_url || null);
 
                             return (
@@ -3779,7 +3450,7 @@ export function NativeChatInbox() {
                             // للرسائل الواردة: نبني رابط الوكيل من msg_key_id
                             // للرسائل الصادرة المؤقتة: نستخدم media_url مباشرةً (blob: أو proxy URL بعد الإرسال)
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=voice_note.ogg`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, 'voice_note.ogg') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="mb-1">
@@ -3805,7 +3476,7 @@ export function NativeChatInbox() {
                           {isVideo && (() => {
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(msg.body || 'video.mp4')}`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, msg.body || 'video.mp4') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="mb-1">
@@ -3916,19 +3587,6 @@ export function NativeChatInbox() {
                           <div
                             className="flex items-center justify-end gap-1.5 text-[10px] mt-1.5 opacity-75 tabular-nums"
                           >
-                            {/* C3: شارة الخط — من أي رقم وردت/أُرسلت هذه الرسالة في العرض الموحد */}
-                            {msg.line_id && activeConversation?.available_lines && activeConversation.available_lines.length > 1 && (
-                              <span
-                                className={`text-[8px] px-1 py-0.5 rounded font-mono font-bold border ${
-                                  msg.line_id === 'Master'
-                                    ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                                }`}
-                                title={`عبر خط: ${getLineDisplayTitle(msg.line_id)}`}
-                              >
-                                <bdi dir="ltr">{getLineDisplayTitle(msg.line_id)}</bdi>
-                              </span>
-                            )}
                             <span>{msg.created_at}</span>
                             {isOut && (
                               <span>
@@ -4272,10 +3930,18 @@ export function NativeChatInbox() {
         </div>
       </div>
 
-      {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء --- */}
+      {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء (Modal الموحدة) --- */}
       {quietConfirmOpen && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-amber-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal
+          open
+          onClose={() => {
+            setQuietConfirmOpen(false);
+            setPendingSendText('');
+          }}
+          contained
+          ariaLabel="تأكيد الإرسال في ساعات الهدوء"
+          panelClassName="border border-amber-500/50 rounded-2xl max-w-md p-6 space-y-4 text-right"
+        >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
                 <Moon className="w-6 h-6 animate-pulse" />
@@ -4311,8 +3977,7 @@ export function NativeChatInbox() {
                 تأكيد الإرسال الاستثنائي الآن
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* --- نافذة معاينة وإرسال المرفقات --- */}
@@ -4640,8 +4305,7 @@ export function NativeChatInbox() {
           📌 نافذة اختيار مدة تثبيت الرسالة (خيارات واتساب)
          ════════════════════════════════════════════════════════ */}
       {pinModalMsg && (
-        <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-amber-500/40 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 text-right">
+        <Modal open onClose={() => setPinModalMsg(null)} contained ariaLabel="اختيار مدة تثبيت الرسالة" panelClassName="border border-amber-500/40 rounded-3xl max-w-sm p-5 space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
                 <Pin className="w-4 h-4 rotate-45" />
@@ -4677,16 +4341,14 @@ export function NativeChatInbox() {
                 <span className="text-slate-400 font-mono text-[11px]">30d</span>
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════════════
           ↪️ نافذة تحويل الرسالة إلى محادثة أخرى
          ════════════════════════════════════════════════════════ */}
       {forwardModalMsg && (
-        <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal open onClose={() => setForwardModalMsg(null)} contained ariaLabel="تحويل الرسالة إلى محادثة أخرى" panelClassName="border border-purple-500/40 rounded-3xl max-w-xl p-6 space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
                 <Share2 className="w-4 h-4" />
@@ -4729,8 +4391,7 @@ export function NativeChatInbox() {
                   </button>
                 ))}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════════════

@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
          and s.id <> $1::uuid
          and (
            s.id = $2::uuid
-           or coalesce(r.key, '') in ('super_admin', 'supervisor')
+           or coalesce(r.key, '') in ('super_admin', 'sales_lead')
          )`,
       [staff_id, convRow?.assigned_staff_id ?? null]
     );

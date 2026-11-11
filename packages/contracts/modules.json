@@ -17,7 +17,7 @@
     {"key":"labels","area":"admin","title_ar":"الوسوم والحالات","status":"live","required_permission":"inboxes.manage","sort":135},
     {"key":"signature","area":"admin","title_ar":"إدارة التوقيع","status":"live","required_permission":"signature.manage","sort":140},
     {"key":"staff","area":"admin","title_ar":"فريق العمل والموظفون","status":"live","required_permission":"staff.view","sort":150},
-    {"key":"roles","area":"admin","title_ar":"الأدوار والصلاحيات","status":"coming_soon","required_permission":"roles.manage","sort":160},
+    {"key":"roles","area":"admin","title_ar":"الأدوار والصلاحيات","status":"live","required_permission":"roles.manage","sort":160},
     {"key":"contacts_admin","area":"admin","title_ar":"إدارة جهات الاتصال","status":"live","required_permission":"contacts.manage","sort":180},
     {"key":"channels","area":"admin","title_ar":"قنوات التواصل","status":"coming_soon","required_permission":"channels.manage","sort":190},
     {"key":"reports","area":"admin","title_ar":"التقارير","status":"coming_soon","required_permission":"reports.view_all","sort":200},
