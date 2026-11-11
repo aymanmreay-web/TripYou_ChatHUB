@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Menu, Bell, LogOut, Check, ChevronDown, Sun, Moon, CheckCheck } from 'lucide-react';
-import { useApp, THEMES } from '../../context/AppContext';
+import { Menu, Bell, LogOut, Check, ChevronDown, CheckCheck } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
 import { toast } from '../common/Toaster';
 import { NotificationItem, kindIcon, timeAgo } from '../../lib/notificationsUi';
@@ -18,10 +18,6 @@ export function Header({ onOpenMobile }: HeaderProps) {
   const {
     user,
     logout,
-    theme,
-    setTheme,
-    mode,
-    toggleMode,
   } = useApp();
   const router = useRouter();
 
@@ -127,45 +123,8 @@ export function Header({ onOpenMobile }: HeaderProps) {
 
       {/* Left side (RTL end): Theme Selector + Mode Toggle + Role Switcher + Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
-        
-        {/* مبدّل الثيمات الست المعتمدة من v1 — حلقة هوية لكل ثيم */}
-        <div className="flex items-center bg-[var(--card-elevated)] p-1 rounded-2xl border border-[var(--border-subtle)]">
-          {THEMES.map((t) => {
-            const [c1, c2, c3, c4] = t.colors;
-            const active = theme === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTheme(t.key)}
-                title={`ثيم ${t.label}`}
-                aria-label={`ثيم ${t.label}`}
-                aria-pressed={active}
-                className={`relative w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all ${
-                  active ? 'bg-[var(--card-bg)] shadow-sm' : 'opacity-55 hover:opacity-100 hover:bg-[var(--card-bg)]'
-                }`}
-              >
-                {active && <span className="avatar-ring absolute inset-0 rounded-xl" aria-hidden="true" />}
-                <span
-                  className="relative w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full shadow-sm"
-                  style={{ background: `conic-gradient(from 200deg, ${c1}, ${c4}, ${c3}, ${c2}, ${c1})` }}
-                />
-              </button>
-            );
-          })}
-        </div>
 
-        {/* Mode Toggle: Dark / Light with Instant Sync */}
-        <button
-          onClick={toggleMode}
-          title={mode === 'dark' ? 'التحويل للوضع الفاتح' : 'التحويل للوضع الداكن'}
-          className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-glow)] flex items-center justify-center text-[var(--text-main)] active:scale-95 transition-all shadow-sm"
-        >
-          {mode === 'dark' ? (
-            <Sun className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
-          ) : (
-            <Moon className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
-          )}
-        </button>
+        {/* ملاحظة: التحكم بالمظهر والثيمات والخطوط انتقل إلى «المظهر والتخصيص» في لوحة الإدارة — الترويسة نظيفة */}
 
         {/* Notifications Icon with Live Popover */}
         <div className="relative">

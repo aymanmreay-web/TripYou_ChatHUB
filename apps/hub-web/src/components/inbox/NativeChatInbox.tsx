@@ -414,12 +414,26 @@ export function NativeChatInbox() {
 
   // م8-ج2: مراقبة حية للرابط — لأن router.push من الإشعار/اللوحة (أنت أصلاً في /inbox)
   // لا يعيد تحميل المكون، فلا يُلتقط الباراميتر الجديد بوسيلة الـ mount
+  const [deepLinkTick, setDeepLinkTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => {
       if (typeof window === 'undefined') return;
       const fromUrl = new URLSearchParams(window.location.search).get('chat');
       if (fromUrl && fromUrl !== pendingChatDeepLink.current) {
         pendingChatDeepLink.current = fromUrl;
+        setDeepLinkTick((t) => t + 1);
+        // مهلة فشل: إن لم تُوجد المحادثة في نطاق الصندوق خلال 5 ثوانٍ — رسالة واضحة
+        setTimeout(() => {
+          if (pendingChatDeepLink.current === fromUrl) {
+            pendingChatDeepLink.current = null;
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('chat');
+              window.history.replaceState({}, '', url.toString());
+            } catch {}
+            toast({ title: 'لم تُوجد المحادثة في نطاق صندوقك الحالي — افتح صندوقها أو خطها', kind: 'error' });
+          }
+        }, 5000);
       }
     }, 600);
     return () => clearInterval(interval);
@@ -967,6 +981,7 @@ export function NativeChatInbox() {
 
     if (target) {
       pendingChatDeepLink.current = null; // استُهلك — لا يعيد الانتقاء مرة أخرى
+      setDeepLinkTick((t) => t + 1); // إعادة مزامنة النبضة بعد الاستهلاك
       handleSelectConversation(target.id);
       // تنظيف الرابط دون إعادة تحميل الصفحة
       try {
@@ -975,9 +990,9 @@ export function NativeChatInbox() {
         window.history.replaceState({}, '', url.toString());
       } catch { /* صامت */ }
     }
-    // ملاحظة: إن لم تُوجد المحادثة بعد نبقي الرابط معلقاً — قد تصل مع دفعة الخطوط التالية
+    // ملاحظة: إن لم تُوجد المحادثة بعد نبقي الرابط معلقاً — مهلة الفشل في المراقب تعرض رسالة واضحة
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations, loadingChats]);
+  }, [conversations, loadingChats, deepLinkTick]);
 
   // 3. Fetch real messages when active conversation changes (يدعم جلب الرسائل من كافة الخطوط المشتركة ودمجها)
   // م8: التحديث الدوري لنفس المحادثة صامت بلا وميض لودر ولا قفزة سكرول
@@ -1089,6 +1104,8 @@ export function NativeChatInbox() {
         return {
           id: msgKeyId || m.id || ('msg-' + Date.now() + '-' + Math.random()),
           msg_key_id: msgKeyId,
+          key_from_me: fromMe,
+          key_participant: m.key?.participant || undefined,
           conversation_id: chatJid,
           chat_jid: chatJid,
           direction: fromMe ? `out` : `in`,
@@ -2172,25 +2189,48 @@ export function NativeChatInbox() {
     }
   };
 
-  // ─── تحويل رسالة إلى محادثة أخرى ───
+  // ─── م8: تحويل رسالة إلى محادثة أخرى — رسمي لكل الأنواع عبر key الأصلي ───
+  // خط المصدر = الخط الذي وردت منه الرسالة (msg.line_id) — النسخة الأصلية في ذاكرته فقط.
+  // الهدف = معرف المحادثة الهدف (رقم العميل/المجموعة) كما يظهر في القائمة الموحدة.
   const handleForwardMessage = async (targetConv: ConversationItem) => {
     if (!forwardModalMsg || isSending) return;
     setIsSending(true);
     try {
-      if (forwardModalMsg.media_type === 'text') {
-        await fetch(`/api/evolution/instances/${targetConv.line_id || selectedInstanceName}/messages`, {
+      const sourceInstance = forwardModalMsg.line_id || selectedInstanceName;
+      const targetJid = targetConv.chat_jid;
+
+      // رسالة حقيقية من واتساب → تحويل رسمي (يحمل الوسائط والملصقات والمستندات كما هي)
+      if (forwardModalMsg.msg_key_id) {
+        const res = await fetch(`/api/evolution/instances/${encodeURIComponent(sourceInstance)}/forward`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: targetConv.chat_jid,
-            text: forwardModalMsg.body,
+            to: targetJid,
+            key: {
+              remoteJid: forwardModalMsg.chat_jid,
+              fromMe: forwardModalMsg.key_from_me ?? forwardModalMsg.direction === 'out',
+              id: forwardModalMsg.msg_key_id,
+              participant: forwardModalMsg.key_participant || undefined,
+            },
           }),
         });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || errData.error || `فشل التحويل (${res.status}) — تأكد أن رقم المصدر يملك محادثة مع الهدف`);
+        }
+        toast({ title: `تم التحويل إلى «${targetConv.title}» من ${getLineDisplayTitle(sourceInstance)}`, kind: 'success' });
+      } else {
+        // رسالة صادرة محلية (لم تصدر لها key بعد) — إرسال نصي بديل
+        await fetch(`/api/evolution/instances/${encodeURIComponent(targetConv.line_id || selectedInstanceName)}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: targetJid, text: forwardModalMsg.body }),
+        });
+        toast({ title: `أُرسل النص إلى «${targetConv.title}»`, kind: 'success' });
       }
-      alert(`تم تحويل الرسالة بنجاح إلى "${targetConv.title}"`);
       setForwardModalMsg(null);
     } catch (err: any) {
-      alert(`فشل تحويل الرسالة: ${err.message}`);
+      toast({ title: `فشل التحويل: ${err.message}`, kind: 'error' });
     } finally {
       setIsSending(false);
     }
@@ -4645,6 +4685,11 @@ export function NativeChatInbox() {
                 <Share2 className="w-4 h-4" />
                 <span>تحويل الرسالة إلى محادثة</span>
               </div>
+              {/* م8: توضيح خط المصدر — التحويل يتم من نفس الرقم الذي وردت منه الرسالة */}
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                سيتم التحويل من خط <b className="text-purple-300">{getLineDisplayTitle(forwardModalMsg.line_id || selectedInstanceName)}</b>{' '}
+                (الخط الذي وردت منه الرسالة) إلى المحادثة الهدف — للإرسال لمجموعة يجب أن يكون رقم المصدر عضواً فيها.
+              </p>
               <button onClick={() => setForwardModalMsg(null)} className="text-slate-400 hover:text-[var(--text-main)]">
                 <X className="w-4 h-4" />
               </button>
@@ -4661,6 +4706,7 @@ export function NativeChatInbox() {
             </div>
             <div className="max-h-60 overflow-y-auto space-y-1.5">
               {conversations
+                .filter((c) => c.chat_jid !== forwardModalMsg.chat_jid) // استبعاد محادثة المصدر
                 .filter((c) => !forwardSearch || c.title.toLowerCase().includes(forwardSearch.toLowerCase()))
                 .map((conv) => (
                   <button
@@ -4760,18 +4806,26 @@ export function NativeChatInbox() {
                         <div className="text-[9px] text-purple-400/80 mt-1">{item.createdAt}</div>
                       </div>
                       <div className="flex items-center gap-1">
-                        {/* م8-ج3: فتح العنصر — ينقل للمحادثة عبر الرابط العميق أو لجهات الاتصال */}
+                        {/* م8-ج3: فتح العنصر — يضبط الرابط العميق مباشرة (نبضة فورية) أو يفتح جهات الاتصال */}
                         <button
                           onClick={() => {
                             const meta: any = (item as any).meta || {};
                             const jid = meta.chat_jid || meta.chatJid;
                             setFavoritesDrawerOpen(false);
                             if (jid) {
-                              router.push(`/inbox?chat=${encodeURIComponent(jid)}`);
+                              pendingChatDeepLink.current = jid;
+                              setDeepLinkTick((t) => t + 1);
+                              // مهلة فشل مطابقة للمراقب
+                              setTimeout(() => {
+                                if (pendingChatDeepLink.current === jid) {
+                                  pendingChatDeepLink.current = null;
+                                  toast({ title: 'لم تُوجد المحادثة في نطاق صندوقك الحالي — افتح صندوقها أو خطها', kind: 'error' });
+                                }
+                              }, 5000);
                             } else if (item.category === 'contact') {
                               router.push('/module/contacts');
                             } else {
-                              toast({ title: 'لا يوجد رابط محادثة محفوظ لهذا العنصر', kind: 'info' });
+                              toast({ title: 'لا يوجد رابط محادثة محفوظ لهذا العنصر (مفضل قديم قبل التسجيل)', kind: 'info' });
                             }
                           }}
                           className="p-1.5 rounded-lg bg-purple-600/20 text-purple-300 hover:bg-purple-600/40 transition-colors"

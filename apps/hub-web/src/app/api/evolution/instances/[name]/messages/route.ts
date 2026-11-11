@@ -46,10 +46,10 @@ export async function POST(req: Request, { params }: { params: { name: string } 
       return NextResponse.json({ error: 'to and text are required' }, { status: 400 });
     }
 
-    // م8: الرد المقتبس — Evolution v2 يدعم quotedMessageId في كائن options
+    // م8: الرد المقتبس — الحقل في أعلى جسم الإرسال (SendTextDto في Evolution v2)
     const payload: Record<string, any> = { number: to, text };
     if (quoted_message_id) {
-      payload.options = { quotedMessageId: quoted_message_id };
+      payload.quotedMessageId = quoted_message_id;
     }
 
     const res = await fetch(`${EVOLUTION_URL}/message/sendText/${name}`, {
