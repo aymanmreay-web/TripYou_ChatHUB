@@ -6,6 +6,7 @@ import { useApp } from '../../context/AppContext';
 import { Sidebar } from '../navigation/Sidebar';
 import { Header } from '../navigation/Header';
 import { MobileNav } from '../navigation/MobileNav';
+import { Toaster } from '../common/Toaster';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -49,6 +50,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Floating Bottom Navigation Bar */}
       <MobileNav onOpenSidebar={() => setMobileOpen(true)} />
+
+      {/* Toasts (إشعارات منبثقة عالمية) */}
+      <Toaster />
     </div>
   );
 }

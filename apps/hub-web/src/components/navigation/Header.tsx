@@ -1,9 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Menu, Bell, LogOut, Check, ChevronDown, Sun, Moon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Menu, Bell, LogOut, Check, ChevronDown, Sun, Moon, CheckCheck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { supabase } from '../../lib/supabase';
+import { toast } from '../common/Toaster';
+import { NotificationItem, kindIcon, timeAgo } from '../../lib/notificationsUi';
 import { Button, Avatar, Badge } from '@tripyou/ui';
 
 interface HeaderProps {
@@ -19,9 +23,84 @@ export function Header({ onOpenMobile }: HeaderProps) {
     mode,
     toggleMode,
   } = useApp();
+  const router = useRouter();
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const staffId = user?.id || null;
+  const notificationsRef = useRef(notificationsOpen);
+  notificationsRef.current = notificationsOpen;
+
+  const loadNotifications = useCallback(async () => {
+    if (!staffId) return;
+    try {
+      const res = await fetch(`/api/notifications?staff_id=${encodeURIComponent(staffId)}`, { cache: 'no-store' });
+      const data = await res.json();
+      setNotifications(data.notifications || []);
+      setUnreadCount(data.unread || 0);
+    } catch { /* صامت */ }
+  }, [staffId]);
+
+  // تحميل أولي + تحديث دوري
+  useEffect(() => {
+    if (!staffId) return;
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 45000);
+    return () => clearInterval(interval);
+  }, [staffId, loadNotifications]);
+
+  // Realtime: إشعار جديد يصل فوراً (الجرس + توست)
+  useEffect(() => {
+    if (!staffId) return;
+    const channel = supabase
+      .channel('notifications-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications' },
+        (payload) => {
+          const n = payload.new as NotificationItem;
+          if (!n || n.staff_id !== staffId) return;
+          setNotifications((prev) => [n, ...prev].slice(0, 30));
+          setUnreadCount((c) => c + 1);
+          if (!notificationsRef.current) {
+            toast({ title: n.title, body: n.body || undefined, kind: 'notification' });
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [staffId]);
+
+  const markRead = useCallback(async (id?: string) => {
+    if (!staffId) return;
+    try {
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff_id: staffId, id, all: !id }),
+      });
+    } catch { /* صامت */ }
+  }, [staffId]);
+
+  const handleNotificationClick = async (n: NotificationItem) => {
+    if (!n.read_at) {
+      setUnreadCount((c) => Math.max(0, c - 1));
+      setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)));
+      await markRead(n.id);
+    }
+    setNotificationsOpen(false);
+    if (n.link) router.push(n.link);
+  };
+
+  const handleMarkAll = async () => {
+    setUnreadCount(0);
+    setNotifications((prev) => prev.map((x) => ({ ...x, read_at: x.read_at || new Date().toISOString() })));
+    await markRead();
+  };
 
   return (
     <header className="h-16 bg-[var(--card-bg)]/85 backdrop-blur-xl border-b border-[var(--border-subtle)] px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 transition-colors duration-200" dir="rtl">
@@ -99,36 +178,77 @@ export function Header({ onOpenMobile }: HeaderProps) {
           )}
         </button>
 
-        {/* Notifications Icon with Popover */}
+        {/* Notifications Icon with Live Popover */}
         <div className="relative">
           <button
             onClick={() => {
               setNotificationsOpen(!notificationsOpen);
               setRoleDropdownOpen(false);
+              if (!notificationsOpen) loadNotifications();
             }}
             className="p-2 sm:p-2.5 rounded-2xl text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)] border border-transparent hover:border-[var(--border-subtle)] transition-colors relative"
             title="التنبيهات"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow-lg">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </button>
 
           {notificationsOpen && (
-            <div className="absolute left-0 mt-2 w-80 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95 glass-panel">
-              <div className="flex items-center justify-between pb-2 mb-3 border-b border-[var(--border-subtle)]">
+            <div className="absolute left-0 mt-2 w-80 sm:w-96 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-50 animate-in fade-in zoom-in-95 glass-panel overflow-hidden" dir="rtl">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
                 <span className="font-bold text-xs text-[var(--text-main)]">الإشعارات والتنبيهات</span>
-                <span className="badge-glass px-2 py-0.5 rounded-lg text-[10px] text-emerald-400 font-bold">
-                  مباشر
-                </span>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAll}
+                    className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300 font-bold transition-colors"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    تعليم الكل كمقروء
+                  </button>
+                )}
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="p-2.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)]">
-                  <div className="font-bold text-emerald-400 mb-0.5">اتصال الخط الرئيسي مستقر</div>
-                  <div className="text-[var(--text-muted)] text-[11px]">
-                    خط الحجوزات (+966 50 *** 8811) يعمل بكفاءة كاملة.
+              <div className="max-h-96 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-[var(--text-muted)]">
+                    لا توجد إشعارات بعد — ستصلك تنبيهات الرسائل الجديدة هنا فوراً
                   </div>
-                </div>
+                ) : (
+                  notifications.map((n) => (
+                    <button
+                      key={n.id}
+                      onClick={() => handleNotificationClick(n)}
+                      className={`w-full text-right flex items-start gap-2.5 px-4 py-3 border-b border-[var(--border-subtle)] last:border-b-0 hover:bg-[var(--card-elevated)] transition-colors ${
+                        !n.read_at ? 'bg-purple-500/5' : ''
+                      }`}
+                    >
+                      <div className="mt-0.5 shrink-0">
+                        {kindIcon(n.kind)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-xs leading-relaxed ${!n.read_at ? 'font-bold text-[var(--text-main)]' : 'text-[var(--text-main)]'}`}>
+                          {n.title}
+                        </div>
+                        {n.body && (
+                          <div className="text-[11px] text-[var(--text-muted)] line-clamp-2 mt-0.5 leading-relaxed">{n.body}</div>
+                        )}
+                        <div className="text-[10px] text-[var(--text-muted)] mt-1">{timeAgo(n.created_at)}</div>
+                      </div>
+                      {!n.read_at && <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0 mt-1" />}
+                    </button>
+                  ))
+                )}
               </div>
+              <Link
+                href="/module/notifications"
+                onClick={() => setNotificationsOpen(false)}
+                className="block text-center text-[11px] font-bold text-purple-400 hover:text-purple-300 py-2.5 border-t border-[var(--border-subtle)] transition-colors"
+              >
+                عرض كل الإشعارات
+              </Link>
             </div>
           )}
         </div>

@@ -11,7 +11,8 @@ export const RAW_MODULES: ModuleContract[] = [
   { key: 'meetings', area: 'user', title_ar: 'الاجتماعات', status: 'coming_soon', required_permission: 'meetings.view', sort: 40 },
   { key: 'my_reports', area: 'user', title_ar: 'تقاريري', status: 'coming_soon', required_permission: 'reports.view_own', sort: 50 },
   { key: 'campaigns', area: 'user', title_ar: 'الحملات', status: 'coming_soon', required_permission: 'campaigns.view', sort: 60 },
-  { key: 'notifications', area: 'user', title_ar: 'الإشعارات', status: 'coming_soon', required_permission: null, sort: 70 },
+  { key: 'canned', area: 'user', title_ar: 'الردود الجاهزة', status: 'live', required_permission: null, sort: 65 },
+  { key: 'notifications', area: 'user', title_ar: 'الإشعارات', status: 'live', required_permission: null, sort: 70 },
   { key: 'profile', area: 'user', title_ar: 'ملفي', status: 'live', required_permission: null, sort: 80 },
   { key: 'admin_dashboard', area: 'admin', title_ar: 'لوحة الإدارة', status: 'beta', required_permission: 'settings.manage', sort: 110 },
   { key: 'lines', area: 'admin', title_ar: 'الخطوط', status: 'live', required_permission: 'lines.view', sort: 120 },
@@ -25,7 +26,7 @@ export const RAW_MODULES: ModuleContract[] = [
   { key: 'channels', area: 'admin', title_ar: 'قنوات التواصل', status: 'coming_soon', required_permission: 'channels.manage', sort: 190 },
   { key: 'reports', area: 'admin', title_ar: 'التقارير', status: 'coming_soon', required_permission: 'reports.view_all', sort: 200 },
   { key: 'audit', area: 'admin', title_ar: 'سجل التدقيق', status: 'coming_soon', required_permission: 'audit.view', sort: 210 },
-  { key: 'settings', area: 'admin', title_ar: 'الإعدادات', status: 'coming_soon', required_permission: 'settings.manage', sort: 220 },
+  { key: 'settings', area: 'admin', title_ar: 'الإعدادات', status: 'live', required_permission: 'settings.manage', sort: 220 },
   { key: 'health', area: 'admin', title_ar: 'صحة النظام', status: 'coming_soon', required_permission: 'system.health', sort: 230 },
   { key: 'campaigns_admin', area: 'admin', title_ar: 'إدارة الحملات', status: 'coming_soon', required_permission: 'campaigns.manage', sort: 240 }
 ];

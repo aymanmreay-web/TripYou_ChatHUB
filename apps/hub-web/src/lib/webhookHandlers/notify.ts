@@ -1,17 +1,24 @@
 import { q } from '../pg';
 
 /**
- * إنشاء إشعارات الموظفين — تظهر فوراً في الجرس عبر Supabase Realtime.
+ * بنية الإشعارات العامة (Generic Notifications Hub) — تظهر فوراً في الجرس عبر Supabase Realtime.
+ *
+ * `kind` حقل حر في القاعدة (بلا قيد) — أي ميزة مستقبلية تمرر نوعها الجديد
+ * دون أي تعديل على المخطط، والواجهة تعرض أيقونة/اسم عام لغير المسجل.
+ * أمثلة مستقبلية: task_assigned, sla_warning, booking_created, payment_received,
+ * campaign_done, line_offline, mention ...
  */
 export interface NotificationInput {
   staffId: string;
-  kind: 'new_message' | 'assignment' | 'after_hours' | 'campaign' | 'system' | 'mention';
+  kind: string;
   title: string;
   body?: string;
   link?: string;
   chatJid?: string;
   instanceName?: string;
 }
+
+export type NotifyPayload = Omit<NotificationInput, 'staffId'>;
 
 export async function insertNotification(n: NotificationInput): Promise<void> {
   try {
@@ -22,6 +29,55 @@ export async function insertNotification(n: NotificationInput): Promise<void> {
     );
   } catch (err) {
     console.warn('[notify] non-critical:', (err as Error).message);
+  }
+}
+
+/** إشعار مجموعة معرفات موظفين دفعة واحدة — يرجع عدد الصفوف المدرجة */
+export async function notifyStaffIds(staffIds: string[], payload: NotifyPayload): Promise<number> {
+  if (!staffIds.length) return 0;
+  try {
+    const res = await q(
+      `insert into public.notifications (staff_id, kind, title, body, link, chat_jid, instance_name)
+       select sid, $2, $3, $4, $5, $6, $7
+       from unnest($1::uuid[]) as sid`,
+      [
+        staffIds,
+        payload.kind,
+        payload.title,
+        payload.body || null,
+        payload.link || null,
+        payload.chatJid || null,
+        payload.instanceName || null,
+      ]
+    );
+    return res.length;
+  } catch (err) {
+    console.warn('[notifyStaffIds] non-critical:', (err as Error).message);
+    return 0;
+  }
+}
+
+/** إشعار كل موظفي دور معين (مفتاح الدور من جدول الأدوار) */
+export async function notifyRole(roleKey: string, payload: NotifyPayload): Promise<number> {
+  try {
+    const rows = await q<{ id: string }>(
+      `select s.id from hub.staff s join hub.roles r on r.id = s.role_id
+       where r.key = $1 and s.status = 'active' limit 50`,
+      [roleKey]
+    );
+    return await notifyStaffIds(rows.map((r) => r.id), payload);
+  } catch {
+    return 0;
+  }
+}
+
+/** إشعار كل الموظفين النشطين (بث عام) */
+export async function notifyAllActive(payload: NotifyPayload): Promise<number> {
+  try {
+    const rows = await q<{ id: string }>(`select id from hub.staff where status = 'active' limit 100`);
+    return await notifyStaffIds(rows.map((r) => r.id), payload);
+  } catch {
+    return 0;
   }
 }
 

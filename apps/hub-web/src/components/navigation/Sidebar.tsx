@@ -9,7 +9,7 @@ import {
   Users2, UserCheck, Shield, PenTool, Contact, Share2,
   FileSpreadsheet, History, Settings, Activity, Megaphone,
   Search, ChevronLeft, ChevronRight, Layers, Sparkles,
-  Tags, Star, Building2
+  Tags, Star, Building2, MessageSquareQuote
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ModuleContract } from '../../types';
@@ -30,6 +30,7 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   meetings: Video,
   my_reports: BarChart2,
   campaigns: Send,
+  canned: MessageSquareQuote,
   notifications: Bell,
   profile: UserCircle,
   admin_dashboard: LayoutDashboard,
