@@ -120,9 +120,10 @@ export async function storeMessageRecord(msg: InboundMessage): Promise<StoredMes
        select id from hub.lines where instance_name = $1 limit 1
      ), conv as (
        insert into hub.conversations
-         (chat_jid, line_id, title, is_group, last_message_text, last_message_at, last_customer_message_at)
+         (chat_jid, line_id, title, is_group, last_message_text, last_message_at, last_customer_message_at, unread_count)
        values ($2, (select id from line), $3, $4, $5, now(),
-               case when $6 then now() else null end)
+               case when $6 then now() else null end,
+               case when $6 then 1 else 0 end)
        on conflict (chat_jid, line_id) do update set
          last_message_text = excluded.last_message_text,
          last_message_at = excluded.last_message_at,
@@ -140,7 +141,8 @@ export async function storeMessageRecord(msg: InboundMessage): Promise<StoredMes
      )
      select conv.id as conversation_id, conv.unread_count, conv.assigned_staff_id,
             (select id from line) as line_id,
-            exists (select 1 from msg) as stored`,
+            exists (select 1 from msg) as stored
+     from conv`,
     [
       msg.instance,
       msg.chatJid,
