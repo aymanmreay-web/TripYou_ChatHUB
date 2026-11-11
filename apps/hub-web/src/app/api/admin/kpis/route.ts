@@ -47,7 +47,7 @@ export async function GET() {
          from first_out fo
          join first_in fi on fi.conversation_id = fo.conversation_id and fi.sent_by = fo.sent_by and fi.at <= fo.at
        )
-       select s.id, s.full_name, r.name_ar as role_name,
+       select s.id, s.full_name, coalesce(r.title_ar, r.key) as role_name,
               count(distinct c.id) filter (where c.assigned_staff_id = s.id) as assigned_conversations,
               count(distinct c.id) filter (where c.assigned_staff_id = s.id and c.status = 'resolved') as resolved,
               count(distinct c.id) filter (where c.assigned_staff_id = s.id and c.status = 'escalated') as escalated,
@@ -59,7 +59,7 @@ export async function GET() {
        left join fr on fr.staff_id = s.id
        left join hub.messages m on m.sent_by = s.id
        where s.status = 'active'
-       group by s.id, s.full_name, r.name_ar
+       group by s.id, s.full_name, coalesce(r.title_ar, r.key)
        order by assigned_conversations desc
        limit 30`
     );

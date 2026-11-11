@@ -11,7 +11,7 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const rows = await q(
-      `select s.id, s.full_name, s.email, r.name_ar as role_name, r.key as role_key
+      `select s.id, s.full_name, s.email, coalesce(r.title_ar, r.key) as role_name, r.key as role_key
        from hub.staff s
        left join hub.roles r on r.id = s.role_id
        where s.status = 'active'
