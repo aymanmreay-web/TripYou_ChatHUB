@@ -3,6 +3,10 @@ const nextConfig = {
   output: 'standalone',
   reactStrictMode: true,
   transpilePackages: ['@tripyou/ui'],
+  // م5: تفعيل خطاف instrumentation (Next 14) — يشغل محرك الحملات الدوري مع إقلاع السيرفر
+  experimental: {
+    instrumentationHook: true,
+  },
   async headers() {
     return [
       {
