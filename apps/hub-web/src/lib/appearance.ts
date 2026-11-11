@@ -69,7 +69,7 @@ export function loadAppearance(): AppearanceConfig {
           return;
         }
         if (saved[k] !== undefined && saved[k] !== null && typeof saved[k] === typeof base[k]) {
-          (base as Record<string, unknown>)[k] = saved[k];
+          (base as unknown as Record<string, unknown>)[k] = saved[k];
         }
       });
       if (base.primaryCustom !== null && !HEX_RE.test(base.primaryCustom)) base.primaryCustom = null;

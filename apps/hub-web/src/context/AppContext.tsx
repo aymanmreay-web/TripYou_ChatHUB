@@ -5,6 +5,7 @@ import { StaffMe, WhatsAppLine, ModuleContract } from '../types';
 import { MOCK_LINES, RAW_MODULES, filterModulesForUser } from '../lib/mock-data';
 import { loadAuthState, signOut, AuthStatus } from '../lib/authDb';
 import { supabase } from '../lib/supabase';
+import { loadAppearance, applyAppearance } from '../lib/appearance';
 
 export type AppTheme =
   | 'theme-google'
@@ -115,6 +116,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const root = document.documentElement;
       root.classList.remove(...ALL_THEME_KEYS, 'theme-purple', 'theme-blue', 'dark', 'light');
       root.classList.add(savedTheme, savedMode);
+      // تطبيق إعدادات استوديو المظهر (حجم الخط، الاستدارة، الزجاج، الحركة، الخلفية...)
+      applyAppearance(loadAppearance());
     } catch {
       // ignore
     }
