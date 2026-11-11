@@ -1,5 +1,17 @@
-import { q } from './pg';
-import { storeOutboundStaffMessage } from './webhookHandlers/storeMessage';
+// م5/م8: استيراد ديناميكي — instrumentation يُبنى أيضاً لحزمة edge
+// والأستيراد الثابت لـ pg (يتطلب fs) يكسر بناء الـ edge، فنجلب المسارات وقت التشغيل فقط
+let _q: typeof import('./pg')['q'] | null = null;
+async function q<T = any>(sql: string, params?: any[]): Promise<T[]> {
+  if (!_q) {
+    const mod = await import('./pg');
+    _q = mod.q;
+  }
+  return _q<T>(sql, params);
+}
+async function storeOutboundStaffMessage(opts: Parameters<typeof import('./webhookHandlers/storeMessage')['storeOutboundStaffMessage']>[0]): Promise<void> {
+  const mod = await import('./webhookHandlers/storeMessage');
+  return mod.storeOutboundStaffMessage(opts);
+}
 
 /**
  * م5 — محرك الحملات (Campaign Runner)
