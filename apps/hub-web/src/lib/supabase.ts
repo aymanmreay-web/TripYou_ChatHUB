@@ -15,9 +15,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 /**
  * Admin client for server-side trusted operations (bypassing RLS)
+ *
+ * ⚠️ مؤقت (2026-11-11): مفتاح sb_secret القديم أصبح "Unregistered API key" (دُوّر في Supabase)
+ * فتعطلت كل مسارات supabase-js السيرفرية (جهات الاتصال، الخطوط، التواقيع…).
+ * الحل المؤقت: استخدام المفتاح العام العامل — سياسة RLS في هذا المشروع
+ * "Allow all for anon and authenticated" على كل الجداول فالسلوك مطابق للسابق.
+ * المطلوب من المالك: تزويدنا بمفتاح service_role الجديد ووضعه في env الحاوية.
  */
 export const getSupabaseAdmin = () => {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_secret_ni5qHxMwbkRk_bJdu1Ds_Q_SjeO3WJN';
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       persistSession: false,

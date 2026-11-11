@@ -402,12 +402,25 @@ export function NativeChatInbox() {
   const [signatureConfig, setSignatureConfig] = useState<any>(null);
   const [staffSignaturesList, setStaffSignaturesList] = useState<any[]>([]);
 
-  // ─── روابط عمق المفضلة: ?chat=<jid> — يلتقط مرة واحدة ويستهلك عند ظهور المحادثة ───
+  // ─── روابط عمق المفضلة/الإشعارات/اللوحة: ?chat=<jid> — يلتقط مرة واحدة ويستهلك عند ظهور المحادثة ───
   const pendingChatDeepLink = useRef<string | null>(
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('chat')
       : null
   );
+
+  // م8-ج2: مراقبة حية للرابط — لأن router.push من الإشعار/اللوحة (أنت أصلاً في /inbox)
+  // لا يعيد تحميل المكون، فلا يُلتقط الباراميتر الجديد بوسيلة الـ mount
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof window === 'undefined') return;
+      const fromUrl = new URLSearchParams(window.location.search).get('chat');
+      if (fromUrl && fromUrl !== pendingChatDeepLink.current) {
+        pendingChatDeepLink.current = fromUrl;
+      }
+    }, 600);
+    return () => clearInterval(interval);
+  }, []);
 
   // ─── م3: وسوم القاعدة الحقيقية — سجل الوسوم + وسم المحادثة النشطة + محرر منبثق ───
   const [dbTags, setDbTags] = useState<{ id: string; name: string; hex_color: string }[]>([]);
@@ -621,14 +634,35 @@ export function NativeChatInbox() {
   }, [loadInboxes]);
 
   // ─── تحميل سجل المقروء من قاعدة البيانات لهذا الصندوق والمستخدم ───
+  // م8-ج2: يملأ أيضاً أطواب القراءة (lastReadAt) ويعيد تصفير العدادات فوراً —
+  // القراءة خاصة بكل مستخدم (user_id) ولا يعود العداد بعد تحديث الصفحة
   const loadReadReceipts = useCallback(async () => {
     if (!user?.id) return;
     try {
       const res = await fetch(`/api/inboxes/read?inbox_id=${selectedInboxId || 'all'}&user_id=${user.id}`);
       if (res.ok) {
         const json = await res.json();
-        const set = new Set<string>((json.reads || []).map((r: any) => r.chat_jid));
+        const reads: { chat_jid: string; last_read_at: string }[] = json.reads || [];
+        const set = new Set<string>(reads.map((r) => r.chat_jid));
         setReadChatJids(set);
+        // مزامنة الـ ref الدائم حتى يعتمد عليه جلب المحادثات المتأخر (سباق التحميل الأولي)
+        set.forEach((jid) => readChatsSet.current.add(jid));
+        for (const r of reads) {
+          const ts = r.last_read_at ? new Date(r.last_read_at).getTime() : 0;
+          if (ts > 0) lastReadAtRef.current.set(r.chat_jid, ts);
+        }
+        // تطبيق فوري على القائمة الحالية — بلا انتظار جلب الخطوط التالي
+        setConversations((prev) => {
+          let changed = false;
+          const next = prev.map((c) => {
+            if (set.has(c.chat_jid) && c.unread_count !== 0) {
+              changed = true;
+              return { ...c, unread_count: 0 };
+            }
+            return c;
+          });
+          return changed ? next : prev;
+        });
       }
     } catch (e) {
       console.warn('Failed loading read receipts:', e);
@@ -1303,32 +1337,39 @@ export function NativeChatInbox() {
     return instances.find((i) => i.name === (activeConversation?.line_id || selectedInstanceName)) || instances[0] || null;
   }, [instances, activeConversation?.line_id, selectedInstanceName]);
 
-  // ─── م8: سكرول ذكي — ينزل للأسفل فقط عند وصول رسائل جديدة وأنت قريب من الأسفل ───
-  // (يحترح موقع قراءتك: إن كنت تقرأ رسائل قديمة أعلى المحادثة لا يقفز بك)
+  // ─── م8-ج2: السكرول الصحيح — نزول للأسفل مرة واحدة عند أول فتح للمحادثة،
+  // ثم عند رسائل جديدة فقط إن كنت قريباً من الأسفل (يحترم موقع قراءتك) ───
   const wasNearBottomRef = useRef(true);
+  const pendingInitialScrollRef = useRef(false);
+  const lastMsgCountRef = useRef(0);
+
+  // اختيار محادثة جديدة → علّم الحاجة للسكرول الأولي (يُنفذ مرة عند وصول رسائلها)
+  useEffect(() => {
+    pendingInitialScrollRef.current = true;
+    wasNearBottomRef.current = true;
+    lastMsgCountRef.current = messages.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConvId]);
+
   const handleMessagesScroll = useCallback(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
     wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }, []);
-  const lastMsgCountRef = useRef(0);
+
   useEffect(() => {
-    const count = messages.length;
-    const isNewMessage = count > lastMsgCountRef.current;
-    lastMsgCountRef.current = count;
-    // انزل فقط عند رسائل جديدة وأنت كنت بأسفل المحادثة، أو عند فتح محادثة جديدة
-    if (isNewMessage && wasNearBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } else if (!isNewMessage && count > 0 && lastActiveConvIdRef.current !== activeConvId) {
-      lastActiveConvIdRef.current = activeConvId;
-      wasNearBottomRef.current = true;
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    if (pendingInitialScrollRef.current && messages.length > 0) {
+      pendingInitialScrollRef.current = false;
+      lastMsgCountRef.current = messages.length;
+      // السكرول الأولي عند الفتح — دفعة واحدة فورية بعد الرسم
+      requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }));
+    } else if (messages.length > lastMsgCountRef.current && wasNearBottomRef.current) {
+      // رسائل جديدة وأنت قريب من الأسفل — تابع السفلى بدون إزعاج
+      requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }));
     }
-    if (lastActiveConvIdRef.current !== activeConvId && !isNewMessage) {
-      lastActiveConvIdRef.current = activeConvId;
-    }
+    lastMsgCountRef.current = messages.length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, activeConvId]);
+  }, [messages]);
 
   // --- حساب عداد الاستجابة (SLA Response Timer) ---
   const slaStatus = useMemo(() => {

@@ -81,13 +81,22 @@ async function processOneInbound(instance: string, msg: InboundMessage, original
   // 1) الإشعارات: للموظف المسند عند رسالة بعد انقطاع، أو للفريق عند أول غير مقروء لمحادثة غير مسندة
   if (stored.conversationId) {
     const gapCheck = await (await import('../../../../lib/pg')).q(
-      `select last_customer_message_at, now() - last_customer_message_at as gap
-       from hub.conversations where id = $1 limit 1`,
+      `select cv.last_customer_message_at, now() - cv.last_customer_message_at as gap,
+              coalesce(nullif(c.display_name, ''), nullif(cv.title, '')) as conv_name
+       from hub.conversations cv
+       left join hub.contacts c on c.id = cv.contact_id
+       where cv.id = $1 limit 1`,
       [stored.conversationId]
     );
     const gapMin = gapCheck[0]?.gap ? Number(gapCheck[0].gap) / 60000 : 9999;
     const isNewConversation = !!gapCheck[0] && !gapCheck[0].last_customer_message_at;
     const meaningful = stored.firstUnread || isNewConversation || gapMin >= 5;
+    // م8: اسم المحادثة من القاعدة (جهة الاتصال المسجلة) وإلا اسم المرسل وإلا الرقم
+    const convName = gapCheck[0]?.conv_name;
+    const displayName =
+      convName && !/^[0-9+@ ]+$/.test(convName)
+        ? convName
+        : msg.senderName || msg.chatJid.split('@')[0];
 
     if (stored.assignedStaffId && meaningful) {
       await insertNotification({

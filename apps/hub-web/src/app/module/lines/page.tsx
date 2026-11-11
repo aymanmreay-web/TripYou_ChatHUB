@@ -38,6 +38,8 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: React.Ele
 export default function LinesPage() {
   const [instances, setInstances] = useState<EvolutionInstance[]>([]);
   const [lineTitles, setLineTitles] = useState<Record<string, string>>({});
+  // م8-ج: الحصص اليومية المحفوظة لكل خط (hub.lines.daily_cap)
+  const [lineCaps, setLineCaps] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,6 +47,8 @@ export default function LinesPage() {
   // Edit Line Name State
   const [editingInstance, setEditingInstance] = useState<string | null>(null);
   const [editTitleInput, setEditTitleInput] = useState<string>('');
+  // م8-ج: الحصة اليومية للخط — حد أمان الإرسال المحترم من محرك الحملات
+  const [editDailyCap, setEditDailyCap] = useState<string>('200');
   const [savingTitle, setSavingTitle] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
@@ -75,12 +79,17 @@ export default function LinesPage() {
         const linesData = await resLines.value.json();
         if (linesData.lines && Array.isArray(linesData.lines)) {
           const titleMap: Record<string, string> = {};
+          const capMap: Record<string, number> = {};
           linesData.lines.forEach((l: any) => {
             if (l.instance_name && l.title_ar) {
               titleMap[l.instance_name] = l.title_ar;
             }
+            if (l.instance_name && l.daily_cap != null) {
+              capMap[l.instance_name] = l.daily_cap;
+            }
           });
           setLineTitles(titleMap);
+          setLineCaps(capMap);
         }
       }
 
@@ -122,35 +131,41 @@ export default function LinesPage() {
     }
   };
 
-  const handleOpenEditTitle = (instanceName: string, currentTitle: string) => {
+  const handleOpenEditTitle = (instanceName: string, currentTitle: string, currentCap?: number) => {
     setEditingInstance(instanceName);
     setEditTitleInput(currentTitle || instanceName);
+    setEditDailyCap(currentCap != null ? String(currentCap) : '200');
   };
 
   const handleSaveTitle = async () => {
-    if (!editingInstance || !editTitleInput.trim()) return;
+    if (!editingInstance) return;
+    const hasTitle = editTitleInput.trim().length > 0;
+    if (!hasTitle && editDailyCap.trim() === '') return;
     setSavingTitle(true);
     try {
+      const payload: Record<string, any> = { instance_name: editingInstance };
+      if (hasTitle) payload.title_ar = editTitleInput.trim();
+      if (editDailyCap.trim() !== '') payload.daily_cap = Number(editDailyCap);
+
       const res = await fetch('/api/lines', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_name: editingInstance,
-          title_ar: editTitleInput.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'فشل حفظ التسمية');
+        throw new Error(err.error || 'فشل حفظ بيانات الخط');
       }
 
-      setLineTitles((prev) => ({
-        ...prev,
-        [editingInstance]: editTitleInput.trim(),
-      }));
+      if (hasTitle) {
+        setLineTitles((prev) => ({
+          ...prev,
+          [editingInstance]: editTitleInput.trim(),
+        }));
+      }
 
-      setSaveSuccessMsg(`تم تحديث مسمى الخط بنجاح: ${editTitleInput.trim()}`);
+      setSaveSuccessMsg(`تم تحديث بيانات الخط بنجاح: ${hasTitle ? editTitleInput.trim() : editingInstance}${editDailyCap ? ` — حصة ${editDailyCap}/يوم` : ''}`);
       setTimeout(() => setSaveSuccessMsg(null), 4000);
       setEditingInstance(null);
     } catch (e: any) {
@@ -297,7 +312,7 @@ export default function LinesPage() {
                         <span>المسمى الداخلي للموظفين:</span>
                       </div>
                       <button
-                        onClick={() => handleOpenEditTitle(name, customTitle)}
+                        onClick={() => handleOpenEditTitle(name, customTitle, lineCaps[name])}
                         className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 text-[11px] font-bold transition-all border border-purple-500/30"
                       >
                         <Edit3 className="w-3 h-3" />
@@ -388,6 +403,25 @@ export default function LinesPage() {
                 placeholder="مثال: المبيعات الخط الثاني"
                 className="w-full px-4 py-2.5 rounded-2xl bg-[var(--card-elevated)] border border-purple-500/40 text-[var(--text-main)] text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-right"
               />
+            </div>
+
+            {/* م8-ج: الحصة اليومية — يحترمها محرك الحملات وحارس المخاطر */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[var(--text-main)]">
+                الحصة اليومية للإرسال (رسالة/يوم) — حد الأمان
+              </label>
+              <input
+                type="number"
+                dir="ltr"
+                min={0}
+                max={100000}
+                value={editDailyCap}
+                onChange={(e) => setEditDailyCap(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-2xl bg-[var(--card-elevated)] border border-emerald-500/40 text-[var(--text-main)] text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-left font-mono"
+              />
+              <p className="text-[10px] text-[var(--text-muted)]">
+                محرك الحملات يتوقف تلقائياً عند بلوغ هذا الحد ويكمل غداً — يحمي الرقم من الحظر
+              </p>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
