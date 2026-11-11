@@ -123,7 +123,7 @@ export async function handleAfterHours(opts: {
 
     // منع التكرار: لا رد آلي أكثر من مرة كل 4 ساعات لنفس المحادثة
     const recent = await q(
-      `select 1 from public.messages
+      `select 1 from hub.messages
        where chat_jid = $1 and is_auto = true and created_at > now() - interval '4 hours'
        limit 1`,
       [opts.chatJid]

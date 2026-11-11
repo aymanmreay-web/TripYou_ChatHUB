@@ -117,20 +117,20 @@ export async function storeMessageRecord(msg: InboundMessage): Promise<StoredMes
 
   const rows = await q<any>(
     `with line as (
-       select id from public.lines where instance_name = $1 limit 1
+       select id from hub.lines where instance_name = $1 limit 1
      ), conv as (
-       insert into public.conversations
+       insert into hub.conversations
          (chat_jid, line_id, title, is_group, last_message_text, last_message_at, last_customer_message_at)
        values ($2, (select id from line), $3, $4, $5, now(),
                case when $6 then now() else null end)
        on conflict (chat_jid, line_id) do update set
          last_message_text = excluded.last_message_text,
          last_message_at = excluded.last_message_at,
-         last_customer_message_at = case when $6 then now() else public.conversations.last_customer_message_at end,
-         unread_count = case when $6 then public.conversations.unread_count + 1 else public.conversations.unread_count end
+         last_customer_message_at = case when $6 then now() else hub.conversations.last_customer_message_at end,
+         unread_count = case when $6 then hub.conversations.unread_count + 1 else hub.conversations.unread_count end
        returning id, unread_count, assigned_staff_id
      ), msg as (
-       insert into public.messages
+       insert into hub.messages
          (conversation_id, chat_jid, wa_message_id, line_id, sender_jid, sender_name,
           direction, body, media_type, raw_payload, is_auto)
        select conv.id, $2, $7, (select id from line), $8, $3, $9, $5, $10, $11, false
@@ -174,8 +174,8 @@ export async function storeMessageRecord(msg: InboundMessage): Promise<StoredMes
   // الرسالة مكررة (مخزنة سابقاً) — نرجع حالة المحادثة فقط
   const conv = await q<any>(
     `select c.id, c.unread_count, c.assigned_staff_id, c.line_id
-     from public.conversations c
-     join public.lines l on l.id = c.line_id
+     from hub.conversations c
+     join hub.lines l on l.id = c.line_id
      where c.chat_jid = $1 and l.instance_name = $2 limit 1`,
     [msg.chatJid, msg.instance]
   );
@@ -205,9 +205,9 @@ export async function storeOutboundStaffMessage(opts: {
     const isGroup = isGroupJid(opts.chatJid);
     await q(
       `with line as (
-         select id from public.lines where instance_name = $1 limit 1
+         select id from hub.lines where instance_name = $1 limit 1
        ), conv as (
-         insert into public.conversations
+         insert into hub.conversations
            (chat_jid, line_id, title, is_group, last_message_text, last_message_at)
          values ($2, (select id from line), $2, $7, $3, now())
          on conflict (chat_jid, line_id) do update set
@@ -215,7 +215,7 @@ export async function storeOutboundStaffMessage(opts: {
            last_message_at = excluded.last_message_at
          returning id
        )
-       insert into public.messages
+       insert into hub.messages
          (conversation_id, chat_jid, wa_message_id, line_id, direction, body,
           media_type, sent_by, signature, is_auto)
        select conv.id, $2, $4, (select id from line), 'out', $3, $5, $6, $8, $9

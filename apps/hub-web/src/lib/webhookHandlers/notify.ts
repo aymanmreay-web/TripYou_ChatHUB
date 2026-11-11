@@ -30,8 +30,8 @@ export async function getLineStaff(lineId: string): Promise<{ id: string; full_n
   try {
     return await q(
       `select s.id, s.full_name
-       from public.staff s
-       join public.line_access la on la.staff_id = s.id and la.line_id = $1 and la.can_read = true
+       from hub.staff s
+       join hub.line_access la on la.staff_id = s.id and la.line_id = $1 and la.can_read = true
        where s.status = 'active'
        order by s.full_name
        limit 20`,

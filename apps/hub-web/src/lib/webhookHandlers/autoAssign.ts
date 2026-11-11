@@ -31,7 +31,7 @@ export async function tryAutoAssign(opts: {
 
     // المحادثة مسندة مسبقاً؟ لا نلمسها
     const conv = await q<{ assigned_staff_id: string | null }>(
-      `select assigned_staff_id from public.conversations where id = $1 limit 1`,
+      `select assigned_staff_id from hub.conversations where id = $1 limit 1`,
       [opts.conversationId]
     );
     if (conv[0]?.assigned_staff_id) return notAssigned;
@@ -57,7 +57,7 @@ export async function tryAutoAssign(opts: {
     );
 
     await q(
-      `update public.conversations
+      `update hub.conversations
        set assigned_staff_id = $2, status = 'in_progress'
        where id = $1 and assigned_staff_id is null`,
       [opts.conversationId, chosen.id]

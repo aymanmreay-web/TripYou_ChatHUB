@@ -56,7 +56,7 @@ export async function POST(req: Request) {
         try {
           const { q } = await import('../../../../lib/pg');
           if (['delivered', 'read'].includes(status)) {
-            await q(`update public.messages set status = $2 where chat_jid = $3 and wa_message_id = $1 and direction = 'out'`, [id, status, d.key.remoteJid || '']);
+            await q(`update hub.messages set status = $2 where chat_jid = $3 and wa_message_id = $1 and direction = 'out'`, [id, status, d.key.remoteJid || '']);
           }
         } catch { /* غير حرج */ }
       }
@@ -82,7 +82,7 @@ async function processOneInbound(instance: string, msg: InboundMessage, original
   if (stored.conversationId) {
     const gapCheck = await (await import('../../../../lib/pg')).q(
       `select last_customer_message_at, now() - last_customer_message_at as gap
-       from public.conversations where id = $1 limit 1`,
+       from hub.conversations where id = $1 limit 1`,
       [stored.conversationId]
     );
     const gapMin = gapCheck[0]?.gap ? Number(gapCheck[0].gap) / 60000 : 9999;
