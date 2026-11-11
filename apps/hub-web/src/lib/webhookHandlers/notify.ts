@@ -81,14 +81,23 @@ export async function notifyAllActive(payload: NotifyPayload): Promise<number> {
   }
 }
 
-/** موظفو خط معين (المخوّلون بقراءته) — تجمع التوزيع والإشعارات */
-export async function getLineStaff(lineId: string): Promise<{ id: string; full_name: string }[]> {
+/** موظفو خط معين (المخوّلون بقراءته) — تجمع التوزيع والإشعارات.
+ *  agentsOnly: حصر القائمة بالموظفين التنفيذيين فقط (دعم/مبيعات) —
+ *  حتى لا تُسند محادثات العملاء تلقائياً للمدير أو مشرفي النظام. */
+export async function getLineStaff(
+  lineId: string,
+  opts?: { agentsOnly?: boolean }
+): Promise<{ id: string; full_name: string }[]> {
   try {
+    const agentFilter = opts?.agentsOnly
+      ? `and coalesce(r.key, '') in ('support_agent', 'sales_lead')`
+      : '';
     return await q(
       `select s.id, s.full_name
        from hub.staff s
        join hub.line_access la on la.staff_id = s.id and la.line_id = $1 and la.can_read = true
-       where s.status = 'active'
+       left join hub.roles r on r.id = s.role_id
+       where s.status = 'active' ${agentFilter}
        order by s.full_name
        limit 20`,
       [lineId]

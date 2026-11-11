@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://aypnxljvudjtasofiuhp.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_Koc-CGSP-_RZQqSkTBiClA_Vgbm0n86';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_ngMlkZ_wEUDOMwN91L54hw_70Er1jdo';
 
 /**
  * Public client for client-side queries and Realtime subscriptions
@@ -15,12 +15,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 /**
  * Admin client for server-side trusted operations (bypassing RLS)
- *
- * ⚠️ مؤقت (2026-11-11): مفتاح sb_secret القديم أصبح "Unregistered API key" (دُوّر في Supabase)
- * فتعطلت كل مسارات supabase-js السيرفرية (جهات الاتصال، الخطوط، التواقيع…).
- * الحل المؤقت: استخدام المفتاح العام العامل — سياسة RLS في هذا المشروع
- * "Allow all for anon and authenticated" على كل الجداول فالسلوك مطابق للسابق.
- * المطلوب من المالك: تزويدنا بمفتاح service_role الجديد ووضعه في env الحاوية.
+ * الأسرار لا تُكتب في الكود أبداً — تُوفر عبر env الحاوية:
+ * الإنتاج: SUPABASE_SERVICE_ROLE_KEY في /opt/resvbar-hub/.env (غير متتبع في git)
+ * التطوير المحلي: apps/hub-web/.env.local
  */
 export const getSupabaseAdmin = () => {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;

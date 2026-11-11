@@ -567,6 +567,8 @@ export function NativeChatInbox() {
   const [pinError, setPinError] = useState<string>('');
   const [requestAccessModalOpen, setRequestAccessModalOpen] = useState<boolean>(false);
   const [requestAccessSent, setRequestAccessSent] = useState<boolean>(false);
+  const [requestAccessSending, setRequestAccessSending] = useState<boolean>(false);
+  const [requestAccessError, setRequestAccessError] = useState<string | null>(null);
   const [requestAccessType, setRequestAccessType] = useState<'read' | 'reply' | 'reassign'>('read');
   const [requestAccessReason, setRequestAccessReason] = useState<string>('');
 
@@ -1632,6 +1634,33 @@ export function NativeChatInbox() {
     patchConversationDb(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
       staff_id: staffMember?.id || null,
     });
+  };
+
+  // --- طلب ترخيص الوصول/الإسناد: إرسال حقيقي للمشرفين وصاحب المحادثة ---
+  const submitAccessRequest = async () => {
+    if (!activeConversation || !user?.id) return;
+    setRequestAccessSending(true);
+    setRequestAccessError(null);
+    try {
+      const res = await fetch('/api/access-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: user.id,
+          chat_jid: activeConversation.chat_jid,
+          instance: activeConversation.line_id || selectedInstanceName,
+          request_type: requestAccessType,
+          reason: requestAccessReason,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'تعذّر إرسال الطلب');
+      setRequestAccessSent(true);
+    } catch (e: any) {
+      setRequestAccessError(e.message || 'تعذّر إرسال الطلب، حاول مرة أخرى');
+    } finally {
+      setRequestAccessSending(false);
+    }
   };
 
   // --- حارس المخاطر: إعادة ضبط قاطع الدائرة ---
@@ -3154,6 +3183,8 @@ export function NativeChatInbox() {
                       <button
                         onClick={() => {
                           setRequestAccessSent(false);
+                          setRequestAccessSending(false);
+                          setRequestAccessError(null);
                           setRequestAccessReason('');
                           setRequestAccessType('read');
                           setRequestAccessModalOpen(true);
@@ -3181,6 +3212,8 @@ export function NativeChatInbox() {
                       <button
                         onClick={() => {
                           setRequestAccessSent(false);
+                          setRequestAccessSending(false);
+                          setRequestAccessError(null);
                           setRequestAccessReason('');
                           setRequestAccessType('read');
                           setRequestAccessModalOpen(true);
@@ -4582,12 +4615,24 @@ export function NativeChatInbox() {
 
             <div className="flex items-center gap-2 pt-2">
               {!requestAccessSent ? (
-                <button
-                  onClick={() => setRequestAccessSent(true)}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-900/40"
-                >
-                  إرسال الطلب والمبررات الآن
-                </button>
+                <div className="flex-1 space-y-2">
+                  {requestAccessError && (
+                    <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[11px] font-bold text-center">
+                      {requestAccessError}
+                    </div>
+                  )}
+                  <button
+                    onClick={submitAccessRequest}
+                    disabled={requestAccessSending || !activeConversation}
+                    className={`w-full py-2.5 rounded-xl text-white text-xs font-bold transition-all shadow-md shadow-purple-900/40 ${
+                      requestAccessSending
+                        ? 'bg-slate-600 cursor-not-allowed opacity-60'
+                        : 'bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500'
+                    }`}
+                  >
+                    {requestAccessSending ? '...جارٍ إرسال الطلب' : 'إرسال الطلب والمبررات الآن'}
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => setRequestAccessModalOpen(false)}

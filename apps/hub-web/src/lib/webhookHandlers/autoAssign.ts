@@ -36,7 +36,8 @@ export async function tryAutoAssign(opts: {
     );
     if (conv[0]?.assigned_staff_id) return notAssigned;
 
-    const pool = await getLineStaff(opts.lineId);
+    // التوزيع التلقائي للموظفين التنفيذيين فقط — لا يُسند للمدير أو مشرفي النظام
+    const pool = await getLineStaff(opts.lineId, { agentsOnly: true });
     if (pool.length === 0) return notAssigned;
 
     // العدّاد الدائري لكل خط (ضمن كائن واحد للتقليل من الاصطدامات)

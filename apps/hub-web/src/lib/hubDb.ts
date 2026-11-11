@@ -357,21 +357,46 @@ export async function saveStaffMember(m: StaffRow, isNew: boolean): Promise<void
     const rows = check(await supabase.from('staff').update(payload).eq('id', id).select('id')) as any[];
     if (!rows || rows.length === 0) throw new Error('لم يتم العثور على الموظف');
   }
-  check(await supabase.from('line_access').delete().eq('staff_id', id).select('staff_id'));
+  // ─── مزامنة آمنة للصلاحيات: upsert بدل حذف-شامل-ثم-إدراج ───
+  // الحفظ المزدوج (نقرة ثانية أثناء الحفظ) كان يسبب:
+  // "duplicate key value violates unique constraint line_access_pkey"
+  // لأن حذفي النداءين يُنفذان قبل إدراجيهما. upsert يجعل الحفظ idempotent.
+  // 1) حذف الأسطر المُلغاة فقط (ما كان مسنداً ولم يعد في القائمة الجديدة)
+  if (m.line_ids.length > 0) {
+    check(
+      await supabase.from('line_access').delete().eq('staff_id', id).not('line_id', 'in', `(${m.line_ids.join(',')})`).select('staff_id')
+    );
+  } else {
+    check(await supabase.from('line_access').delete().eq('staff_id', id).select('staff_id'));
+  }
+  // 2) إدراج/تحديث الأسطر الحالية — onConflict يبتلع التكرار بأمان
   if (m.line_ids.length > 0) {
     check(
       await supabase
         .from('line_access')
-        .insert(m.line_ids.map((line_id) => ({ staff_id: id, line_id, can_read: true, can_send: true })))
+        .upsert(
+          m.line_ids.map((line_id) => ({ staff_id: id, line_id, can_read: true, can_send: true })),
+          { onConflict: 'staff_id,line_id' }
+        )
         .select('staff_id')
     );
   }
-  check(await supabase.from('inbox_access').delete().eq('staff_id', id).select('staff_id'));
+  // 3) نفس المنطق لصناديق الوارد
+  if (m.inbox_ids.length > 0) {
+    check(
+      await supabase.from('inbox_access').delete().eq('staff_id', id).not('inbox_id', 'in', `(${m.inbox_ids.join(',')})`).select('staff_id')
+    );
+  } else {
+    check(await supabase.from('inbox_access').delete().eq('staff_id', id).select('staff_id'));
+  }
   if (m.inbox_ids.length > 0) {
     check(
       await supabase
         .from('inbox_access')
-        .insert(m.inbox_ids.map((inbox_id) => ({ staff_id: id, inbox_id, can_reply: true, can_assign: false })))
+        .upsert(
+          m.inbox_ids.map((inbox_id) => ({ staff_id: id, inbox_id, can_reply: true, can_assign: false })),
+          { onConflict: 'inbox_id,staff_id' }
+        )
         .select('staff_id')
     );
   }

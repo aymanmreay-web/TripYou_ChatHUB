@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '../../../../lib/supabase';
+import { q } from '../../../../lib/pg';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /**
  * GET /api/inboxes/read?inbox_id=...&user_id=...
- * جلب جميع المحادثات المقروءة لهذا المستخدم داخل هذا الصندوق
+ * جلب جميع المحادثات المقروءة لهذا المستخدم داخل هذا الصندوق.
+ * تستخدم اتصال Postgres المباشر (q) بدل مفتاح الخدمة الميت.
  */
 export async function GET(req: NextRequest) {
   try {
-    const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(req.url);
     const inboxId = searchParams.get('inbox_id') || 'all';
     const userId = searchParams.get('user_id');
@@ -19,25 +19,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ reads: [] });
     }
 
-    let query = supabase
-      .from('inbox_read_receipts')
-      .select('chat_jid, last_read_at')
-      .eq('user_id', userId);
-
+    let rows: { chat_jid: string; last_read_at: string }[];
     if (inboxId && inboxId !== 'all') {
-      query = query.eq('inbox_id', inboxId);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      rows = await q(
+        `select chat_jid, last_read_at from public.inbox_read_receipts
+         where user_id = $1 and inbox_id = $2`,
+        [userId, inboxId]
+      );
+    } else {
+      rows = await q(
+        `select chat_jid, last_read_at from public.inbox_read_receipts where user_id = $1`,
+        [userId]
+      );
     }
 
     return NextResponse.json(
-      { reads: data || [] },
+      { reads: rows },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (err: any) {
+    console.error('[inboxes/read GET]', err?.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
@@ -48,7 +49,6 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const supabase = getSupabaseAdmin();
     const body = await req.json();
     const { user_id, inbox_id, chat_jid } = body;
 
@@ -58,25 +58,17 @@ export async function POST(req: NextRequest) {
 
     const actualInboxId = inbox_id || 'all';
 
-    const { error } = await supabase
-      .from('inbox_read_receipts')
-      .upsert(
-        {
-          user_id,
-          inbox_id: actualInboxId,
-          chat_jid,
-          last_read_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,inbox_id,chat_jid' }
-      );
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    await q(
+      `insert into public.inbox_read_receipts (user_id, inbox_id, chat_jid, last_read_at)
+       values ($1::uuid, $2, $3, now())
+       on conflict (user_id, inbox_id, chat_jid)
+       do update set last_read_at = now()`,
+      [user_id, actualInboxId, chat_jid]
+    );
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    console.error('[inboxes/read POST]', err?.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-

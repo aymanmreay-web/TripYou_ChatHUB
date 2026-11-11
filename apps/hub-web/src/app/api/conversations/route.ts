@@ -179,14 +179,22 @@ export async function PATCH(req: NextRequest) {
       );
 
       if (staffId) {
-        // اسم الموظف للإشعار (غير حرج إن فشل)
+        // اسم المحادثة (جهة الاتصال) للإشعار — لا نذكر اسم الموظف المُسند إليه هنا (C11)
         const st = await q<{ full_name: string }>(`select full_name from hub.staff where id = $1`, [staffId]);
         const line = await q<{ title_ar: string }>(`select title_ar from hub.lines where instance_name = $1`, [instance]);
+        const convName = await q<{ name: string | null }>(
+          `select coalesce(nullif(c.display_name, ''), nullif(cv.title, '')) as name
+           from hub.conversations cv
+           left join hub.contacts c on c.id = cv.contact_id
+           where cv.id = $1 limit 1`,
+          [convId]
+        );
+        const who = convName[0]?.name || 'عميل';
         await insertNotification({
           staffId,
           kind: 'assignment',
           title: '📌 أُسندت إليك محادثة',
-          body: `${st[0]?.full_name || ''} — ${line[0]?.title_ar || instance}`,
+          body: `${who} — ${line[0]?.title_ar || instance}`,
           link: `/inbox?chat=${encodeURIComponent(chat_jid)}`,
           chatJid: chat_jid,
           instanceName: instance,
