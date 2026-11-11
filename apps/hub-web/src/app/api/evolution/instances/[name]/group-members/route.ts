@@ -34,7 +34,11 @@ export async function GET(req: NextRequest, { params }: { params: { name: string
     const members = list
       .map((p: any) => String(p?.id || p?.jid || p?.participant || ''))
       .filter(Boolean);
-    return NextResponse.json({ members, found: true });
+    // م8: Evolution قد يعيد معرفات @lid بدون أرقام — نمرر الأرقام عند توفرها ليتحقق الصندوق بها
+    const phones = list
+      .map((p: any) => String(p?.phoneNumber || p?.phone || ''))
+      .filter(Boolean);
+    return NextResponse.json({ members, phones, found: true });
   } catch (err: any) {
     console.error('[group-members]', err?.message);
     return NextResponse.json({ members: [], found: false, error: err.message }, { status: 500 });

@@ -2050,10 +2050,17 @@ export function NativeChatInbox() {
         );
         if (!res.ok || !alive) return;
         const json = await res.json();
-        const digits = new Set<string>(
-          ((json.members || []) as string[]).map((m: string) => m.replace(/@.*$/, '').replace(/\D/g, '')).filter(Boolean)
+        // م8: Evolution يعيد @lid غالباً — نبني المجموعة من أرقام الهواتف عند توفرها،
+        // وإن غابت كلياً نلغي الفحص الصارم (متساهل) حتى لا نعطّل خطوطاً أعضاء فعلاً
+        const phones: string[] = json.phones || [];
+        const fromPhones = new Set<string>(
+          phones.map((m: string) => m.replace(/@.*$/, '').replace(/\D/g, '')).filter(Boolean)
         );
-        if (alive) setGroupMemberDigits(digits);
+        if (fromPhones.size > 0) {
+          if (alive) setGroupMemberDigits(fromPhones);
+        } else {
+          if (alive) setGroupMemberDigits(null);
+        }
       } catch { if (alive) setGroupMemberDigits(null); }
     })();
     return () => { alive = false; };
