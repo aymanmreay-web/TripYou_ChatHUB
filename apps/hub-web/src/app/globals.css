@@ -359,10 +359,10 @@ html.light .badge-glass {
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-/* Chat Bubbles (Dribbble Trends) */
+/* Chat Bubbles — نظام v1 المعتمد: الصادرة بلون الهوية المسطّح، الواردة زجاجية بحد ناعم، وذيل لكل جهة */
 .bubble-user {
-  background: var(--bubble-user-bg);
-  color: var(--bubble-user-text);
+  background: var(--primary);
+  color: var(--bubble-user-text, #FFFFFF);
   border-radius: 1.35rem 1.35rem 0.35rem 1.35rem;
   box-shadow: 0 4px 15px -3px var(--primary-glow);
 }

@@ -27,9 +27,9 @@ export function ConversationRow({ conv, isSelected, onSelect, dbTags, getLineDis
     <button
       key={conv.id}
       onClick={() => onSelect(conv.id)}
-      className={`w-full p-3 text-right flex items-start gap-3 transition-colors ${
+      className={`w-full p-3 text-right flex items-start gap-3 transition-all ${
         isSelected
-          ? 'bg-purple-950/40 border-r-4 border-purple-500'
+          ? 'bg-[var(--card-elevated)] shadow-[0_10px_28px_-16px_rgba(20,30,70,0.55)] ring-1 ring-[var(--border-glow)]'
           : 'hover:bg-purple-950/20'
       }`}
     >

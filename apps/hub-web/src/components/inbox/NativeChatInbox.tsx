@@ -30,6 +30,7 @@ import {
   Lock,
   Unlock,
   Moon,
+  Info,
   FileText,
   Image as ImageIcon,
   Music,
@@ -69,6 +70,7 @@ import { getProxiedUrl, getFileCardMeta, formatMessageWithLinks } from '../../li
 import { AudioMessagePlayer } from './AudioMessagePlayer';
 import { SlaTimer } from './SlaTimer';
 import { ConversationRow } from './ConversationRow';
+import { ConversationInfoPanel } from './ConversationInfoPanel';
 import { Modal } from './Modal';
 import { isQuietHoursNow } from '../../lib/inbox/time';
 
@@ -150,6 +152,8 @@ export function NativeChatInbox() {
   const [readChatJids, setReadChatJids] = useState<Set<string>>(new Set());
   // ─── حالة فحص جهة الاتصال الحالية في الداتابيز ───
   const [isContactSaved, setIsContactSaved] = useState<boolean>(false);
+  // لوحة تفاصيل المحادثة المنزلقة من اليسار (نقرة واحدة)
+  const [infoPanelOpen, setInfoPanelOpen] = useState<boolean>(false);
   // ─── إعدادات التواقيع المحملة من الداتابيز ───
   const [signatureConfig, setSignatureConfig] = useState<any>(null);
   const [staffSignaturesList, setStaffSignaturesList] = useState<any[]>([]);
@@ -2422,17 +2426,12 @@ export function NativeChatInbox() {
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
       
-      {/* --- حارس المخاطر: شريط تنبيه ساعات الهدوء وقاطع الدائرة --- */}
+      {/* --- حارس المخاطر: شريط تنبيه رفيع بنمط v1 --- */}
       {isQuietHoursActive && (
-        <div className="bg-amber-950/70 border-b border-amber-600/40 px-4 py-1.5 flex items-center justify-between text-xs text-amber-200">
-          <div className="flex items-center gap-2">
-            <Moon className="w-4 h-4 text-amber-400 animate-pulse" />
-            <span className="font-semibold">وضع ساعات الهدوء نشط (01:00 ص - 07:00 ص بتوقيت مكة)</span>
-            <span className="text-[11px] text-amber-300/80 hidden sm:inline">— حارس المخاطر يراقب الرسائل لحماية الأرقام من شكاوى الإزعاج والحظر.</span>
-          </div>
-          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
-            Quiet Hours Guard Active
-          </span>
+        <div className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium border-b border-[var(--border-subtle)]"
+          style={{ background: 'color-mix(in srgb, var(--warn) 12%, transparent)', color: 'var(--warn)' }}>
+          <Moon className="w-3.5 h-3.5 animate-pulse shrink-0" />
+          <span>وضع الهدوء نشط (01:00 – 07:00 بتوقيت مكة) — الإرسال الجديد يحتاج تأكيداً لحماية الأرقام من الحظر.</span>
         </div>
       )}
 
@@ -2458,14 +2457,14 @@ export function NativeChatInbox() {
         <div className="flex flex-wrap items-center gap-3">
           {/* اختيار الصندوق المشترك */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-purple-300">الصندوق:</span>
+            <span className="text-xs font-semibold text-[var(--text-muted)]">الصندوق:</span>
             <select
               value={selectedInboxId}
               onChange={(e) => {
                 setSelectedInboxId(e.target.value);
                 setLineFilter('all');
               }}
-              className="bg-purple-950/40 text-xs text-purple-200 border border-purple-500/40 rounded-xl px-3 py-1.5 outline-none focus:border-purple-400 font-bold"
+              className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none focus:border-[var(--primary)] font-bold transition-colors"
             >
               {user?.role === 'super_admin' ? (
                 <option value="all">كل الصناديق (عرض مجمّع للإشراف)</option>
@@ -2489,8 +2488,8 @@ export function NativeChatInbox() {
               onClick={() => setLineFilter('all')}
               className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                 lineFilter === 'all'
-                  ? 'bg-purple-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-[var(--primary)] text-white shadow'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
               }`}
             >
               جميع الخطوط ({allUniqueCount})
@@ -2507,8 +2506,8 @@ export function NativeChatInbox() {
                   onClick={() => setLineFilter(inst.name)}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
                     active
-                      ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 font-bold'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-[var(--accent-soft)] text-[var(--primary)] border border-[var(--border-glow)] font-bold'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
                   }`}
                   title={`${displayTitle} — ${isOpen ? 'متصل' : 'معلق'}`}
                 >
@@ -2523,11 +2522,11 @@ export function NativeChatInbox() {
           {/* م3: فلتر الوسوم الحقيقية من القاعدة */}
           {dbTags.length > 0 && (
             <div className="flex items-center gap-1.5">
-              <Tags className="w-3.5 h-3.5 text-purple-400" />
+              <Tags className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               <select
                 value={tagFilter}
                 onChange={(e) => setTagFilter(e.target.value)}
-                className="bg-purple-950/40 text-xs text-purple-200 border border-purple-500/40 rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-400 font-semibold"
+                className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-[var(--primary)] font-semibold transition-colors"
                 title="فلترة المحادثات حسب الوسم"
               >
                 <option value="">كل الوسوم</option>
@@ -2730,20 +2729,22 @@ export function NativeChatInbox() {
                     <ArrowRight className="w-5 h-5" />
                   </button>
 
-                  <div
-                    className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden border ${
-                      activeConversation.is_group
-                        ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
-                        : 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white border-transparent'
-                    }`}
-                  >
-                    {activeConversation.avatar_url ? (
-                      <img src={activeConversation.avatar_url} alt={activeConversation.title} className="w-full h-full object-cover" />
-                    ) : activeConversation.is_group ? (
-                      <Users className="w-5 h-5" />
-                    ) : (
-                      initialsOrLetter(activeConversation.title, activeConversation.avatar_letter)
-                    )}
+                  <div className="w-11 h-11 rounded-2xl avatar-ring p-[2px] shrink-0 shadow-sm">
+                    <div
+                      className={`w-full h-full rounded-[14px] flex items-center justify-center font-bold text-sm overflow-hidden border ${
+                        activeConversation.is_group
+                          ? 'bg-[var(--card-elevated)] text-[var(--text-main)] border-[var(--border-subtle)]'
+                          : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
+                      }`}
+                    >
+                      {activeConversation.avatar_url ? (
+                        <img src={activeConversation.avatar_url} alt={activeConversation.title} className="w-full h-full object-cover" />
+                      ) : activeConversation.is_group ? (
+                        <Users className="w-5 h-5" />
+                      ) : (
+                        initialsOrLetter(activeConversation.title, activeConversation.avatar_letter)
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -3017,8 +3018,23 @@ export function NativeChatInbox() {
                           <span>{isStarred ? 'محادثة مفضلة' : 'إضافة للمفضلة'}</span>
                         </button>
 
-                        <button
-                          onClick={() => setFavoritesDrawerOpen(true)}
+                          {/* لوحة التفاصيل: نقرة واحدة تُظهر كل ما يخص المحادثة من اليسار */}
+                          <button
+                            onClick={() => setInfoPanelOpen((v) => !v)}
+                            aria-pressed={infoPanelOpen}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                              infoPanelOpen
+                                ? 'bg-[var(--primary)] text-white border-transparent'
+                                : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
+                            }`}
+                            title="تفاصيل المحادثة الكاملة (الجهة، الخط، الإسناد، الوسوم، المفضلة)"
+                          >
+                            <Info className="w-3.5 h-3.5" />
+                            <span>التفاصيل</span>
+                          </button>
+
+                          <button
+                            onClick={() => setFavoritesDrawerOpen(true)}
                           className="px-2 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-purple-300 hover:text-white transition-all text-xs font-mono font-bold"
                           title="عرض أرشيف المفضلات للموظف"
                         >
@@ -3930,6 +3946,26 @@ export function NativeChatInbox() {
         </div>
       </div>
 
+      {/* لوحة تفاصيل المحادثة — تنزلق من اليسار بنقرة واحدة */}
+      <ConversationInfoPanel
+        open={infoPanelOpen}
+        onClose={() => setInfoPanelOpen(false)}
+        conv={activeConversation}
+        dbTags={dbTags}
+        isFavoriteChat={(() => {
+          if (!activeConversation) return false;
+          return favoritesList.some(
+            (f) =>
+              (f.category === 'direct_chat' || f.category === 'group') &&
+              f.meta?.chat_jid === activeConversation.chat_jid
+          );
+        })()}
+        isContactSaved={isContactSaved}
+        pinnedCount={(activeConversation && pinnedMessagesMap[activeConversation.id]?.length) || 0}
+        getLineDisplayTitle={getLineDisplayTitle}
+        currentUserName={user?.full_name || ''}
+      />
+
       {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء (Modal الموحدة) --- */}
       {quietConfirmOpen && (
         <Modal
@@ -3982,8 +4018,16 @@ export function NativeChatInbox() {
 
       {/* --- نافذة معاينة وإرسال المرفقات --- */}
       {attachmentModalOpen && selectedAttachment && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal
+          open
+          onClose={() => {
+            setAttachmentModalOpen(false);
+            setSelectedAttachment(null);
+          }}
+          contained
+          ariaLabel="إرسال مرفق عبر واتساب"
+          panelClassName="border border-purple-500/40 rounded-3xl max-w-lg p-6 space-y-4 text-right"
+        >
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
@@ -4083,13 +4127,12 @@ export function NativeChatInbox() {
                 )}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════════════
           🖼️ Lightbox — نافذة عرض الصور/الفيديو بشاشة كاملة
-          اضغط على الخلفية أو زر X لإغلاقها
+          اضغط على الخلفية أو زر X أو Esc لإغلاقها
          ════════════════════════════════════════════════════════ */}
       {/* ════════════════════════════════════════════════════════
           🖼️ Lightbox المتطور — نافذة عرض الصور والفيديو بالدقة الكاملة
@@ -4166,8 +4209,7 @@ export function NativeChatInbox() {
           مع اختيار جودة HD أو عادية
          ════════════════════════════════════════════════════════ */}
       {multiSendModalOpen && batchAttachments.length > 0 && (
-        <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal open onClose={() => { setMultiSendModalOpen(false); }} contained ariaLabel="معاينة وإرسال دفعة الوسائط" panelClassName="border border-purple-500/40 rounded-3xl max-w-2xl p-6 space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
@@ -4297,8 +4339,7 @@ export function NativeChatInbox() {
                 )}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════════════
@@ -4523,10 +4564,9 @@ export function NativeChatInbox() {
         </div>
       )}
 
-      {/* 🔒 نافذة إدخال / تعيين رمز PIN */}
+      {/* 🔒 نافذة إدخال / تعيين رمز PIN (Modal الموحدة) */}
       {pinModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-purple-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl" dir="rtl">
+        <Modal open onClose={() => setPinModalOpen(false)} contained ariaLabel="رمز حماية المحادثة" panelClassName="border border-purple-500/30 rounded-3xl p-6 max-w-sm space-y-4 shadow-2xl" >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
@@ -4604,14 +4644,12 @@ export function NativeChatInbox() {
                 إلغاء
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* 🛡️ نافذة طلب ترخيص الوصول والإسناد من المشرف أو صاحب القفل */}
       {requestAccessModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl text-right" dir="rtl">
+        <Modal open onClose={() => setRequestAccessModalOpen(false)} contained ariaLabel="طلب ترخيص الوصول" panelClassName="border border-amber-500/30 rounded-3xl p-6 max-w-md space-y-4 shadow-2xl text-right" >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
@@ -4747,8 +4785,7 @@ export function NativeChatInbox() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
     </div>

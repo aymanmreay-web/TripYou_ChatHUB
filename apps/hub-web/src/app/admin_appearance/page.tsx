@@ -151,8 +151,8 @@ export default function AdminAppearancePage() {
         </span>
       </header>
 
-      {/* المعاينة الحية بأجهزة */}
-      <Card variant="glass" className="p-4 mb-5 sticky top-20 z-20">
+      {/* المعاينة الحية بأجهزة — في المجرى الطبيعي، لا تسبح فوق الإعدادات */}
+      <Card variant="glass" className="p-4 mb-5">
         <div className="flex items-center gap-2.5 flex-wrap mb-3">
           <span className="text-[0.85em] font-bold">معاينة حيّة</span>
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -288,7 +288,7 @@ export default function AdminAppearancePage() {
                       <span className="flex justify-between items-center text-[0.72em] text-[var(--text-muted)]" style={{ direction: 'ltr' }}>
                         <span>{f.label}</span>{active && <Check className="w-3.5 h-3.5 text-[var(--ok)]" />}
                       </span>
-                      <span className="block text-[1.05em] my-1.5 leading-relaxed" style={{ fontFamily: f.family }}>أهلاً بك في TripYou، لديك رسالة جديدة</span>
+                      <span className="block text-[1.05em] my-1.5 leading-relaxed" style={{ fontFamily: f.family }}>أهلاً بك في <bdi>TripYou</bdi>، لديك رسالة جديدة</span>
                       <small className="text-[0.72em] text-[var(--text-muted)]">{f.note}</small>
                     </button>
                   );
