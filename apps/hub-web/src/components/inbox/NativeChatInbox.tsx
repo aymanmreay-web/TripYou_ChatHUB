@@ -2486,7 +2486,7 @@ export function NativeChatInbox() {
   };
 
   // أدوات المحادثة الكاملة — تعيش داخل سلايد التفاصيل (واجهة ترويسة نظيفة)
-  const convActions = (
+  const convActions = activeConversation ? (
     <>
                   <div className="flex items-center gap-1.5 text-xs bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-2 py-1">
                     <UserPlus className="w-3.5 h-3.5 text-purple-400" />
@@ -2718,7 +2718,7 @@ export function NativeChatInbox() {
                     );
                   })()}
     </>
-  );
+  ) : null;
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
@@ -2796,6 +2796,8 @@ export function NativeChatInbox() {
               const isOpen = inst.connectionStatus === 'open';
               const active = lineFilter === inst.name;
               const displayTitle = getLineDisplayTitle(inst.name);
+              // قرار المالك: الخط غير المتصل فعلياً لا يظهر في الشريط العلوي إطلاقاً
+              if (!isOpen) return null;
               return (
                 <button
                   key={inst.name}
