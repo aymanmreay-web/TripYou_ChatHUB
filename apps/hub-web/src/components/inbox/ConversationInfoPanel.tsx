@@ -26,6 +26,8 @@ interface ConversationInfoPanelProps {
   pinnedCount: number;
   getLineDisplayTitle: (id: string) => string;
   currentUserName: string;
+  /** أدوات التحكم الكاملة (إسناد، حالة، حل، وسوم، مفضلة، قفل) — الترويسة نظيفة وكل شيء هنا */
+  actions?: React.ReactNode;
 }
 
 function InfoRow({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
@@ -41,7 +43,7 @@ function InfoRow({ icon, label, children }: { icon: React.ReactNode; label: stri
 }
 
 export function ConversationInfoPanel({
-  open, onClose, conv, dbTags, isFavoriteChat, isContactSaved, pinnedCount, getLineDisplayTitle, currentUserName,
+  open, onClose, conv, dbTags, isFavoriteChat, isContactSaved, pinnedCount, getLineDisplayTitle, currentUserName, actions,
 }: ConversationInfoPanelProps) {
   return (
     <>
@@ -100,6 +102,16 @@ export function ConversationInfoPanel({
             </div>
 
             <div className="flex-1 overflow-y-auto">
+              {/* أدوات التحكم الكاملة — نُقلت هنا لتبقى ترويسة المحادثة نظيفة */}
+              {actions && (
+                <div className="px-3.5 pt-3.5">
+                  <span className="text-[0.75em] font-bold text-[var(--text-muted)]">التحكم بالمحادثة</span>
+                  <div className="mt-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-elevated)] p-2.5 flex flex-col items-stretch gap-2 [&_>*]:min-w-0">
+                    {actions}
+                  </div>
+                </div>
+              )}
+
               {/* بطاقة الخط والإسناد */}
               <div className="p-3.5">
                 <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-elevated)] overflow-hidden">

@@ -34,7 +34,15 @@ export async function GET() {
     const roleMap = new Map((roles || []).map((r: any) => [r.id, r.name_ar || r.key]));
     const sigMap = new Map((staffSignatures || []).map((s: any) => [s.staff_id, s]));
 
+    // القسم الذي يعمل به الموظف (لتوقيع القسم — قرار المالك)
+    const { data: deptRows } = await supabase
+      .from('staff')
+      .select('id, department_id, departments(title_ar)')
+      .not('department_id', 'is', null);
+    const deptMap = new Map((deptRows || []).map((d: any) => [d.id, d.departments?.title_ar || null]));
+
     const formattedStaff = (staffList || []).map((st: any) => {
+        const department = deptMap.get(st.id) || null;
       const sig = sigMap.get(st.id);
       return {
         id: st.id,
@@ -42,6 +50,7 @@ export async function GET() {
         email: st.email,
         role: roleMap.get(st.role_id) || 'موظف',
         default_line: st.default_line_id || 'الرئيسي (Master)',
+        department,
         allow_custom_edit: sig?.allow_custom_edit ?? true,
         can_disable_signature: sig?.can_disable_signature ?? false,
         custom_part1: sig?.custom_part1 || `*${st.full_name || 'الموظف'}* (${roleMap.get(st.role_id) || 'فريق العمل'})`,

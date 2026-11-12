@@ -208,11 +208,16 @@ export function NativeChatInbox() {
 
   // جلب منح الموظف الحالي (يُحدَّث بعد كل طلب/قرار) + خريطة اسم الخط → uuid للطلبات
   const [lineIdMap, setLineIdMap] = useState<Record<string, string>>({});
+  // م8: المنح لكل محادثة فقط — مفتاح chat_jid|line من الطلبات المعتمدة
+  const [convGrants, setConvGrants] = useState<Set<string>>(new Set());
   const refreshGrants = useCallback(() => {
     if (!user?.id) return;
-    fetch(`/api/line-grants?staff_id=${encodeURIComponent(user.id)}`, { cache: 'no-store' })
+    fetch(`/api/permission-requests?staff_id=${encodeURIComponent(user.id)}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j?.granted) setGrantedLines(new Set(j.granted as string[])); })
+      .then((j) => {
+        const set = new Set<string>((j?.grants || []).map((g: any) => `${g.chat_jid}|${g.line}`));
+        setConvGrants(set);
+      })
       .catch(() => {});
     fetch('/api/lines', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -1030,9 +1035,13 @@ export function NativeChatInbox() {
       // منظور الخط الفردي: نظهر فقط محادثات هذا الخط كما هي دون أي دمج شكلي!
       sourceList = inboxScopedConversations.filter((c) => c.line_id === lineFilter);
     } else {
-      // منظور جميع الخطوط: دمج شكلي بصري فقط للمحادثات ذات نفس chat_jid
+      // قرار المالك: المجموعات فقط تُدمج — الفردية تبقى منفصلة لكل خط وتُرد من خطها الوارد
       const groupedMap = new Map<string, ConversationItem>();
       for (const item of inboxScopedConversations) {
+        if (!item.is_group) {
+          groupedMap.set(`${item.id}`, item);
+          continue;
+        }
         const key = item.chat_jid;
         const existing = groupedMap.get(key);
         if (!existing) {
@@ -1146,7 +1155,7 @@ export function NativeChatInbox() {
       } else {
         const isIncoming = name === incoming;
         const authorized = allowedSendInstances.some((i) => i.name === name);
-        const granted = grantedLines.has(name);
+        const granted = convGrants.has(`${activeConversation?.chat_jid || ''}|${name}`);
         if (isIncoming && authorized) {
           map.set(name, { allowed: true, reason: 'خط الوارد — متاح' });
         } else if (granted) {
@@ -1162,7 +1171,52 @@ export function NativeChatInbox() {
       }
     }
     return map;
-  }, [allowedSendInstances, lastIncomingLine, activeConversation, grantedLines, groupMemberDigits, instances]);
+  }, [allowedSendInstances, lastIncomingLine, activeConversation, convGrants, groupMemberDigits, instances]);
+
+  // ─── طبقات الرؤية (قرار المالك): من يرى المحتوى ومن يرى الهيكل فقط ───
+  const contentAccess = useMemo(() => {
+    if (!activeConversation) return 'none';
+    if (isManager) return 'full';
+    const assignedId = (activeConversation as any).assigned_staff_id;
+    const assignedName = activeConversation.assigned_staff_name;
+    if (assignedId && user?.id && assignedId === user.id) return 'full';
+    if (!assignedId && !assignedName) return 'full';
+    const jid = activeConversation.chat_jid;
+    const hasRead = Array.from(convGrants).some((k) => k.startsWith(jid + '|'));
+    if (hasRead) return 'full';
+    return 'shell';
+  }, [activeConversation, isManager, user, convGrants]);
+
+  const ownsConversationLine = useMemo(() => {
+    if (!activeConversation) return false;
+    const lines = activeConversation.available_lines?.length ? activeConversation.available_lines : [activeConversation.line_id];
+    return lines.some((l) => allowedSendInstances.some((i) => i.name === l));
+  }, [activeConversation, allowedSendInstances]);
+
+  const [reqSentType, setReqSentType] = useState<string>('');
+  useEffect(() => { setReqSentType(''); }, [activeConversation?.id]);
+
+  const submitPermissionRequest = async (type: 'assignment' | 'read' | 'read_write' | 'line_reply' | 'group_join', lineName?: string) => {
+    if (!user?.id || !activeConversation) return;
+    const lineId = lineName ? lineIdMap[lineName] : null;
+    setReqSentType(type + '-sending');
+    try {
+      const res = await fetch('/api/permission-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'request', type, staff_id: user.id, line_id: lineId || null, chat_jid: activeConversation.chat_jid, inbox_id: currentInbox?.id || null, reason: 'طلب من واجهة الصندوق' }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setReqSentType(type);
+        toast({ title: json.already_pending ? 'طلبك معلق بالفعل' : 'أُرسل الطلب للمشرف — التصعيد للمدير بعد 10 دقائق بلا رد', kind: 'success' });
+        refreshGrants();
+      } else {
+        toast({ title: json.error || 'فشل إرسال الطلب', kind: 'error' });
+        setReqSentType('');
+      }
+    } catch { setReqSentType(''); }
+  };
 
   const effectiveSendInstance = useMemo(() => {
     // الافتراضي: آخر خط ورد منه العميل إن كان متاحًا
@@ -1219,14 +1273,18 @@ export function NativeChatInbox() {
   }, [activeConversation?.id, activeConversation?.line_id, activeConversation?.chat_jid, activeConversation?.available_lines, selectedInstanceName, fetchMessagesForChat]);
 
   useEffect(() => {
-    if (activeConversation) {
+    // طبقات الرؤية: المحادثة المرسلة لزميله بلا منح قراءة = هيكل فقط بلا محتوى
+    if (activeConversation && contentAccess === 'full') {
       const targetJid = activeConversation.chat_jid;
       const targetLine = activeConversation.line_id || selectedInstanceName;
       if (targetJid && targetLine) {
         fetchMessagesForChat(targetJid, targetLine, activeConversation.available_lines);
+        setMessages([]);
+        return;
       }
     }
-  }, [activeConversation?.id, activeConversation?.available_lines, fetchMessagesForChat]);
+    setMessages([]);
+  }, [activeConversation?.id, activeConversation?.available_lines, fetchMessagesForChat, contentAccess]);
 
   // Current selected instance info
   const currentInstance = useMemo(() => {
@@ -1421,7 +1479,7 @@ export function NativeChatInbox() {
       );
       if (!res.ok) return;
       const data = await res.json();
-      const items: { chat_jid: string; status?: string; assigned_staff_name?: string; assigned_staff_id?: string; tags?: { id: string; name: string; color: string }[] }[] = data.items || [];
+      const items: { chat_jid: string; status?: string; assigned_staff_name?: string; assigned_staff_id?: string; avatar_url?: string | null; tags?: { id: string; name: string; color: string }[] }[] = data.items || [];
       const byJid = new Map(items.map((x) => [x.chat_jid, x]));
       setConversations((prev) => {
         let changed = false;
@@ -1433,17 +1491,20 @@ export function NativeChatInbox() {
           const newStatus = (db.status as ConversationStatus) || c.status;
           const newAssignee = db.assigned_staff_name || c.assigned_staff_name;
           const newAssigneeId = db.assigned_staff_id || (c as any).assigned_staff_id;
+          // الصورة الحقيقية للجهة (شخص أو مجموعة) من hub.contacts — الخلية المحفوظة أولاً
+          const newAvatar = db.avatar_url || c.avatar_url || undefined;
           // تجاهل الصف إن لم يتغير فعلاً — منع إعادة الرسم المزعجة للقائمة
           if (
             mergedTags.length === (c.tags || []).length &&
             newStatus === c.status &&
             newAssignee === c.assigned_staff_name &&
-            newAssigneeId === (c as any).assigned_staff_id
+            newAssigneeId === (c as any).assigned_staff_id &&
+            newAvatar === c.avatar_url
           ) {
             return c;
           }
           changed = true;
-          return { ...c, tags: mergedTags, status: newStatus, assigned_staff_name: newAssignee, assigned_staff_id: newAssigneeId } as ConversationItem;
+          return { ...c, tags: mergedTags, status: newStatus, assigned_staff_name: newAssignee, assigned_staff_id: newAssigneeId, avatar_url: newAvatar } as ConversationItem;
         });
         return changed ? next : prev;
       });
@@ -1584,14 +1645,15 @@ export function NativeChatInbox() {
         (s) => s.id === user?.id || s.name === user?.full_name || s.email === (user as any)?.email_masked
       );
 
+      // قرار المالك: التوقيع ثلاثي — اسم الموظف / القسم الذي يعمل به / الخط المُرسل منه
       if (signatureConfig.part1?.enabled) {
         parts.push(staffSig?.custom_part1 || `*${user?.full_name || 'خدمة العملاء'}*`);
       }
       if (signatureConfig.part2?.enabled) {
-        parts.push(staffSig?.custom_part2 || `واتساب ${getLineDisplayTitle(effectiveLine)}`);
+        parts.push(staffSig?.custom_part2 || (staffSig as any)?.department || 'قسم خدمة العملاء');
       }
       if (signatureConfig.part3?.enabled) {
-        parts.push(staffSig?.custom_part3 || signatureConfig.part3?.template || 'TripYou للسياحة والسفر ✈️');
+        parts.push(staffSig?.custom_part3 || `واتساب ${getLineDisplayTitle(effectiveLine)}`);
       }
       if (parts.length > 0) {
         signature = `\n\n${parts.join(signatureConfig.separator || ' — ')}`;
@@ -2423,6 +2485,241 @@ export function NativeChatInbox() {
     setRecordingSeconds(0);
   };
 
+  // أدوات المحادثة الكاملة — تعيش داخل سلايد التفاصيل (واجهة ترويسة نظيفة)
+  const convActions = (
+    <>
+                  <div className="flex items-center gap-1.5 text-xs bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-2 py-1">
+                    <UserPlus className="w-3.5 h-3.5 text-purple-400" />
+                    {isManager ? (
+                      <select
+                        value={activeConversation.assigned_staff_name || 'غير مسند (عام)'}
+                        onChange={(e) => handleAssignStaff(e.target.value)}
+                        className="bg-transparent text-xs text-[var(--text-main)] outline-none font-medium cursor-pointer"
+                      >
+                        {availableStaff.map((s) => (
+                          <option key={s.id || 'unassigned'} value={s.name} className="bg-[var(--card-bg)] text-[var(--text-main)]">
+                            {s.name} ({s.role.split(' ')[0]})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-[var(--text-main)] font-medium">
+                        {activeConversation.assigned_staff_name || 'غير مسند'}
+                      </span>
+                    )}
+                  </div>
+
+                  <select
+                    value={activeConversation.status || 'open'}
+                    onChange={(e) => handleUpdateStatus(e.target.value as ConversationStatus)}
+                    className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none font-medium cursor-pointer"
+                  >
+                    <option value="open">🔵 مفتوحة (Open)</option>
+                    <option value="in_progress">🟠 قيد المعالجة (In Progress)</option>
+                    <option value="resolved">🟢 تم الحل (Resolved)</option>
+                    <option value="snoozed">🟡 مؤجلة (Snoozed)</option>
+                    <option value="escalated">🔴 تصعيد للإدارة (Escalated)</option>
+                  </select>
+
+                  {/* زر سريع "تم الحل" */}
+                  {activeConversation.status !== 'resolved' ? (
+                    <button
+                      onClick={() => handleUpdateStatus('resolved')}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs transition-colors"
+                      title="تعليم المحادثة كـ تم الحل بنجاح"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>تم الحل</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleUpdateStatus('open')}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs transition-colors"
+                      title="إعادة فتح المحادثة"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>إعادة الفتح</span>
+                    </button>
+                  )}
+
+                  {/* 💾 زر حفظ سريع كجهة اتصال أو شارة جهة مسجلة */}
+                  {isContactSaved ? (
+                    <div
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium cursor-default"
+                      title="هذه الجهة مسجلة بالفعل في دليل جهات الاتصال"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="hidden sm:inline">جهة اتصال مسجلة</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        await handleQuickSaveContact();
+                        setIsContactSaved(true);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-medium transition-all"
+                      title="حفظ الرقم الحالي في دليل جهات الاتصال مع وسم المصدر"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">حفظ جهة اتصال</span>
+                    </button>
+                  )}
+
+                  {/* 🏷 م3: محرر وسوم المحادثة الحالية (من القاعدة الحقيقية) */}
+                  {activeConversation && dbTags.length > 0 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setTagMenuOpen((v) => !v)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                          activeConvTagIds.length > 0
+                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700/80'
+                        }`}
+                        title="وسوم هذه المحادثة — تُحفظ في قاعدة البيانات"
+                      >
+                        <Tags className="w-3.5 h-3.5" />
+                        <span>الوسوم{activeConvTagIds.length > 0 ? ` (${activeConvTagIds.length})` : ''}</span>
+                      </button>
+
+                      {tagMenuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setTagMenuOpen(false)} />
+                          <div className="absolute left-0 mt-2 w-60 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-50 p-2" dir="rtl">
+                            <div className="px-2 py-1.5 text-[10px] font-bold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1">
+                              وسم هذه المحادثة (محفوظ مباشرة بالقاعدة)
+                            </div>
+                            {dbTags.map((t) => {
+                              const on = activeConvTagIds.includes(t.id);
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => handleToggleConversationTag(t.id)}
+                                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                                    on
+                                      ? 'bg-cyan-500/20 text-cyan-200'
+                                      : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                                  }`}
+                                >
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: t.hex_color || '#8b5cf6' }} />
+                                  <span className="flex-1 text-right">{t.name}</span>
+                                  {on && <Check className="w-3.5 h-3.5" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ⭐ زر تمييز المحادثة الحالية كمفضلة (Star Conversation) */}
+                  {activeConversation && (() => {
+                    const isStarred = favoritesList.some((f) => f.id === activeConversation.id);
+                    return (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            handleToggleFavorite(
+                              {
+                                id: activeConversation.id,
+                                title: activeConversation.title,
+                                subtitle: activeConversation.phone_or_jid,
+                                meta: {
+                                  chat_jid: activeConversation.chat_jid,
+                                  instance_name: activeConversation.line_id || selectedInstanceName,
+                                  is_group: activeConversation.is_group,
+                                }
+                              },
+                              activeConversation.is_group ? 'group' : 'direct_chat'
+                            );
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                            isStarred
+                              ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-amber-950/40'
+                              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
+                          }`}
+                          title={isStarred ? 'إزالة هذه المحادثة من المفضلة' : 'تمييز هذه المحادثة بنجمة صفراء وإضافتها للمفضلة'}
+                        >
+                          <Star className={`w-3.5 h-3.5 ${isStarred ? 'fill-amber-400 text-amber-400 animate-pulse' : 'text-slate-400'}`} />
+                          <span>{isStarred ? 'محادثة مفضلة' : 'إضافة للمفضلة'}</span>
+                        </button>
+
+                          <button
+                            onClick={() => setFavoritesDrawerOpen(true)}
+                          className="px-2 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-purple-300 hover:text-white transition-all text-xs font-mono font-bold"
+                          title="عرض أرشيف المفضلات للموظف"
+                        >
+                          {favoritesList.length}
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 🔒 زر قفل / فك قفل المحادثة بالرمز السري PIN */}
+                  {activeConversation && (() => {
+                    const isChatLocked = !!lockedChatsPinMap[activeConversation.id];
+                    const isSessionUnlocked = !!unlockedSessionChats[activeConversation.id];
+
+                    return (
+                      <button
+                        onClick={() => {
+                          setPinError('');
+                          setPinInput('');
+                          if (isChatLocked) {
+                            if (isSessionUnlocked) {
+                              // إعادة القفل
+                              setUnlockedSessionChats((prev) => ({ ...prev, [activeConversation.id]: false }));
+                            } else {
+                              // فتح نافذة إدخال PIN
+                              setPinModalMode('unlock');
+                              setPinModalOpen(true);
+                            }
+                          } else {
+                            // تعيين PIN وقفل المحادثة
+                            setPinModalMode('set');
+                            setPinModalOpen(true);
+                          }
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                          isChatLocked
+                            ? isSessionUnlocked
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30 animate-pulse'
+                            : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
+                        }`}
+                        title={
+                          isChatLocked
+                            ? isSessionUnlocked
+                              ? 'المحادثة مفتوحة مؤقتاً — اضغط لإعادة القفل فوراً'
+                              : 'محادثة مقفلة برمز سري — اضغط لفك القفل'
+                            : 'قفل هذه المحادثة برمز سري مخصص'
+                        }
+                      >
+                        {isChatLocked ? (
+                          isSessionUnlocked ? (
+                            <>
+                              <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                              <span>مفتوحة مؤقتاً</span>
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="w-3.5 h-3.5 text-rose-400" />
+                              <span>محادثة مقفلة</span>
+                            </>
+                          )
+                        ) : (
+                          <>
+                            <Lock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>قفل بـ PIN</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })()}
+    </>
+  );
+
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
       
@@ -2859,253 +3156,20 @@ export function NativeChatInbox() {
                   </div>
                 </div>
 
-                {/* عناصر تحكم دورة الإسناد السريعة — الإسناد للمدير والمشرف فقط (قرار المالك) */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-xs bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-2 py-1">
-                    <UserPlus className="w-3.5 h-3.5 text-purple-400" />
-                    {isManager ? (
-                      <select
-                        value={activeConversation.assigned_staff_name || 'غير مسند (عام)'}
-                        onChange={(e) => handleAssignStaff(e.target.value)}
-                        className="bg-transparent text-xs text-[var(--text-main)] outline-none font-medium cursor-pointer"
-                      >
-                        {availableStaff.map((s) => (
-                          <option key={s.id || 'unassigned'} value={s.name} className="bg-[var(--card-bg)] text-[var(--text-main)]">
-                            {s.name} ({s.role.split(' ')[0]})
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-[var(--text-main)] font-medium">
-                        {activeConversation.assigned_staff_name || 'غير مسند'}
-                      </span>
-                    )}
-                  </div>
-
-                  <select
-                    value={activeConversation.status || 'open'}
-                    onChange={(e) => handleUpdateStatus(e.target.value as ConversationStatus)}
-                    className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none font-medium cursor-pointer"
-                  >
-                    <option value="open">🔵 مفتوحة (Open)</option>
-                    <option value="in_progress">🟠 قيد المعالجة (In Progress)</option>
-                    <option value="resolved">🟢 تم الحل (Resolved)</option>
-                    <option value="snoozed">🟡 مؤجلة (Snoozed)</option>
-                    <option value="escalated">🔴 تصعيد للإدارة (Escalated)</option>
-                  </select>
-
-                  {/* زر سريع "تم الحل" */}
-                  {activeConversation.status !== 'resolved' ? (
-                    <button
-                      onClick={() => handleUpdateStatus('resolved')}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs transition-colors"
-                      title="تعليم المحادثة كـ تم الحل بنجاح"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>تم الحل</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleUpdateStatus('open')}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs transition-colors"
-                      title="إعادة فتح المحادثة"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>إعادة الفتح</span>
-                    </button>
-                  )}
-
-                  {/* 💾 زر حفظ سريع كجهة اتصال أو شارة جهة مسجلة */}
-                  {isContactSaved ? (
-                    <div
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium cursor-default"
-                      title="هذه الجهة مسجلة بالفعل في دليل جهات الاتصال"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="hidden sm:inline">جهة اتصال مسجلة</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={async () => {
-                        await handleQuickSaveContact();
-                        setIsContactSaved(true);
-                      }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-medium transition-all"
-                      title="حفظ الرقم الحالي في دليل جهات الاتصال مع وسم المصدر"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">حفظ جهة اتصال</span>
-                    </button>
-                  )}
-
-                  {/* 🏷 م3: محرر وسوم المحادثة الحالية (من القاعدة الحقيقية) */}
-                  {activeConversation && dbTags.length > 0 && (
-                    <div className="relative">
-                      <button
-                        onClick={() => setTagMenuOpen((v) => !v)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
-                          activeConvTagIds.length > 0
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                            : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700/80'
-                        }`}
-                        title="وسوم هذه المحادثة — تُحفظ في قاعدة البيانات"
-                      >
-                        <Tags className="w-3.5 h-3.5" />
-                        <span>الوسوم{activeConvTagIds.length > 0 ? ` (${activeConvTagIds.length})` : ''}</span>
-                      </button>
-
-                      {tagMenuOpen && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setTagMenuOpen(false)} />
-                          <div className="absolute left-0 mt-2 w-60 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-50 p-2" dir="rtl">
-                            <div className="px-2 py-1.5 text-[10px] font-bold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1">
-                              وسم هذه المحادثة (محفوظ مباشرة بالقاعدة)
-                            </div>
-                            {dbTags.map((t) => {
-                              const on = activeConvTagIds.includes(t.id);
-                              return (
-                                <button
-                                  key={t.id}
-                                  type="button"
-                                  onClick={() => handleToggleConversationTag(t.id)}
-                                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                                    on
-                                      ? 'bg-cyan-500/20 text-cyan-200'
-                                      : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
-                                  }`}
-                                >
-                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: t.hex_color || '#8b5cf6' }} />
-                                  <span className="flex-1 text-right">{t.name}</span>
-                                  {on && <Check className="w-3.5 h-3.5" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ⭐ زر تمييز المحادثة الحالية كمفضلة (Star Conversation) */}
-                  {activeConversation && (() => {
-                    const isStarred = favoritesList.some((f) => f.id === activeConversation.id);
-                    return (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            handleToggleFavorite(
-                              {
-                                id: activeConversation.id,
-                                title: activeConversation.title,
-                                subtitle: activeConversation.phone_or_jid,
-                                meta: {
-                                  chat_jid: activeConversation.chat_jid,
-                                  instance_name: activeConversation.line_id || selectedInstanceName,
-                                  is_group: activeConversation.is_group,
-                                }
-                              },
-                              activeConversation.is_group ? 'group' : 'direct_chat'
-                            );
-                          }}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
-                            isStarred
-                              ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-amber-950/40'
-                              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
-                          }`}
-                          title={isStarred ? 'إزالة هذه المحادثة من المفضلة' : 'تمييز هذه المحادثة بنجمة صفراء وإضافتها للمفضلة'}
-                        >
-                          <Star className={`w-3.5 h-3.5 ${isStarred ? 'fill-amber-400 text-amber-400 animate-pulse' : 'text-slate-400'}`} />
-                          <span>{isStarred ? 'محادثة مفضلة' : 'إضافة للمفضلة'}</span>
-                        </button>
-
-                          {/* لوحة التفاصيل: نقرة واحدة تُظهر كل ما يخص المحادثة من اليسار */}
-                          <button
-                            onClick={() => setInfoPanelOpen((v) => !v)}
-                            aria-pressed={infoPanelOpen}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
-                              infoPanelOpen
-                                ? 'bg-[var(--primary)] text-white border-transparent'
-                                : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
-                            }`}
-                            title="تفاصيل المحادثة الكاملة (الجهة، الخط، الإسناد، الوسوم، المفضلة)"
-                          >
-                            <Info className="w-3.5 h-3.5" />
-                            <span>التفاصيل</span>
-                          </button>
-
-                          <button
-                            onClick={() => setFavoritesDrawerOpen(true)}
-                          className="px-2 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-purple-300 hover:text-white transition-all text-xs font-mono font-bold"
-                          title="عرض أرشيف المفضلات للموظف"
-                        >
-                          {favoritesList.length}
-                        </button>
-                      </div>
-                    );
-                  })()}
-
-                  {/* 🔒 زر قفل / فك قفل المحادثة بالرمز السري PIN */}
-                  {activeConversation && (() => {
-                    const isChatLocked = !!lockedChatsPinMap[activeConversation.id];
-                    const isSessionUnlocked = !!unlockedSessionChats[activeConversation.id];
-
-                    return (
-                      <button
-                        onClick={() => {
-                          setPinError('');
-                          setPinInput('');
-                          if (isChatLocked) {
-                            if (isSessionUnlocked) {
-                              // إعادة القفل
-                              setUnlockedSessionChats((prev) => ({ ...prev, [activeConversation.id]: false }));
-                            } else {
-                              // فتح نافذة إدخال PIN
-                              setPinModalMode('unlock');
-                              setPinModalOpen(true);
-                            }
-                          } else {
-                            // تعيين PIN وقفل المحادثة
-                            setPinModalMode('set');
-                            setPinModalOpen(true);
-                          }
-                        }}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                          isChatLocked
-                            ? isSessionUnlocked
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30 animate-pulse'
-                            : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border-slate-700'
-                        }`}
-                        title={
-                          isChatLocked
-                            ? isSessionUnlocked
-                              ? 'المحادثة مفتوحة مؤقتاً — اضغط لإعادة القفل فوراً'
-                              : 'محادثة مقفلة برمز سري — اضغط لفك القفل'
-                            : 'قفل هذه المحادثة برمز سري مخصص'
-                        }
-                      >
-                        {isChatLocked ? (
-                          isSessionUnlocked ? (
-                            <>
-                              <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                              <span>مفتوحة مؤقتاً</span>
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="w-3.5 h-3.5 text-rose-400" />
-                              <span>محادثة مقفلة</span>
-                            </>
-                          )
-                        ) : (
-                          <>
-                            <Lock className="w-3.5 h-3.5 text-slate-400" />
-                            <span>قفل بـ PIN</span>
-                          </>
-                        )}
-                      </button>
-                    );
-                  })()}
-                </div>
+                {/* الواجهة النظيفة: زر واحد فقط — كل الأدوات في سلايد التفاصيل (convActions) */}
+                <button
+                  onClick={() => setInfoPanelOpen((v) => !v)}
+                  aria-pressed={infoPanelOpen}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                    infoPanelOpen
+                      ? 'bg-[var(--primary)] text-white border-transparent'
+                      : 'bg-[var(--card-elevated)] hover:bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
+                  }`}
+                  title="تفاصيل المحادثة الكاملة: الإسناد، الحالة، الوسوم، المفضلة، القفل، جهة الاتصال"
+                >
+                  <Info className="w-4 h-4" />
+                  <span>التفاصيل</span>
+                </button>
               </div>
 
               {/* 📌 شريط الرسائل المثبتة أعلى المحادثة (حتى 5 رسائل) */}
@@ -3625,6 +3689,56 @@ export function NativeChatInbox() {
               {/* Chat Input Bar with Risk Guard Checks */}
               <div className="bg-[var(--card-bg)] border-t border-[var(--border-subtle)] p-3 shrink-0 space-y-2">
 
+                {/* طبقات الرؤية: هيكل المحادثة المسندة لغيره + أزرار الطلبات */}
+                {activeConversation && contentAccess === 'shell' && (
+                  <div className="rounded-2xl border border-slate-500/40 bg-slate-900/40 px-4 py-3 flex items-center justify-between gap-3 flex-wrap" dir="rtl">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <ShieldAlert className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-xs font-bold text-slate-200">مسندة لزميلك — المحتوى غير متاح لك</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          {ownsConversationLine
+                            ? 'تملك خط هذه المحادثة — يمكنك طلب القراءة أو المشاركة في الرد (الإسناد يبقى لزميلك)'
+                            : 'لا تملك خطاً من خطوط هذه المحادثة — لا يمكن طلب الوصول'}
+                        </div>
+                      </div>
+                    </div>
+                    {ownsConversationLine && reqSentType !== 'read' && reqSentType !== 'read_write' && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => submitPermissionRequest('read', activeConversation.available_lines?.[0] || activeConversation.line_id)}
+                          disabled={reqSentType === 'read-sending'}
+                          className="px-3 py-2 rounded-xl bg-sky-600/20 border border-sky-500/40 text-sky-300 text-[11px] font-bold hover:bg-sky-600/30 transition-colors disabled:opacity-60">
+                          طلب قراءة
+                        </button>
+                        <button onClick={() => submitPermissionRequest('read_write', activeConversation.available_lines?.[0] || activeConversation.line_id)}
+                          disabled={reqSentType === 'read_write-sending'}
+                          className="px-3 py-2 rounded-xl bg-purple-600/20 border border-purple-500/40 text-purple-300 text-[11px] font-bold hover:bg-purple-600/30 transition-colors disabled:opacity-60">
+                          طلب قراءة وكتابة
+                        </button>
+                      </div>
+                    )}
+                    {reqSentType === 'read' && <span className="text-[10px] px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold shrink-0">⏳ طلب القراءة معلق</span>}
+                    {reqSentType === 'read_write' && <span className="text-[10px] px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold shrink-0">⏳ طلب المشاركة معلق</span>}
+                  </div>
+                )}
+
+                {/* طلب الإسناد — محادثة غير مسندة تظهر للموظف (اقتناص العميل) */}
+                {activeConversation && !isManager && contentAccess === 'full' && !(activeConversation as any).assigned_staff_id && !activeConversation.assigned_staff_name && reqSentType !== 'assignment' && (
+                  <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 px-4 py-2.5 flex items-center justify-between gap-3" dir="rtl">
+                    <span className="text-xs text-emerald-200 font-semibold">محادثة غير مسندة — يمكنك طلب اقتناصها</span>
+                    <button onClick={() => submitPermissionRequest('assignment')}
+                      disabled={reqSentType === 'assignment-sending'}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-[11px] font-bold transition-colors">
+                      طلب الإسناد لي
+                    </button>
+                  </div>
+                )}
+                {reqSentType === 'assignment' && (
+                  <div className="rounded-2xl border border-amber-500/40 bg-amber-950/30 px-4 py-2 text-center text-[11px] text-amber-300 font-bold" dir="rtl">
+                    ⏳ طلب الإسناد معلق — المشرف سيوافق أو يرشح الأفضل
+                  </div>
+                )}
+
                 {/* C4: تحذير صارم — لا إرسال من رقم مختلف عن خط الوارد دون إذن مدير */}
                 {activeConversation && sendLineStatus.get(effectiveSendInstance)?.allowed === false && (() => {
                   const st = sendLineStatus.get(effectiveSendInstance);
@@ -3657,14 +3771,16 @@ export function NativeChatInbox() {
                             if (!lineId) { toast({ title: 'تعذر تحديد الخط — حاول تحديث الصفحة', kind: 'error' }); return; }
                             setGrantRequestState('sending');
                             try {
-                              const res = await fetch('/api/line-grants', {
+                              const res = await fetch('/api/permission-requests', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                   action: 'request',
+                                  type: activeConversation.is_group ? 'group_join' : 'line_reply',
                                   staff_id: user.id,
                                   line_id: lineId,
                                   chat_jid: activeConversation.chat_jid,
+                                  inbox_id: currentInbox?.id || null,
                                   reason: st?.reason || 'رد من خط غير الوارد',
                                 }),
                               });
@@ -3964,6 +4080,7 @@ export function NativeChatInbox() {
         pinnedCount={(activeConversation && pinnedMessagesMap[activeConversation.id]?.length) || 0}
         getLineDisplayTitle={getLineDisplayTitle}
         currentUserName={user?.full_name || ''}
+        actions={convActions}
       />
 
       {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء (Modal الموحدة) --- */}

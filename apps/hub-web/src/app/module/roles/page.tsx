@@ -70,7 +70,7 @@ function RolesPageContent() {
   const groupedPerms = useMemo(() => {
     const groups = new Map<string, PermRow[]>();
     for (const p of permissions) {
-      if (permSearch && !(p.label_ar || '').includes(permSearch) && !p.key.includes(permSearch.toLowerCase())) continue;
+      if (permSearch && !(p.label_ar || '').includes(permSearch)) continue; // بحث بالاسم العربي فقط (قرار المالك)
       const g = p.grp || 'عام';
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g)!.push(p);
@@ -203,7 +203,7 @@ function RolesPageContent() {
                             ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200'
                             : 'bg-[var(--card-elevated)] border-[var(--border-subtle)] text-[var(--text-muted)]'
                         } ${locked ? 'opacity-70 cursor-not-allowed' : 'hover:border-purple-500/40'}`}
-                        title={p.key}
+                        title={p.label_ar || p.key}
                       >
                         <span className="truncate">{p.label_ar || p.key}</span>
                         {on ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <XCircle className="w-4 h-4 shrink-0 text-slate-500" />}

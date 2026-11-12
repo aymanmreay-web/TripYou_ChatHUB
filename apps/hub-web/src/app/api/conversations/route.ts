@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
       }
       const items = await q(
         `select c.chat_jid, c.status, s.full_name as assigned_staff_name, c.assigned_staff_id,
+                k.avatar_url as avatar_url,
                 coalesce(
                   json_agg(json_build_object('id', t.id, 'name', t.name_ar, 'color', t.color)
                     order by t.sort_order nulls last, t.name_ar)
@@ -68,10 +69,11 @@ export async function GET(req: NextRequest) {
          from hub.conversations c
          join hub.lines l on l.id = c.line_id
          left join hub.staff s on s.id = c.assigned_staff_id
+         left join hub.contacts k on k.wa_jid = c.chat_jid
          left join hub.conversation_tags ct on ct.conversation_id = c.id
          left join hub.hub_tags t on t.id = ct.tag_id
          where c.chat_jid = any($1::text[]) and l.instance_name = any($2::text[])
-         group by c.id, c.chat_jid, c.status, s.full_name, c.assigned_staff_id`,
+         group by c.id, c.chat_jid, c.status, s.full_name, c.assigned_staff_id, k.avatar_url`,
         [jids, instances]
       );
       return NextResponse.json({ items });

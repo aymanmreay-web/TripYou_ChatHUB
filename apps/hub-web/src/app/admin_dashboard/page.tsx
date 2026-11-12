@@ -96,7 +96,7 @@ function LineGrantRequestsCard() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/line-grants?pending=1', { cache: 'no-store' });
+      const res = await fetch('/api/permission-requests?pending=1', { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
         setRequests(json.requests || []);
@@ -138,11 +138,14 @@ function LineGrantRequestsCard() {
         {requests.map((r) => (
           <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
+              <div className="text-[10px] px-2 py-0.5 rounded-lg bg-purple-500/15 text-purple-300 border border-purple-500/30 inline-block mb-1 font-bold">
+                {r.type_label || r.type}{r.escalated ? ' • ⏰ صعد للمدير' : ''}
+              </div>
               <div className="text-xs font-bold text-[var(--text-main)]">
                 {r.staff_name} ← خط «{r.line_title}»
               </div>
               <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                المحادثة: {r.contact_name || r.chat_jid} • {new Date(r.created_at).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                المحادثة: {r.chat_name || r.contact_name || r.chat_jid} • {new Date(r.created_at).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -151,14 +154,14 @@ function LineGrantRequestsCard() {
                 disabled={busyId === r.id}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 text-[11px] font-bold transition-colors disabled:opacity-50"
               >
-                <ShieldCheck className="w-3.5 h-3.5" /> موافقة — يُفعّل الخط
+                <ShieldCheck className="w-3.5 h-3.5" /> موافقة
               </button>
               <button
                 onClick={() => decide(r.id, 'rejected')}
                 disabled={busyId === r.id}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600/15 border border-rose-500/40 text-rose-300 hover:bg-rose-600/25 text-[11px] font-bold transition-colors disabled:opacity-50"
               >
-                <XCircle className="w-3.5 h-3.5" /> رفض — نفس الرقم إلزامي
+                <XCircle className="w-3.5 h-3.5" /> رفض
               </button>
             </div>
           </div>

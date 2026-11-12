@@ -196,6 +196,31 @@ async function tick(): Promise<void> {
   if (ticking) return;
   ticking = true;
   try {
+    // ─── C4/م8: تصعيد الطلبات المعلقة — المشرف لم يرد خلال 10 دقائق → المدير ───
+    const escalated = await q<{ id: string; staff_name: string; type: string }>(
+      `update hub.line_send_requests
+       set escalated = true
+       where status = 'pending' and escalated = false
+         and created_at < now() - interval '10 minutes'
+       returning id,
+                (select full_name from hub.staff s where s.id = staff_id) as staff_name,
+                type`
+    );
+    if (escalated.length > 0) {
+      for (const r of escalated) {
+        await q(
+          `insert into public.notifications (staff_id, kind, title, body, link)
+           select s.id, 'permission_escalation', $2, $3, '/admin_dashboard?approvals=1'
+           from hub.staff s join hub.roles ro on ro.id = s.role_id
+           where ro.key = 'super_admin' and s.status = 'active'`,
+          [
+            `⏰ طلب متأخر أكثر من 10 دقائق — صعد للمدير`,
+            `طلب ${r.staff_name} (${r.type}) لم يُقرر خلال المهلة — يحتاج قرارك`,
+          ]
+        ).catch(() => {});
+      }
+    }
+
     // 1) الحملات المجدولة المستحقة → running
     await q(
       `update public.campaigns
