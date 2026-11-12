@@ -70,38 +70,18 @@ export function ConversationRow({ conv, isSelected, onSelect, getLineDisplayTitl
         </p>
 
         <div className="flex items-center justify-between gap-1">
-          {/* حالة المحادثة في القائمة مع وسام الخط */}
+          {/* حالة المحادثة + SLA فقط — الخطوط مُزالة من القائمة (تظهر في التفاصيل) */}
           <div className="flex items-center gap-1.5">
-            {conv.available_lines && conv.available_lines.length > 1 && multiLine ? (
-              <span
-                className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-purple-950/70 text-purple-200 border border-purple-700/50 flex items-center gap-1"
-                title={`محادثة مشتركة عبر الخطوط: ${conv.available_lines.map((l) => getLineDisplayTitle(l)).join(', ')}`}
-              >
-                <bdi dir="ltr">{conv.available_lines.map((l) => getLineDisplayTitle(l)).join(' • ')}</bdi>
-              </span>
-            ) : (
-              <span
-                className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border ${
-                  conv.line_id === 'Master'
-                    ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                }`}
-                title={`وارد عبر خط: ${getLineDisplayTitle(conv.line_id)}`}
-              >
-                <bdi dir="ltr">{getLineDisplayTitle(conv.line_id || 'Master')}</bdi>
-              </span>
-            )}
-
-            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${statusBadge(conv.status)}`}>
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${statusBadge(conv.status)}`}>
               {statusLabel(conv.status)}
             </span>
 
-            {/* عدّاد الانتظار الحي (نمط v1) — للحالات النشطة فقط */}
+            {/* عدّاد الانتظار الحي (نمط v1) */}
             <SlaTimer since={conv.last_customer_message_timestamp} status={conv.status} />
 
-            {/* وسم الإسناد يظهر فقط عند إسناد فعلي لموظف (قرار المالك) */}
+            {/* وسم الإسناد يظهر فقط عند إسناد فعلي لموظف */}
             {conv.assigned_staff_name && (
-              <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
+              <span className="text-[9px] text-slate-400 truncate max-w-[70px] bg-slate-800/50 px-1.5 py-0.5 rounded-full border border-slate-700/40">
                 {conv.assigned_staff_name}
               </span>
             )}

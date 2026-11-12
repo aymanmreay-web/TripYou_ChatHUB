@@ -3181,7 +3181,9 @@ export function NativeChatInbox() {
                       </div>
                       {activeConversation.is_group && (
                         <span className="text-[9px] px-1.5 py-px rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-semibold shrink-0">
-                          {activeConversation.participant_count ? `مجموعة · ${activeConversation.participant_count}` : 'مجموعة'}
+                          {activeConversation.participant_count
+                            ? <><span className="opacity-60">👥</span> {activeConversation.participant_count}</>
+                            : '👥'}
                         </span>
                       )}
 
@@ -3189,15 +3191,18 @@ export function NativeChatInbox() {
                       <span className={`text-[10px] px-2 py-px rounded-full font-semibold shrink-0 ${statusBadge(activeConversation.status)}`}>
                         {statusLabel(activeConversation.status)}
                       </span>
-                    </div>
 
-                    <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
-                      {/* عداد الاستجابة الحي SLA Timer — ينبض كل ثانية (نمط v1) */}
+                      {/* عداد SLA النبّاض المختصر في سطر العنوان — رمز ⏱ فقط مع mm:ss */}
                       <SlaTimer
                         since={activeConversation.last_customer_message_timestamp}
                         status={activeConversation.status}
-                        showLabel
                       />
+                    </div>
+
+                    <div className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
+                      {activeConversation.is_group
+                        ? `مجموعة · ${activeConversation.participant_count ?? ''} عضو`
+                        : activeConversation.phone_or_jid || ''}
                     </div>
                   </div>
                 </div>
