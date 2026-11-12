@@ -9,7 +9,7 @@ import {
   Users2, UserCheck, Shield, PenTool, Contact, Share2,
   FileSpreadsheet, History, Settings, Activity, Megaphone,
   Search, ChevronLeft, ChevronRight, Layers, Sparkles,
-  Tags, Star, Building2
+  Tags, Star, Building2, MessageSquareQuote, Palette, Sun, Moon
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ModuleContract } from '../../types';
@@ -30,6 +30,7 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   meetings: Video,
   my_reports: BarChart2,
   campaigns: Send,
+  canned: MessageSquareQuote,
   notifications: Bell,
   profile: UserCircle,
   admin_dashboard: LayoutDashboard,
@@ -47,11 +48,12 @@ const MODULE_ICONS: Record<string, React.ElementType> = {
   settings: Building2,
   health: Activity,
   campaigns_admin: Megaphone,
+  appearance: Palette,
 };
 
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
-  const { user, userModules, adminModules, selectedLine } = useApp();
+  const { user, userModules, adminModules, selectedLine, mode, toggleMode } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +71,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   useEffect(() => {
     const isAdminPath =
       pathname.startsWith('/admin_dashboard') ||
+      pathname.startsWith('/admin_appearance') ||
       pathname.startsWith('/module/lines') ||
       pathname.startsWith('/module/inboxes') ||
       pathname.startsWith('/module/labels') ||
@@ -152,6 +155,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
     if (m.key === 'favorites') return '/module/favorites';
     if (m.key === 'profile') return '/profile';
     if (m.key === 'admin_dashboard') return '/admin_dashboard';
+    if (m.key === 'appearance') return '/admin_appearance';
     if (m.key === 'contacts_admin') return '/module/contacts';
     return `/module/${m.key}`;
   };
@@ -186,12 +190,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           {!collapsed ? (
             <Link href="/inbox" className="flex items-center gap-2.5 overflow-hidden">
               {companyBranding.logo_url ? (
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 border border-purple-500/30 flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-md">
+                <div className="w-10 h-10 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-md">
                   <img src={companyBranding.logo_url} alt="Logo" className="w-full h-full object-contain" />
                 </div>
               ) : (
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-md text-white font-black text-lg shrink-0">
-                  {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                <div className="w-10 h-10 rounded-2xl avatar-ring p-[2px] shrink-0 shadow-md">
+                  <div className="w-full h-full rounded-[14px] bg-[var(--card-bg)] flex items-center justify-center text-[var(--text-main)] font-black text-lg">
+                    {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                  </div>
                 </div>
               )}
               <div className="flex flex-col min-w-0">
@@ -206,12 +212,14 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           ) : (
             <Link href="/inbox" className="mx-auto">
               {companyBranding.logo_url ? (
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 border border-purple-500/30 flex items-center justify-center p-1 overflow-hidden shadow-md">
+                <div className="w-10 h-10 rounded-2xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] flex items-center justify-center p-1 overflow-hidden shadow-md">
                   <img src={companyBranding.logo_url} alt="Logo" className="w-full h-full object-contain" />
                 </div>
               ) : (
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white font-black text-base shadow-md">
-                  {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                <div className="w-10 h-10 rounded-2xl avatar-ring p-[2px] shadow-md">
+                  <div className="w-full h-full rounded-[14px] bg-[var(--card-bg)] flex items-center justify-center text-[var(--text-main)] font-black text-base">
+                    {companyBranding.platform_title.slice(0, 2).toUpperCase()}
+                  </div>
                 </div>
               )}
             </Link>
@@ -329,6 +337,40 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
               );
             })}
           </nav>
+        </div>
+
+        {/* بطاقة المستخدم + تبديل الوضع (نمط v1: شمس/قمر أسفل الشريط) */}
+        <div className={`mt-auto shrink-0 border-t border-[var(--border-subtle)] bg-[var(--card-bg)]/60 p-3 flex items-center gap-2.5 ${collapsed ? 'justify-center' : ''}`}>
+          <div
+            className="w-9 h-9 rounded-full avatar-ring p-[2px] shrink-0"
+            title={user?.full_name || 'موظف'}
+          >
+            <div className="w-full h-full rounded-full bg-[var(--card-elevated)] flex items-center justify-center text-[var(--text-main)] font-bold text-sm">
+              {(user?.full_name || 'م').trim().charAt(0) || 'م'}
+            </div>
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-bold text-[var(--text-main)] truncate">
+                {user?.full_name || 'موظف'}
+              </div>
+              <div className="text-[10px] text-[var(--text-muted)] truncate">
+                {user?.role_title_ar || user?.role || ''}
+              </div>
+            </div>
+          )}
+          <button
+            onClick={toggleMode}
+            title={mode === 'dark' ? 'التحويل للوضع الفاتح' : 'التحويل للوضع الداكن'}
+            aria-label="تبديل الوضع"
+            className="w-9 h-9 rounded-full bg-[var(--card-elevated)] border border-[var(--border-subtle)] hover:border-[var(--border-glow)] flex items-center justify-center text-[var(--text-main)] active:scale-90 transition-all shrink-0"
+          >
+            {mode === 'dark' ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-[var(--text-secondary)]" />
+            )}
+          </button>
         </div>
       </aside>
     </>

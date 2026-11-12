@@ -54,7 +54,7 @@ for each row execute function hub.sync_contact_names();
 
 -- تحديث عرض public.contacts للتكامل المباشر مع PostgREST
 drop view if exists public.contacts cascade;
-create or replace view public.contacts as select * from hub.contacts;
+create or replace view public.contacts with (security_invoker = true) as select * from hub.contacts;
 grant all on public.contacts to anon, authenticated, service_role;
 
 -- فهرس لتسريع البحث بالأرقام والمصادر والكيان

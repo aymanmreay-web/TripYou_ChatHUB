@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { fetchStaffAll, fetchRoles, fetchLines, fetchInboxes, saveStaffMember, setStaffStatus, StaffRow, RoleRow, LineOption, InboxRow } from '../../../lib/hubDb';
+import { useEffect as _useEffect } from 'react';
 
 type StaffMember = StaffRow;
 
@@ -41,6 +42,14 @@ export default function StaffManagementPage() {
   const [saving, setSaving] = useState(false);
 
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  // م8: الأقسام — ربط الموظفين بالأقسام (يظهر في التوقيع)
+  const [departmentsList, setDepartmentsList] = useState<{ id: string; title_ar: string }[]>([]);
+  useEffect(() => {
+    fetch('/api/roles-matrix')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setDepartmentsList((j.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar }))))
+      .catch(() => {});
+  }, []);
   const [isNewModal, setIsNewModal] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -158,6 +167,7 @@ export default function StaffManagementPage() {
                   line_ids: [],
                   inbox_ids: [],
                   can_lock_conversations: false,
+                  department_id: null,
                   permissions_count: 0,
                 });
                 setIsNewModal(true);
@@ -567,10 +577,15 @@ export default function StaffManagementPage() {
                 <button
                   type="button"
                   onClick={handleSaveStaffModal}
-                  className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-bold shadow-lg shadow-purple-950/40 flex items-center gap-2"
+                  disabled={saving}
+                  className={`px-6 py-2.5 rounded-2xl text-white text-xs sm:text-sm font-bold shadow-lg shadow-purple-950/40 flex items-center gap-2 transition-opacity ${
+                    saving
+                      ? 'bg-slate-600 cursor-not-allowed opacity-60'
+                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500'
+                  }`}
                 >
                   <Save className="w-4 h-4" />
-                  <span>اعتماد الترخيص وحفظ الصلاحيات</span>
+                  <span>{saving ? '...جارٍ الحفظ' : 'اعتماد الترخيص وحفظ الصلاحيات'}</span>
                 </button>
               </div>
 

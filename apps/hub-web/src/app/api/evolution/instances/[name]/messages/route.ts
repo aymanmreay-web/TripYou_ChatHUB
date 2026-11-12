@@ -40,22 +40,44 @@ export async function POST(req: Request, { params }: { params: { name: string } 
   try {
     const { name } = params;
     const body = await req.json();
-    const { to, text, type = 'text' } = body;
-    
+    const { to, text, type = 'text', staff_id, signature, quoted_message_id } = body;
+
     if (!to || !text) {
       return NextResponse.json({ error: 'to and text are required' }, { status: 400 });
     }
-    
+
+    // م8: الرد المقتبس — الحقل في أعلى جسم الإرسال (SendTextDto في Evolution v2)
+    const payload: Record<string, any> = { number: to, text };
+    if (quoted_message_id) {
+      payload.quotedMessageId = quoted_message_id;
+    }
+
     const res = await fetch(`${EVOLUTION_URL}/message/sendText/${name}`, {
       method: 'POST',
       headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: to, text }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const text2 = await res.text();
       return NextResponse.json({ error: `Evolution API error: ${res.status}`, detail: text2 }, { status: res.status });
     }
     const data = await res.json();
+
+    // تخزين الرسالة الصادرة في القاعدة (للمؤشرات والتاريخ) — لا يعطل الإرسال أبداً
+    const waId = data?.key?.id;
+    if (waId) {
+      const { storeOutboundStaffMessage } = await import('../../../../../../lib/webhookHandlers/storeMessage');
+      await storeOutboundStaffMessage({
+        instance: name,
+        chatJid: to,
+        waMessageId: waId,
+        staffId: staff_id || null,
+        body: text,
+        mediaType: 'text',
+        signature: signature || null,
+      });
+    }
+
     return NextResponse.json(data);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

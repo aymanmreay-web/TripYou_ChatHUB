@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#07040E',
+  themeColor: '#0A0C13',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -27,19 +27,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ar" dir="rtl" className="dark theme-purple" suppressHydrationWarning>
+    <html lang="ar" dir="rtl" className="dark theme-google" suppressHydrationWarning>
       <head>
-        {/* منع الوميض FOUC Prevention Script في قمة الـ Head */}
+        {/* منع الوميض FOUC Prevention Script في قمة الـ Head — مع ترحيل مفاتيح الثيمات القديمة إلى أسماء v1 */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
                 try {
-                  var savedTheme = localStorage.getItem('tripyou_theme') || 'theme-purple';
+                  var map = { 'theme-purple': 'theme-violet', 'theme-blue': 'theme-ocean' };
+                  var keys = ['theme-google','theme-violet','theme-ocean','theme-emerald','theme-sunset','theme-graphite'];
+                  var saved = localStorage.getItem('tripyou_theme');
+                  saved = saved ? (map[saved] || saved) : 'theme-google';
+                  if (keys.indexOf(saved) === -1) saved = 'theme-google';
                   var savedMode = localStorage.getItem('tripyou_mode') || 'dark';
                   var root = document.documentElement;
-                  root.classList.remove('theme-purple', 'theme-blue', 'theme-google', 'dark', 'light');
-                  root.classList.add(savedTheme, savedMode);
+                  root.classList.remove.apply(root.classList, keys.concat(['theme-purple','theme-blue','dark','light']));
+                  root.classList.add(saved, savedMode);
                 } catch (e) {}
               })();
             `,

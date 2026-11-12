@@ -30,7 +30,7 @@ import {
   Lock,
   Unlock,
   Moon,
-  ArrowUpRight,
+  Info,
   FileText,
   Image as ImageIcon,
   Music,
@@ -45,7 +45,9 @@ import {
   Pin,
   PinOff,
   Star,
+  Tags,
   Reply,
+  ExternalLink,
   Share2,
   Copy,
   FileSpreadsheet,
@@ -58,265 +60,20 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useRouter } from 'next/navigation';
 import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
 import { Button } from '@tripyou/ui';
 import { supabase } from '../../lib/supabase';
-
-// ─────────────────────────────────────────────
-// 🔧 مساعد: تحويل معرف الرسالة أو الرابط إلى رابط وكيل لفك التشفير
-// ─────────────────────────────────────────────
-function getProxiedUrl(mediaUrl: string | undefined, instanceName: string, messageId?: string, fileName?: string): string | null {
-  const fnParam = fileName ? `&fileName=${encodeURIComponent(fileName)}` : '';
-  if (messageId) {
-    return `/api/evolution/instances/${instanceName}/media/proxy?id=${encodeURIComponent(messageId)}${fnParam}`;
-  }
-  if (!mediaUrl) return null;
-  if (mediaUrl.startsWith('data:')) return mediaUrl;
-  return `/api/evolution/instances/${instanceName}/media/proxy?url=${encodeURIComponent(mediaUrl)}${fnParam}`;
-}
-
-// ─────────────────────────────────────────────
-// 🎵 مساعد: توليد ارتفاعات أعمدة موجة صوتية (شبه عشوائي من معرّف الرسالة)
-// ─────────────────────────────────────────────
-function getWaveformBars(seed: string, count = 32): number[] {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) & 0xffffffff;
-  return Array.from({ length: count }, () => {
-    hash = (hash * 1664525 + 1013904223) & 0xffffffff;
-    return 20 + (Math.abs(hash) % 60); // ارتفاع 20% – 80%
-  });
-}
-
-// ─────────────────────────────────────────────
-// 🎵 مكوّن: مشغّل الصوت المخصص مع شريط الموجة
-// ─────────────────────────────────────────────
-interface AudioPlayerProps {
-  src: string;
-  msgId: string;
-  isOut: boolean;
-}
-
-function formatMessageWithLinks(content: string) {
-  if (!content) return null;
-  // مطابقة الروابط URL (http, https, www, أو t.me / wa.me)
-  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|wa\.me\/[^\s]+|t\.me\/[^\s]+)/gi;
-  const parts = content.split(urlRegex);
-
-  return parts.map((part, index) => {
-    if (part.match(urlRegex)) {
-      const href = part.startsWith('http') ? part : `https://${part}`;
-      return (
-        <a
-          key={index}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="text-purple-300 hover:text-purple-200 underline underline-offset-2 break-all font-mono font-medium inline-flex items-center gap-0.5 mx-0.5 transition-colors"
-          dir="ltr"
-        >
-          <span>{part}</span>
-          <ArrowUpRight className="w-3 h-3 inline-block shrink-0 opacity-80" />
-        </a>
-      );
-    }
-    return <span key={index}>{part}</span>;
-  });
-}
-
-function getFileCardMeta(fileName: string) {
-  const name = fileName || '';
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) {
-    return {
-      type: 'Excel',
-      ext: 'XLSX',
-      badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-      cardBg: 'bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-500/60',
-      iconColor: 'text-emerald-400',
-      isSheet: true,
-    };
-  }
-  if (lower.endsWith('.pdf')) {
-    return {
-      type: 'PDF',
-      ext: 'PDF',
-      badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
-      cardBg: 'bg-rose-950/40 border-rose-500/30 hover:border-rose-500/60',
-      iconColor: 'text-rose-400',
-      isPdf: true,
-    };
-  }
-  if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
-    return {
-      type: 'Word',
-      ext: 'DOCX',
-      badge: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-      cardBg: 'bg-blue-950/40 border-blue-500/30 hover:border-blue-500/60',
-      iconColor: 'text-blue-400',
-      isWord: true,
-    };
-  }
-  if (lower.endsWith('.zip') || lower.endsWith('.rar') || lower.endsWith('.7z') || lower.endsWith('.tar')) {
-    return {
-      type: 'Archive',
-      ext: 'ZIP',
-      badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-      cardBg: 'bg-amber-950/40 border-amber-500/30 hover:border-amber-500/60',
-      iconColor: 'text-amber-400',
-      isArchive: true,
-    };
-  }
-  return {
-    type: 'Document',
-    ext: lower.split('.').pop()?.toUpperCase() || 'FILE',
-    badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-    cardBg: 'bg-purple-950/40 border-purple-500/30 hover:border-purple-500/60',
-    iconColor: 'text-purple-400',
-    isGeneric: true,
-  };
-}
-
-function AudioMessagePlayer({ src, msgId, isOut }: AudioPlayerProps) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const bars = useMemo(() => getWaveformBars(msgId), [msgId]);
-
-  const togglePlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch((e) => console.warn('Play error:', e));
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (!audioRef.current) return;
-    const dur = audioRef.current.duration || duration || 0;
-    const cur = audioRef.current.currentTime;
-    setCurrentTime(cur);
-    setProgress(dur > 0 ? (cur / dur) * 100 : 0);
-  };
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-      setDuration(audioRef.current.duration);
-    }
-  };
-
-  const handleEnded = () => {
-    setIsPlaying(false);
-    setProgress(0);
-    setCurrentTime(0);
-  };
-
-  const handleSeekPct = (pct: number) => {
-    if (!audioRef.current) return;
-    const dur = audioRef.current.duration || duration || 0;
-    if (!dur) return;
-    const target = Math.max(0, Math.min(dur, pct * dur));
-    audioRef.current.currentTime = target;
-    setCurrentTime(target);
-    setProgress(pct * 100);
-    if (!isPlaying) {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  };
-
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    handleSeekPct(pct);
-  };
-
-  const handleBarClick = (i: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const pct = i / bars.length;
-    handleSeekPct(pct);
-  };
-
-  const formatTime = (s: number) =>
-    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-  return (
-    <div
-      className={`flex items-center gap-2.5 p-2.5 rounded-2xl min-w-[230px] max-w-[320px] border border-white/5 transition-all ${
-        isOut ? 'bg-purple-700/40 shadow-inner' : 'bg-slate-800/80 shadow-inner'
-      }`}
-    >
-      <audio
-        ref={audioRef}
-        src={src}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={handleEnded}
-        preload="metadata"
-      />
-
-      {/* زر التشغيل / الإيقاف */}
-      <button
-        onClick={togglePlay}
-        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md ${
-          isOut
-            ? 'bg-purple-500 hover:bg-purple-400 text-white'
-            : 'bg-purple-600 hover:bg-purple-500 text-white'
-        }`}
-        title={isPlaying ? 'إيقاف مؤقت' : 'تشغيل التسجيل الصوتي'}
-      >
-        {isPlaying ? (
-          <svg className="w-4 h-4 text-[var(--text-main)]" fill="currentColor" viewBox="0 0 24 24">
-            <rect x="6" y="4" width="4" height="16" />
-            <rect x="14" y="4" width="4" height="16" />
-          </svg>
-        ) : (
-          <svg className="w-4 h-4 ml-0.5 text-[var(--text-main)]" fill="currentColor" viewBox="0 0 24 24">
-            <polygon points="5,3 19,12 5,21" />
-          </svg>
-        )}
-      </button>
-
-      {/* الموجة الصوتية + شريط التقدم التفاعلي */}
-      <div className="flex-1 flex flex-col gap-1 min-w-0">
-        <div
-          className="flex items-end gap-[2px] h-9 cursor-pointer select-none py-1 group/wave"
-          onClick={handleProgressClick}
-          title="اضغط أو اسحب للانتقال إلى أي نقطة في التسجيل"
-        >
-          {bars.map((h, i) => {
-            const barPct = (i / bars.length) * 100;
-            const isActive = barPct <= progress;
-            return (
-              <div
-                key={i}
-                onClick={(e) => handleBarClick(i, e)}
-                className={`flex-1 rounded-full transition-all cursor-pointer ${
-                  isActive
-                    ? isOut
-                      ? 'bg-purple-200 shadow-sm'
-                      : 'bg-emerald-400 shadow-sm'
-                    : isOut
-                    ? 'bg-purple-400/40 hover:bg-purple-300'
-                    : 'bg-slate-500/40 hover:bg-slate-400'
-                }`}
-                style={{ height: `${h}%` }}
-              />
-            );
-          })}
-        </div>
-        {/* الوقت */}
-        <div className="flex justify-between text-[10px] text-slate-300 font-mono tabular-nums px-0.5">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { fetchTags } from '../../lib/hubDb';
+import { toast } from '../common/Toaster';
+import { getProxiedUrl, getFileCardMeta, formatMessageWithLinks } from '../../lib/inbox/messages';
+import { AudioMessagePlayer } from './AudioMessagePlayer';
+import { SlaTimer } from './SlaTimer';
+import { ConversationRow } from './ConversationRow';
+import { ConversationInfoPanel } from './ConversationInfoPanel';
+import { Modal } from './Modal';
+import { statusBadge, statusLabel } from '../../lib/inbox/uiMaps';
+import { isQuietHoursNow } from '../../lib/inbox/time';
 
 interface EvolutionInstanceSummary {
   id: string;
@@ -332,15 +89,26 @@ interface EvolutionInstanceSummary {
   };
 }
 
-const AVAILABLE_STAFF = [
-  { id: 'ayman', name: 'م. أيمن مريعي', role: 'مسؤول النظام الأعلى' },
-  { id: 'sara', name: 'سارة خالد', role: 'مدير المبيعات' },
-  { id: 'dosari', name: 'محمد الدوسري', role: 'خدمة العملاء' },
-  { id: 'unassigned', name: 'غير مسند (عام)', role: 'صندوق عام' },
-];
+// م7: الموظفون الحقيقيون من القاعدة (hub.staff) — يُحمَّل من /api/staff
+const AVAILABLE_STAFF_FALLBACK = [{ id: '', name: 'غير مسند (عام)', role: 'صندوق عام' }];
 
 export function NativeChatInbox() {
   const { user, authStatus } = useApp();
+  const router = useRouter();
+
+  // م7: قائمة الموظفين الحقيقية من القاعدة
+  const [availableStaff, setAvailableStaff] = useState<{ id: string; name: string; role: string }[]>(AVAILABLE_STAFF_FALLBACK);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/staff', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = await res.json();
+        const list = (json.data || []).map((s: any) => ({ id: s.id, name: s.full_name, role: s.role_name || 'موظف' }));
+        if (list.length > 0) setAvailableStaff([...list, ...AVAILABLE_STAFF_FALLBACK]);
+      } catch { /* صامت */ }
+    })();
+  }, []);
 
   // Evolution Real State
   const [instances, setInstances] = useState<EvolutionInstanceSummary[]>([]);
@@ -354,10 +122,41 @@ export function NativeChatInbox() {
   const [selectedInboxId, setSelectedInboxId] = useState<string>('all');
   const [lineFilter, setLineFilter] = useState<string>('all');
   const readChatsSet = useRef<Set<string>>(new Set());
+  // م8: مراجع السكرول الذكي + وعي المجموعات
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastActiveConvIdRef = useRef<string>('');
+  const [knownGroupJids, setKnownGroupJids] = useState<Set<string>>(new Set());
+  const [savedContactJids, setSavedContactJids] = useState<Set<string>>(new Set());
+  // م8: عدّاد غير مقروء حقيقي — وقت آخر قراءة لكل محادثة؛ العداد يعود فقط برسالة أحدث من القراءة
+  const lastReadAtRef = useRef<Map<string, number>>(new Map());
 
   // Conversations State (Real)
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const conversationsRef = useRef<ConversationItem[]>([]);
+  conversationsRef.current = conversations;
   const [loadingChats, setLoadingChats] = useState<boolean>(false);
+
+  // ─── مراجع مستقرة تمنع إعادة إنشاء دوال الجلب عند كل تحديث حالة (منع إعادة الجلب العشوائي) ───
+  const instancesRef = useRef<EvolutionInstanceSummary[]>([]);
+  instancesRef.current = instances;
+
+  // ─── كاش محلي لقائمة المحادثات (نمط وتساب ويب) ───
+  // تُرطَّب القائمة فوراً من localStorage عند فتح الصفحة — لا سبينر ولا وميض للمستخدم العائد،
+  // ثم يُحدَّث الجديد بصمت في الخلفية. صلاحية الكاش 24 ساعة.
+  const CHATS_CACHE_KEY = 'hub_chats_cache_v1';
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHATS_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const list: ConversationItem[] = Array.isArray(parsed?.conversations) ? parsed.conversations : [];
+      const fresh = Date.now() - (parsed?.savedAt || 0) < 24 * 60 * 60 * 1000;
+      if (fresh && list.length > 0 && conversationsRef.current.length === 0) {
+        setConversations(list);
+      }
+    } catch { /* كاش تالف — تجاهل بصمت */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [activeConvId, setActiveConvId] = useState<string>('');
 
   // Messages State (Real)
@@ -374,11 +173,108 @@ export function NativeChatInbox() {
 
   // ─── سجل المقروء المحفوظ في الداتابيز للصندوق الحالي والمستخدم ───
   const [readChatJids, setReadChatJids] = useState<Set<string>>(new Set());
+  // مرجع مستقر لسجل المقروء — يُقرأ داخل دوال الجلب ذات التبعيات الثابتة دون قفل نسخة قديمة
+  const readChatJidsRef = useRef<Set<string>>(readChatJids);
+  readChatJidsRef.current = readChatJids;
   // ─── حالة فحص جهة الاتصال الحالية في الداتابيز ───
   const [isContactSaved, setIsContactSaved] = useState<boolean>(false);
+  // لوحة تفاصيل المحادثة المنزلقة من اليسار (نقرة واحدة)
+  const [infoPanelOpen, setInfoPanelOpen] = useState<boolean>(false);
   // ─── إعدادات التواقيع المحملة من الداتابيز ───
   const [signatureConfig, setSignatureConfig] = useState<any>(null);
   const [staffSignaturesList, setStaffSignaturesList] = useState<any[]>([]);
+
+  // ─── روابط عمق المفضلة/الإشعارات/اللوحة: ?chat=<jid> — يلتقط مرة واحدة ويستهلك عند ظهور المحادثة ───
+  const pendingChatDeepLink = useRef<string | null>(
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('chat')
+      : null
+  );
+
+  // م8-ج2: مراقبة حية للرابط — لأن router.push من الإشعار/اللوحة (أنت أصلاً في /inbox)
+  // لا يعيد تحميل المكون، فلا يُلتقط الباراميتر الجديد بوسيلة الـ mount
+  const [deepLinkTick, setDeepLinkTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof window === 'undefined') return;
+      const fromUrl = new URLSearchParams(window.location.search).get('chat');
+      if (fromUrl && fromUrl !== pendingChatDeepLink.current) {
+        pendingChatDeepLink.current = fromUrl;
+        setDeepLinkTick((t) => t + 1);
+        // مهلة فشل: إن لم تُوجد المحادثة في نطاق الصندوق خلال 5 ثوانٍ — رسالة واضحة
+        setTimeout(() => {
+          if (pendingChatDeepLink.current === fromUrl) {
+            pendingChatDeepLink.current = null;
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('chat');
+              window.history.replaceState({}, '', url.toString());
+            } catch {}
+            toast({ title: 'لم تُوجد المحادثة في نطاق صندوقك الحالي — افتح صندوقها أو خطها', kind: 'error' });
+          }
+        }, 5000);
+      }
+    }, 600);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ─── م3: وسوم القاعدة الحقيقية — سجل الوسوم + وسم المحادثة النشطة + محرر منبثق ───
+  const [dbTags, setDbTags] = useState<{ id: string; name: string; hex_color: string }[]>([]);
+  const [activeConvTagIds, setActiveConvTagIds] = useState<string[]>([]);
+  const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  // م8-ج3: قائمة خيارات الجهة (اسم المحادثة قابل للنقر)
+  const [contactMenuOpen, setContactMenuOpen] = useState(false);
+  // نافذة «الرقم غير متواجد في المجموعة» — تظهر عند محاولة اختيار خط غير عضو في مجموعة (اختيار حر + خيارا الحل)
+  const [lineBlockModal, setLineBlockModal] = useState<{ line: string; reason: string } | null>(null);
+  // قائمة خط الإرسال المدمجة (منسدلة صغيرة بدل select كبير يأكل مساحة الكتابة)
+  const [sendLineMenuOpen, setSendLineMenuOpen] = useState(false);
+  // إخفاء شريط الرسائل المثبتة لهذه الجلسة — X يخفي مؤقتاً ولا يلغي التثبيت
+  const [pinsBarDismissed, setPinsBarDismissed] = useState<Record<string, boolean>>({});
+  // طلب المالك: قائمة خيارات لكل مرسل داخل المجموعة
+  const [senderMenu, setSenderMenu] = useState<{ msgId: string; name: string; jid: string; x: number; y: number } | null>(null);
+
+  // ─── C4: قواعد الرد عبر الخطوط ───
+  // منح المدير: خطوط يُسمح للموظف الرد منها رغم أنها ليست خط الوارد (بعد موافقة صريحة)
+  const [grantedLines, setGrantedLines] = useState<Set<string>>(new Set());
+  const [grantRequestState, setGrantRequestState] = useState<'none' | 'sending' | 'sent'>('none');
+  // عضوية المجموعة: أرقام الخطوط الأعضاء في مجموعة المحادثة الحالية (قانون واتساب)
+  const [groupMemberDigits, setGroupMemberDigits] = useState<Set<string> | null>(null);
+
+  // جلب منح الموظف الحالي (يُحدَّث بعد كل طلب/قرار) + خريطة اسم الخط → uuid للطلبات
+  const [lineIdMap, setLineIdMap] = useState<Record<string, string>>({});
+  // م8: المنح لكل محادثة فقط — مفتاح chat_jid|line من الطلبات المعتمدة
+  const [convGrants, setConvGrants] = useState<Set<string>>(new Set());
+  const refreshGrants = useCallback(() => {
+    if (!user?.id) return;
+    fetch(`/api/permission-requests?staff_id=${encodeURIComponent(user.id)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const set = new Set<string>((j?.grants || []).map((g: any) => `${g.chat_jid}|${g.line}`));
+        setConvGrants(set);
+      })
+      .catch(() => {});
+    fetch('/api/lines', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const map: Record<string, string> = {};
+        ((j?.lines || []) as any[]).forEach((l) => { if (l.instance_name && l.id) map[l.instance_name] = l.id; });
+        setLineIdMap(map);
+      })
+      .catch(() => {});
+  }, [user?.id]);
+
+  useEffect(() => { refreshGrants(); }, [refreshGrants]);
+  const [tagFilter, setTagFilter] = useState<string>(''); // فلتر وسم بالشريط العلوي
+
+  // تحميل سجل الوسوم مرة واحدة (من hub.hub_tags عبر دوال hubDb)
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await fetchTags();
+        setDbTags(rows.map((t) => ({ id: t.id, name: t.name, hex_color: t.hex_color })));
+      } catch { /* صامت */ }
+    })();
+  }, []);
 
   // ─── تحسين أداء وسرعة النظام: عرض المحادثات التدريجي لمنع ثقل المتصفح ───
   const [visibleCount, setVisibleCount] = useState<number>(50);
@@ -509,6 +405,8 @@ export function NativeChatInbox() {
   const [pinError, setPinError] = useState<string>('');
   const [requestAccessModalOpen, setRequestAccessModalOpen] = useState<boolean>(false);
   const [requestAccessSent, setRequestAccessSent] = useState<boolean>(false);
+  const [requestAccessSending, setRequestAccessSending] = useState<boolean>(false);
+  const [requestAccessError, setRequestAccessError] = useState<string | null>(null);
   const [requestAccessType, setRequestAccessType] = useState<'read' | 'reply' | 'reassign'>('read');
   const [requestAccessReason, setRequestAccessReason] = useState<string>('');
 
@@ -536,13 +434,18 @@ export function NativeChatInbox() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // حساب ساعات الهدوء بتوقيت مكة المكرمة (+3)
-  const isQuietHoursActive = useMemo(() => {
-    const now = new Date();
-    // UTC + 3 hours for KSA
-    const ksaHour = (now.getUTCHours() + 3) % 24;
-    return ksaHour >= 1 && ksaHour < 7;
-  }, []);
+  // حساب ساعات الهدوء بتوقيت مكة المكرمة (+3) — المنطق النقي في lib/inbox/time.ts
+  const isQuietHoursActive = useMemo(() => isQuietHoursNow(), []);
+
+  // Esc يغلق عارض الوسائط فعلياً (كان مكتوباً في نص الواجهة دون ربط)
+  useEffect(() => {
+    if (!lightboxMedia) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxMedia(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [lightboxMedia]);
 
   // تحميل الصناديق حصراً من API الخادم المحمي بجدول inbox_access ودور الموظف في قاعدة البيانات
   const loadInboxes = useCallback(async () => {
@@ -576,19 +479,46 @@ export function NativeChatInbox() {
   }, [loadInboxes]);
 
   // ─── تحميل سجل المقروء من قاعدة البيانات لهذا الصندوق والمستخدم ───
+  // م8-ج2: يملأ أيضاً أطواب القراءة (lastReadAt) ويعيد تصفير العدادات فوراً —
+  // القراءة خاصة بكل مستخدم فقط — بلا فلتر صندوق (المحادثة المقروءة مقروءة في كل الصناديق)
+  // والاعتماد الكامل على طابع زمني لكل محادثة: العداد = رسائل أحدث من آخر قراءة
+  const hydratedReadsRef = useRef<Promise<void> | null>(null);
   const loadReadReceipts = useCallback(async () => {
     if (!user?.id) return;
-    try {
-      const res = await fetch(`/api/inboxes/read?inbox_id=${selectedInboxId || 'all'}&user_id=${user.id}`);
-      if (res.ok) {
-        const json = await res.json();
-        const set = new Set<string>((json.reads || []).map((r: any) => r.chat_jid));
-        setReadChatJids(set);
+    const doLoad = async () => {
+      try {
+        // بلا inbox_id — كل سجلات هذا المستخدم عبر جميع الصناديق
+        const res = await fetch(`/api/inboxes/read?user_id=${user.id}`);
+        if (res.ok) {
+          const json = await res.json();
+          const reads: { chat_jid: string; last_read_at: string }[] = json.reads || [];
+          const set = new Set<string>(reads.map((r) => r.chat_jid));
+          setReadChatJids(set);
+          set.forEach((jid) => readChatsSet.current.add(jid));
+          for (const r of reads) {
+            const ts = r.last_read_at ? new Date(r.last_read_at).getTime() : 0;
+            if (ts > 0) lastReadAtRef.current.set(r.chat_jid, ts);
+          }
+          // تطبيق فوري على القائمة الحالية — بلا انتظار جلب الخطوط التالي
+          setConversations((prev) => {
+            let changed = false;
+            const next = prev.map((c) => {
+              if (set.has(c.chat_jid) && c.unread_count !== 0) {
+                changed = true;
+                return { ...c, unread_count: 0 };
+              }
+              return c;
+            });
+            return changed ? next : prev;
+          });
+        }
+      } catch (e) {
+        console.warn('Failed loading read receipts:', e);
       }
-    } catch (e) {
-      console.warn('Failed loading read receipts:', e);
-    }
-  }, [user?.id, selectedInboxId]);
+    };
+    hydratedReadsRef.current = doLoad();
+    await hydratedReadsRef.current;
+  }, [user?.id]);
 
   useEffect(() => {
     loadReadReceipts();
@@ -599,7 +529,18 @@ export function NativeChatInbox() {
     fetch('/api/signatures')
       .then((r) => r.json())
       .then((data) => {
-        if (data.global) setSignatureConfig(data.global);
+        if (data.global) {
+          // م8: تسوية الشكل — الـ API يعيد حقولاً مسطحة (part1_enabled) والصندوق يقرأ كائناً متداخلاً
+          const g = data.global;
+          setSignatureConfig({
+            ...g,
+            part1: { enabled: g.part1_enabled ?? true, label_ar: g.part1_label_ar, editable_by: g.part1_editable_by, required: g.part1_required },
+            part2: { enabled: g.part2_enabled ?? true, label_ar: g.part2_label_ar, editable_by: g.part2_editable_by, required: g.part2_required },
+            part3: { enabled: g.part3_enabled ?? true, label_ar: g.part3_label_ar, editable_by: g.part3_editable_by, required: g.part3_required },
+            separator: g.separator || ' — ',
+            send_mode: g.send_mode || 'always',
+          });
+        }
         if (Array.isArray(data.staff)) setStaffSignaturesList(data.staff);
       })
       .catch(() => {});
@@ -660,14 +601,19 @@ export function NativeChatInbox() {
   }, [fetchInstances]);
 
   // 2. Fetch real chats & WhatsApp groups across multiple instances in parallel
+  // م‑الوميض: الجلب صامت افتراضياً بعد أول تحميل — لا سبينر ولا تفكيك للقائمة (نمط وتساب ويب).
+  // الدوّار يظهر فقط في أول تحميل حقيقي حين لا توجد بيانات أصلاً.
   const fetchChats = useCallback(async (targetInstances?: string[]) => {
+    const silent = conversationsRef.current.length > 0;
     try {
-      setLoadingChats(true);
+      if (!silent) setLoadingChats(true);
+      // م8-ج2: انتظر ترطيب سجلات القراءة أولاً — العدادات ترسم صح من أول مرة
+      if (hydratedReadsRef.current) await hydratedReadsRef.current;
 
       // تحديد الخطوط المستهدفة للجلب
       let instancesToFetch = targetInstances;
       if (!instancesToFetch || instancesToFetch.length === 0) {
-        const openInst = instances.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
+        const openInst = instancesRef.current.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
         instancesToFetch = openInst.length > 0 ? openInst : ['Master', 'Sells_2'];
       }
 
@@ -746,11 +692,16 @@ export function NativeChatInbox() {
                 if (c.updatedAt) {
                   const date = new Date(c.updatedAt);
                   rawTimestamp = date.getTime();
-                  timeStr = date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+                  timeStr = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                 }
 
-                const isReadLocally = readChatJids.has(jid) || readChatsSet.current.has(jid);
-                const unread = isReadLocally ? 0 : (c.unreadCount || 0);
+                // ─── م8: عدّاد غير مقروء حقيقي ───
+                // قاعدة القراءة: المحادثة مقروءة إذا (أ) ضمن سجل المقروء، أو (ب) وقت آخر قراءة مسجل
+                // أحدث من طابع آخر رسالة. بهذا لا يعود العداد برسالة قديمة ولا يظهر لرسالة قرأتها فعلاً.
+                const isReadLocally = readChatJidsRef.current.has(jid) || readChatsSet.current.has(jid);
+                const lastRead = lastReadAtRef.current.get(jid);
+                const readByTime = lastRead != null && rawTimestamp <= lastRead;
+                const unread = isReadLocally || readByTime ? 0 : (c.unreadCount || 0);
 
                 return {
                   id: `${instanceName}__${jid}`,
@@ -767,7 +718,7 @@ export function NativeChatInbox() {
                   line_title: instanceName === 'Master' ? 'الرقم الرئيسي (Master)' : instanceName === 'Sells_2' ? 'المبيعات 2 (Sells_2)' : instanceName,
                   last_message_text: lastText || 'بدء المحادثة',
                   last_message_at: timeStr || 'سابقاً',
-                  assigned_staff_name: user?.full_name || 'م. أيمن مريعي',
+                  assigned_staff_name: undefined,
                   tags: isGroup ? ['مجموعة'] : cleanPhone.startsWith('966') ? ['السعودية'] : [],
                   status: 'open',
                   last_customer_message_timestamp: rawTimestamp,
@@ -790,7 +741,22 @@ export function NativeChatInbox() {
       // نحتفظ ببيانات كل خط كاملة ومستقلة دون أي حذف أو استقطاع لتكون عدادات كل خط دقيقة 100%
       allMerged.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
 
-      setConversations(allMerged);
+      // ─── تسجيل محلي (كاش): القائمة تُرطَّب فوراً في الزيارة القادمة بلا دوّار ───
+      try {
+        localStorage.setItem(CHATS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), conversations: allMerged.slice(0, 400) }));
+      } catch { /* تجاوز حد التخزين — غير حرج */ }
+
+      // م8: دمج يحافظ على مرجع الكائنات غير المتغيرة — القائمة لا "تقفز" ولا تعيد رسمها إن لم يتغير شيء
+      setConversations((prev) => {
+        if (prev.length === allMerged.length) {
+          const prevSig = prev.map((c) => `${c.id}:${c.unread_count}:${c.last_message_text?.slice(0, 30)}:${c.status}`).join('|');
+          const newSig = allMerged.map((c) => `${c.id}:${c.unread_count}:${c.last_message_text?.slice(0, 30)}:${c.status}`).join('|');
+          if (prevSig === newSig) return prev;
+        }
+        return allMerged;
+      });
+      // م3: دمج وسوم وحالات القاعدة في القائمة بعد جلبها
+      mergeDbTagsAndStatus(allMerged);
       setActiveConvId((curr) => {
         if (curr && allMerged.some((c) => c.id === curr || curr === `unified__${c.chat_jid}`)) return curr;
         return allMerged.length > 0 ? allMerged[0].id : '';
@@ -798,9 +764,9 @@ export function NativeChatInbox() {
     } catch (err) {
       console.error('Failed to load chats:', err);
     } finally {
-      setLoadingChats(false);
+      if (!silent) setLoadingChats(false);
     }
-  }, [instances, user]);
+  }, []);
 
   // استدعاء جلب المحادثات لكافة الخطوط فور جاهزية الخطوط أو تغيير الصندوق
   useEffect(() => {
@@ -810,11 +776,49 @@ export function NativeChatInbox() {
     }
   }, [instances.length, fetchChats]);
 
+  // ─── استهلاك الرابط العميق ?chat=<jid> (من صفحة المفضلة أو إشعار) بعد اكتمال تحميل المحادثات ───
+  // ينتظر ظهور المحادثة المستهدفة في القائمة ثم يحددها تلقائياً ويحذف الباراميتر من الرابط
+  useEffect(() => {
+    const wanted = pendingChatDeepLink.current;
+    if (!wanted || loadingChats || conversations.length === 0) return;
+
+    const norm = (s: string) => (s || '').trim().toLowerCase();
+    const w = norm(wanted);
+    const wantedDigits = wanted.replace(/\D/g, '');
+
+    // الترتيب: تطابق jid كامل → تطابق معرف موحّد → لاحقة المعرف → مطابقة رقم الهاتف
+    const target =
+      conversations.find((c) => norm(c.chat_jid) === w) ||
+      conversations.find((c) => norm(c.id) === w) ||
+      conversations.find((c) => norm(c.id).endsWith(`__${w}`)) ||
+      (wantedDigits.length >= 7
+        ? conversations.find((c) => (c.chat_jid || '').replace(/\D/g, '').includes(wantedDigits))
+        : undefined);
+
+    if (target) {
+      pendingChatDeepLink.current = null; // استُهلك — لا يعيد الانتقاء مرة أخرى
+      setDeepLinkTick((t) => t + 1); // إعادة مزامنة النبضة بعد الاستهلاك
+      handleSelectConversation(target.id);
+      // تنظيف الرابط دون إعادة تحميل الصفحة
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('chat');
+        window.history.replaceState({}, '', url.toString());
+      } catch { /* صامت */ }
+    }
+    // ملاحظة: إن لم تُوجد المحادثة بعد نبقي الرابط معلقاً — مهلة الفشل في المراقب تعرض رسالة واضحة
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, loadingChats, deepLinkTick]);
+
   // 3. Fetch real messages when active conversation changes (يدعم جلب الرسائل من كافة الخطوط المشتركة ودمجها)
+  // م8: التحديث الدوري لنفس المحادثة صامت بلا وميض لودر ولا قفزة سكرول
+  const currentMsgChatRef = useRef<string>('');
+
   const fetchMessagesForChat = useCallback(async (chatJid: string, instanceName: string, additionalLines?: string[]) => {
     if (!chatJid || !instanceName) return;
+    const isSilentRefresh = currentMsgChatRef.current === chatJid;
     try {
-      setLoadingMessages(true);
+      if (!isSilentRefresh) setLoadingMessages(true);
       const linesToFetch = Array.from(new Set([instanceName, ...(additionalLines || [])].filter(Boolean)));
 
       const fetchResults = await Promise.allSettled(
@@ -865,7 +869,14 @@ export function NativeChatInbox() {
         let docFileName: string | undefined = undefined;
 
         if (m.message) {
-          const msgObj = m.message;
+          // م8: فتح أغلفة واتساب — الملصقات و"عرض لمرة واحدة" والرسائل المؤقتة مغلفة
+          const msgObj =
+            m.message.viewOnceMessageV2?.message ||
+            m.message.viewOnceMessageV2Extension?.message ||
+            m.message.viewOnceMessage?.message ||
+            m.message.ephemeralMessage?.message ||
+            m.message.documentWithCaptionMessage?.message ||
+            m.message;
           if (msgObj.conversation) {
             text = msgObj.conversation;
           } else if (msgObj.extendedTextMessage?.text) {
@@ -903,12 +914,14 @@ export function NativeChatInbox() {
         let timeStr = ``;
         if (m.messageTimestamp) {
           const date = new Date(m.messageTimestamp * 1000);
-          timeStr = date.toLocaleTimeString(`ar-SA`, { hour: `2-digit`, minute: `2-digit` });
+          timeStr = date.toLocaleTimeString(`en-GB`, { hour: `2-digit`, minute: `2-digit` });
         }
 
         return {
           id: msgKeyId || m.id || ('msg-' + Date.now() + '-' + Math.random()),
           msg_key_id: msgKeyId,
+          key_from_me: fromMe,
+          key_participant: m.key?.participant || undefined,
           conversation_id: chatJid,
           chat_jid: chatJid,
           direction: fromMe ? `out` : `in`,
@@ -923,11 +936,20 @@ export function NativeChatInbox() {
         };
       });
 
-      setMessages(mapped);
+      // م8: لا نستبدل المصفوفة إلا عند تغير فعلي — يمنع إعادة الرسم والسكرول المزعج كل 6 ثوانٍ
+      setMessages((prev) => {
+        if (prev.length === mapped.length) {
+          const prevSig = prev.map((m) => m.id).join('|');
+          const newSig = mapped.map((m) => m.id).join('|');
+          if (prevSig === newSig) return prev;
+        }
+        return mapped;
+      });
+      currentMsgChatRef.current = chatJid;
     } catch (err) {
       console.error('Failed to load messages:', err);
     } finally {
-      setLoadingMessages(false);
+      if (!isSilentRefresh) setLoadingMessages(false);
     }
   }, []);
 
@@ -938,10 +960,12 @@ export function NativeChatInbox() {
   );
 
   const isManager = useMemo(() => {
+    // الأدوار الثلاثة المعتمدة: مدير (super_admin) / مشرف (sales_lead) / موظف (البقية)
     return (
       user?.role === 'manager' ||
       user?.role === 'admin' ||
       user?.role === 'super_admin' ||
+      user?.role === 'sales_lead' ||
       Boolean(user?.email_masked?.toLowerCase().includes('ayman'))
     );
   }, [user]);
@@ -1021,8 +1045,23 @@ export function NativeChatInbox() {
       );
     }
 
+    // م3: فلتر الوسم المختار من الشريط العلوي
+    if (tagFilter) {
+      list = list.filter((c) => (c.tags || []).includes(tagFilter));
+    }
+
+    // قرار المالك: الموظف يرى المحادثات المسندة إليه فقط —
+    // المحادثات غير المسندة تظهر للمدير والمشرف حصراً (تجمع الإسناد)
+    if (!isManager && user?.id) {
+      list = list.filter((c) => {
+        const sid = (c as any).assigned_staff_id;
+        if (sid) return sid === user.id;
+        return c.assigned_staff_name === user.full_name;
+      });
+    }
+
     return list;
-  }, [conversations, currentInbox, inboxesList, user, isManager, selectedInboxId]);
+  }, [conversations, currentInbox, inboxesList, user, isManager, selectedInboxId, tagFilter]);
 
   // إجمالي عدد المحادثات الفريدة في "جميع الخطوط" بعد الدمج الشكلي
   const allUniqueCount = useMemo(() => {
@@ -1038,9 +1077,13 @@ export function NativeChatInbox() {
       // منظور الخط الفردي: نظهر فقط محادثات هذا الخط كما هي دون أي دمج شكلي!
       sourceList = inboxScopedConversations.filter((c) => c.line_id === lineFilter);
     } else {
-      // منظور جميع الخطوط: دمج شكلي بصري فقط للمحادثات ذات نفس chat_jid
+      // قرار المالك: المجموعات فقط تُدمج — الفردية تبقى منفصلة لكل خط وتُرد من خطها الوارد
       const groupedMap = new Map<string, ConversationItem>();
       for (const item of inboxScopedConversations) {
+        if (!item.is_group) {
+          groupedMap.set(`${item.id}`, item);
+          continue;
+        }
         const key = item.chat_jid;
         const existing = groupedMap.get(key);
         if (!existing) {
@@ -1104,48 +1147,156 @@ export function NativeChatInbox() {
     return filteredConversations[0] || conversations[0] || null;
   }, [filteredConversations, conversations, activeConvId]);
 
-  // ─── التحقق الفوري هل المحادثة الحالية مسجلة في جدول جهات الاتصال ───
+  // ─── التحقق الفوري هل المحادثة الحالية مسجلة في دليل جهات الاتصال (نقطة check دقيقة) ───
   useEffect(() => {
-    if (!activeConversation) {
+    if (!activeConversation?.chat_jid) {
       setIsContactSaved(false);
       return;
     }
     const jid = activeConversation.chat_jid;
-    const phoneOrJid = activeConversation.phone_or_jid;
-    const cleanDigits = (phoneOrJid || jid).replace(/[^0-9]/g, '');
-
-    const queryParam = encodeURIComponent(jid);
-    fetch(`/api/contacts?phone=${queryParam}&q=${encodeURIComponent(cleanDigits || jid)}&limit=5`)
-      .then((r) => r.json())
-      .then((data) => {
-        const items = data.contacts || [];
-        const isMatch = items.some((c: any) => {
-          if (c.primary_phone === jid || c.primary_phone_e164 === jid) return true;
-          if (phoneOrJid && (c.primary_phone === phoneOrJid || c.primary_phone_e164 === phoneOrJid)) return true;
-          if (cleanDigits && c.primary_phone && c.primary_phone.includes(cleanDigits)) return true;
-          return false;
-        });
-        setIsContactSaved(isMatch);
-      })
+    let alive = true;
+    fetch(`/api/contacts/check?jid=${encodeURIComponent(jid)}&phone=${encodeURIComponent(activeConversation.phone_or_jid || '')}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { saved: false }))
+      .then((json) => { if (alive) setIsContactSaved(!!json.saved); })
       .catch(() => {});
+    return () => { alive = false; };
   }, [activeConversation?.phone_or_jid, activeConversation?.chat_jid]);
 
   // خط الإرسال الفعلي المعتمد للموظف
+  // ─── C3: خط الوارد الأخير — الرد الافتراضي يتبع آخر رقم كتبك منه العميل ───
+  const lastIncomingLine = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].direction === 'in' && messages[i].line_id) return messages[i].line_id;
+    }
+    return activeConversation?.line_id || null;
+  }, [messages, activeConversation?.line_id]);
+
+  // ─── C4: صلاحية كل خط للإرسال في المحادثة الحالية ───
+  // فردية: فقط خط الوارد — إلا إذا وُجد منح من المدير (line_send_grants)
+  // مجموعة: قيد العضوية باقٍ (قرار المالك) — عبر أرقام الهواتف الحقيقية من Evolution،
+  //         والمتساهل فقط حين لا تصل أرقام الأعضاء إطلاقاً (نظام LID)
+  const sendLineStatus = useMemo(() => {
+    const map = new Map<string, { allowed: boolean; reason: string }>();
+    const incoming = lastIncomingLine || activeConversation?.line_id || '';
+    const isGroup = !!activeConversation?.is_group;
+    for (const inst of allowedSendInstances) {
+      const name = inst.name;
+      if (isGroup) {
+        let member = true;
+        let reason = 'متاح — خط مصرح ومصرح لك به';
+        if (groupMemberDigits && groupMemberDigits.size > 0) {
+          const ownerDigits = (instances.find((i) => i.name === name)?.ownerJid || '').replace(/@.*$/, '').replace(/\D/g, '');
+          // المجموعة تحتوي أرقام هواتف + معرفات LID للأعضاء — نطابق الاثنين
+          member = !ownerDigits || groupMemberDigits.has(ownerDigits);
+          if (!member) reason = 'الخط ليس عضوًا في هذه المجموعة';
+        }
+        map.set(name, {
+          allowed: member,
+          reason,
+        });
+      } else {
+        const isIncoming = name === incoming;
+        const authorized = allowedSendInstances.some((i) => i.name === name);
+        const granted = convGrants.has(`${activeConversation?.chat_jid || ''}|${name}`);
+        if (isIncoming && authorized) {
+          map.set(name, { allowed: true, reason: 'خط الوارد — متاح' });
+        } else if (granted) {
+          map.set(name, { allowed: true, reason: 'مصرح من المدير' });
+        } else {
+          map.set(name, {
+            allowed: false,
+            reason: isIncoming
+              ? 'خط الوارد لكنه غير مصرح لك به — يلزم إذن المدير'
+              : 'رقم مختلف عن الذي راسله العميل — يلزم إذن المدير',
+          });
+        }
+      }
+    }
+    return map;
+  }, [allowedSendInstances, lastIncomingLine, activeConversation, convGrants, groupMemberDigits, instances]);
+
+  // ─── طبقات الرؤية (قرار المالك): من يرى المحتوى ومن يرى الهيكل فقط ───
+  const contentAccess = useMemo(() => {
+    if (!activeConversation) return 'none';
+    if (isManager) return 'full';
+    const assignedId = (activeConversation as any).assigned_staff_id;
+    const assignedName = activeConversation.assigned_staff_name;
+    if (assignedId && user?.id && assignedId === user.id) return 'full';
+    if (!assignedId && !assignedName) return 'full';
+    const jid = activeConversation.chat_jid;
+    const hasRead = Array.from(convGrants).some((k) => k.startsWith(jid + '|'));
+    if (hasRead) return 'full';
+    return 'shell';
+  }, [activeConversation, isManager, user, convGrants]);
+
+  const ownsConversationLine = useMemo(() => {
+    if (!activeConversation) return false;
+    const lines = activeConversation.available_lines?.length ? activeConversation.available_lines : [activeConversation.line_id];
+    return lines.some((l) => allowedSendInstances.some((i) => i.name === l));
+  }, [activeConversation, allowedSendInstances]);
+
+  const [reqSentType, setReqSentType] = useState<string>('');
+
+  // م٨: وضع التحديد المتعدد للرسائل + شريط الإجراءات الجماعية
+  const [msgSelectionMode, setMsgSelectionMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
+  const toggleMsgSelection = (id: string) => {
+    setSelectedMsgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const selectedMessages = messages.filter((m) => selectedMsgIds.has(m.id));
+  const handleBulkDelete = async () => {
+    const withKey = selectedMessages.filter((m) => m.msg_key_id);
+    for (const m of withKey) {
+      await fetch(`/api/evolution/instances/${encodeURIComponent(m.line_id || selectedInstanceName)}/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: { remoteJid: m.chat_jid, fromMe: m.key_from_me ?? m.direction === 'out', id: m.msg_key_id, participant: m.key_participant || undefined } }),
+      }).catch(() => {});
+    }
+    toast({ title: `أُرسل أمر الحذف للجميع لـ ${withKey.length} رسالة`, kind: 'success' });
+    setMsgSelectionMode(false);
+    setSelectedMsgIds(new Set());
+  };
+  useEffect(() => { setReqSentType(''); }, [activeConversation?.id]);
+
+  const submitPermissionRequest = async (type: 'assignment' | 'read' | 'read_write' | 'line_reply' | 'group_join', lineName?: string) => {
+    if (!user?.id || !activeConversation) return;
+    const lineId = lineName ? lineIdMap[lineName] : null;
+    setReqSentType(type + '-sending');
+    try {
+      const res = await fetch('/api/permission-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'request', type, staff_id: user.id, line_id: lineId || null, chat_jid: activeConversation.chat_jid, inbox_id: currentInbox?.id || null, reason: 'طلب من واجهة الصندوق' }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setReqSentType(type);
+        toast({ title: json.already_pending ? 'طلبك معلق بالفعل' : 'أُرسل الطلب للمشرف — التصعيد للمدير بعد 10 دقائق بلا رد', kind: 'success' });
+        refreshGrants();
+      } else {
+        toast({ title: json.error || 'فشل إرسال الطلب', kind: 'error' });
+        setReqSentType('');
+      }
+    } catch { setReqSentType(''); }
+  };
+
   const effectiveSendInstance = useMemo(() => {
-    if (sendingLineInstance && allowedSendInstances.some((i) => i.name === sendingLineInstance)) {
+    // الافتراضي: آخر خط ورد منه العميل إن كان متاحًا
+    const incoming = lastIncomingLine || activeConversation?.line_id || '';
+    if (incoming && sendLineStatus.get(incoming)?.allowed) return incoming;
+    // يدوي صريح متاح؟
+    if (sendingLineInstance && sendLineStatus.get(sendingLineInstance)?.allowed) {
       return sendingLineInstance;
     }
-    if (activeConversation) {
-      if (allowedSendInstances.some((i) => i.name === activeConversation.line_id)) {
-        return activeConversation.line_id;
-      }
-      if (activeConversation.available_lines) {
-        const matched = allowedSendInstances.find((i) => activeConversation.available_lines?.includes(i.name));
-        if (matched) return matched.name;
-      }
-    }
-    return allowedSendInstances[0]?.name || 'Master';
-  }, [allowedSendInstances, sendingLineInstance, activeConversation]);
+    // أول متاح
+    const firstAllowed = allowedSendInstances.find((i) => sendLineStatus.get(i.name)?.allowed);
+    return firstAllowed?.name || '';
+  }, [sendLineStatus, lastIncomingLine, sendingLineInstance, activeConversation, allowedSendInstances]);
 
   // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
   useEffect(() => {
@@ -1188,57 +1339,96 @@ export function NativeChatInbox() {
     return () => clearInterval(interval);
   }, [activeConversation?.id, activeConversation?.line_id, activeConversation?.chat_jid, activeConversation?.available_lines, selectedInstanceName, fetchMessagesForChat]);
 
+  // ─── تحديث صامت لقائمة المحادثات (نمط وتساب ويب) ───
+  // دوري كل 45 ثانية + فوري عند العودة إلى التبويب: يدمج الجديد فقط بلا دوّار ولا تفكيك للقائمة،
+  // ومقارنة البصمة داخل fetchChats تضمن عدم أي إعادة رسم إن لم يتغير شيء فعلاً.
   useEffect(() => {
-    if (activeConversation) {
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const open = instancesRef.current.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
+      fetchChats(open.length > 0 ? open : ['Master', 'Sells_2']);
+    };
+    const interval = setInterval(tick, 45000);
+    const onVisible = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchChats]);
+
+  useEffect(() => {
+    // طبقات الرؤية: المحادثة المرسلة لزميله بلا منح قراءة = هيكل فقط بلا محتوى
+    if (activeConversation && contentAccess === 'full') {
       const targetJid = activeConversation.chat_jid;
       const targetLine = activeConversation.line_id || selectedInstanceName;
       if (targetJid && targetLine) {
         fetchMessagesForChat(targetJid, targetLine, activeConversation.available_lines);
+        setMessages([]);
+        return;
       }
     }
-  }, [activeConversation?.id, activeConversation?.available_lines, fetchMessagesForChat]);
+    setMessages([]);
+  }, [activeConversation?.id, activeConversation?.available_lines, fetchMessagesForChat, contentAccess]);
 
   // Current selected instance info
   const currentInstance = useMemo(() => {
     return instances.find((i) => i.name === (activeConversation?.line_id || selectedInstanceName)) || instances[0] || null;
   }, [instances, activeConversation?.line_id, selectedInstanceName]);
 
-  // Auto-scroll down when messages change
+  // ─── م8-ج2: السكرول الصحيح — نزول للأسفل مرة واحدة عند أول فتح للمحادثة،
+  // ثم عند رسائل جديدة فقط إن كنت قريباً من الأسفل (يحترم موقع قراءتك) ───
+  const wasNearBottomRef = useRef(true);
+  const pendingInitialScrollRef = useRef(false);
+  const lastMsgCountRef = useRef(0);
+
+  // اختيار محادثة جديدة → علّم الحاجة للسكرول الأولي (يُنفذ مرة عند وصول رسائلها)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    pendingInitialScrollRef.current = true;
+    wasNearBottomRef.current = true;
+    lastMsgCountRef.current = messages.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConvId]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }, []);
+
+  useEffect(() => {
+    if (pendingInitialScrollRef.current && messages.length > 0) {
+      pendingInitialScrollRef.current = false;
+      lastMsgCountRef.current = messages.length;
+      // السكرول الأولي عند الفتح — دفعة واحدة فورية بعد الرسم
+      requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }));
+    } else if (messages.length > lastMsgCountRef.current && wasNearBottomRef.current) {
+      // رسائل جديدة وأنت قريب من الأسفل — تابع السفلى بدون إزعاج
+      requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }));
+    }
+    lastMsgCountRef.current = messages.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // --- حساب عداد الاستجابة (SLA Response Timer) ---
-  const slaStatus = useMemo(() => {
-    if (!activeConversation) return { text: 'جاهز', level: 'normal', minutes: 0 };
-    const ts = activeConversation.last_customer_message_timestamp || Date.now();
-    const diffMinutes = Math.max(0, Math.floor((Date.now() - ts) / 60000));
-
-    if (activeConversation.status === 'resolved') {
-      return { text: 'تم الحل وإغلاق التذكرة', level: 'resolved', minutes: diffMinutes };
-    }
-    if (diffMinutes >= 10) {
-      return { text: `تجاوز مهلة الرد (${diffMinutes} دقيقة) — يلزم التصعيد!`, level: 'critical', minutes: diffMinutes };
-    }
-    if (diffMinutes >= 5) {
-      return { text: `تنبيه المشرف: انتظار (${diffMinutes} دقيقة)`, level: 'warning', minutes: diffMinutes };
-    }
-    return { text: `انتظار العميل: (${diffMinutes} د)`, level: 'normal', minutes: diffMinutes };
-  }, [activeConversation]);
+  // --- عداد الاستجابة (SLA): انتقل إلى مكوّن SlaTimer الحي — ينبض كل ثانية بنمط v1 المعتمد ---
 
 
   // ─── تسجيل قراءة المحادثة محلياً وفي قاعدة البيانات للصندوق الحالي والمستخدم (بدون إرسال لواتساب) ───
   const markAsReadLocallyAndInDb = useCallback(
     (chatJid: string) => {
+      const now = Date.now();
       readChatsSet.current.add(chatJid);
+      lastReadAtRef.current.set(chatJid, now); // م8: طابع زمني للقراءة — أساس العداد الحقيقي
       setReadChatJids((prev) => {
         const next = new Set(prev);
         next.add(chatJid);
         return next;
       });
-      setConversations((prev) =>
-        prev.map((c) => (c.chat_jid === chatJid ? { ...c, unread_count: 0 } : c))
-      );
+      setConversations((prev) => {
+        const target = prev.find((c) => c.chat_jid === chatJid);
+        if (target && target.unread_count === 0) return prev; // بلا تغيير = بلا إعادة رسم
+        return prev.map((c) => (c.chat_jid === chatJid ? { ...c, unread_count: 0 } : c));
+      });
 
       if (user?.id) {
         fetch('/api/inboxes/read', {
@@ -1251,8 +1441,18 @@ export function NativeChatInbox() {
           }),
         }).catch((e) => console.warn('Failed saving read receipt in DB:', e));
       }
+
+      // م8: تصفير العداد في القاعدة الحقيقية أيضاً — يمنع عودة عداد غير المقروء عند أي تحديث لاحق
+      const conv = conversationsRef.current.find((c) => c.chat_jid === chatJid);
+      if (conv) {
+        fetch('/api/conversations', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_jid: chatJid, instance: conv.line_id || selectedInstanceName, mark_read: true }),
+        }).catch(() => {});
+      }
     },
-    [user?.id, selectedInboxId]
+    [user?.id, selectedInboxId, selectedInstanceName]
   );
 
   // مؤقت لتسجيل القراءة في قاعدة البيانات بمجرد فتح المحادثة (بدون إرسال لواتساب)
@@ -1268,6 +1468,7 @@ export function NativeChatInbox() {
   }, [activeConversation?.chat_jid, activeConversation?.unread_count, markAsReadLocallyAndInDb]);
 
   const handleSelectConversation = (id: string) => {
+    pendingChatDeepLink.current = null; // اختيار المستخدم اليدوي يلغي أي رابط عميق معلق
     setActiveConvId(id);
     setShowMobileChat(true);
 
@@ -1281,32 +1482,146 @@ export function NativeChatInbox() {
     }
   };
 
-  // --- Supabase: حفظ حالة المحادثة (upsert) ---
-  const upsertConversationState = useCallback(async (
+  // --- م3: جلب وسوم المحادثة النشطة من القاعدة عند تغييرها ---
+  useEffect(() => {
+    if (!activeConversation?.chat_jid) { setActiveConvTagIds([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/conversations?chat_jid=${encodeURIComponent(activeConversation.chat_jid)}&instance=${encodeURIComponent(activeConversation.line_id || selectedInstanceName)}`,
+          { cache: 'no-store' }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!alive) return;
+        setActiveConvTagIds((data.tags || []).map((t: any) => t.id));
+      } catch { /* صامت */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.chat_jid, activeConversation?.line_id]);
+
+  // --- م3: إضافة/إزالة وسم على المحادثة النشطة (قاعدة حقيقية + تحديث محلي فوري) ---
+  const handleToggleConversationTag = async (tagId: string) => {
+    if (!activeConversation?.chat_jid) return;
+    const has = activeConvTagIds.includes(tagId);
+    const tag = dbTags.find((t) => t.id === tagId);
+    setActiveConvTagIds((prev) => (has ? prev.filter((x) => x !== tagId) : [...prev, tagId]));
+    if (tag) {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConversation.id
+            ? { ...c, tags: has ? (c.tags || []).filter((n) => n !== tag.name) : Array.from(new Set([...(c.tags || []), tag.name])) }
+            : c
+        )
+      );
+    }
+    try {
+      await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_jid: activeConversation.chat_jid,
+          instance: activeConversation.line_id || selectedInstanceName,
+          tag_id: tagId,
+          action: has ? 'remove' : 'add',
+        }),
+      });
+    } catch (err) {
+      console.warn('[toggle tag] non-critical:', err);
+    }
+  };
+
+  // --- م3: حفظ حالة المحادثة عبر API القاعدة الحقيقية (بدل upsert الأعمى القديم) ---
+  const patchConversationDb = useCallback(async (
     chatJid: string,
-    lineId: string,
-    updates: { status?: ConversationStatus; assigned_staff_name?: string; assigned_staff_id?: string }
+    instance: string,
+    patch: { status?: ConversationStatus; staff_id?: string | null; mark_read?: boolean }
   ) => {
     try {
-      const { error } = await supabase
-        .from('conversations')
-        .upsert(
-          {
-            chat_jid: chatJid,
-            line_id: lineId,
-            updated_at: new Date().toISOString(),
-            ...updates,
-          },
-          { onConflict: 'chat_jid,line_id', ignoreDuplicates: false }
-        );
-      if (error) {
-        // لا نوقف العمل — نسجل فقط في الكونسول
-        console.warn('[Supabase] upsert conversation state warning:', error.message);
-      }
+      await fetch('/api/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_jid: chatJid, instance, ...patch }),
+      });
     } catch (err) {
-      console.warn('[Supabase] upsert error (non-critical):', err);
+      console.warn('[conversations PATCH] non-critical:', err);
     }
   }, []);
+
+  // --- م3/م8: دمج وسوم وحالات القاعدة في قائمة المحادثات — بلا فليكر ---
+  // يُعيد نفس الكائن إن لم يتغير شيء (React يتخطى إعادة الرسم) ولا يلمس unread_count إطلاقاً
+  const mergeDbTagsAndStatus = useCallback(async (list: ConversationItem[]) => {
+    if (list.length === 0) return;
+    try {
+      const jids = Array.from(new Set(list.map((c) => c.chat_jid)));
+      const insts = Array.from(new Set(list.map((c) => c.line_id).filter(Boolean))) as string[];
+      if (insts.length === 0) return;
+      const res = await fetch(
+        `/api/conversations?jids=${encodeURIComponent(jids.join(','))}&instances=${encodeURIComponent(insts.join(','))}`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const items: { chat_jid: string; status?: string; assigned_staff_name?: string; assigned_staff_id?: string; avatar_url?: string | null; tags?: { id: string; name: string; color: string }[] }[] = data.items || [];
+      const byJid = new Map(items.map((x) => [x.chat_jid, x]));
+      setConversations((prev) => {
+        let changed = false;
+        const next = prev.map((c) => {
+          const db = byJid.get(c.chat_jid);
+          if (!db) return c;
+          const dbTagNames = (db.tags || []).map((t) => t.name);
+          const mergedTags = Array.from(new Set([...(c.tags || []), ...dbTagNames]));
+          const newStatus = (db.status as ConversationStatus) || c.status;
+          const newAssignee = db.assigned_staff_name || c.assigned_staff_name;
+          const newAssigneeId = db.assigned_staff_id || (c as any).assigned_staff_id;
+          // الصورة الحقيقية للجهة (شخص أو مجموعة) من hub.contacts — الخلية المحفوظة أولاً
+          const newAvatar = db.avatar_url || c.avatar_url || undefined;
+          // تجاهل الصف إن لم يتغير فعلاً — منع إعادة الرسم المزعجة للقائمة
+          if (
+            mergedTags.length === (c.tags || []).length &&
+            newStatus === c.status &&
+            newAssignee === c.assigned_staff_name &&
+            newAssigneeId === (c as any).assigned_staff_id &&
+            newAvatar === c.avatar_url
+          ) {
+            return c;
+          }
+          changed = true;
+          return { ...c, tags: mergedTags, status: newStatus, assigned_staff_name: newAssignee, assigned_staff_id: newAssigneeId, avatar_url: newAvatar } as ConversationItem;
+        });
+        return changed ? next : prev;
+      });
+    } catch (err) {
+      console.warn('[mergeDbTags] non-critical:', err);
+    }
+  }, []);
+
+  // الصور الحقيقية الناقصة تُجلب من واتساب تدريجياً وتُخزَّن في hub.contacts (قرار المالك)
+  const avatarRequestedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (conversations.length === 0) return;
+    const pending = conversations
+      .filter((c) => !c.avatar_url && !avatarRequestedRef.current.has(c.chat_jid))
+      .slice(0, 24);
+    if (pending.length === 0) return;
+    pending.forEach((c) => avatarRequestedRef.current.add(c.chat_jid));
+    fetch('/api/avatars', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: pending.map((c) => ({ jid: c.chat_jid, instance: c.line_id || selectedInstanceName })) }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const av: Record<string, string> = data?.avatars || {};
+        const has = Object.values(av).some(Boolean);
+        if (!has) return;
+        setConversations((prev) => prev.map((c) => (av[c.chat_jid] ? { ...c, avatar_url: av[c.chat_jid] } : c)));
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.length]);
 
   // --- Supabase Realtime: مزامنة تغييرات الحالة بين الموظفين ---
   useEffect(() => {
@@ -1318,8 +1633,17 @@ export function NativeChatInbox() {
         (payload) => {
           const updated = payload.new as any;
           if (!updated?.chat_jid) return;
-          setConversations((prev) =>
-            prev.map((c) => {
+          setConversations((prev) => {
+            // م8: لا نعيد الرسم إلا عند تغير فعلي في الحالة أو الإسناد
+            const changed = prev.some(
+              (c) =>
+                c.chat_jid === updated.chat_jid &&
+                (c.status !== (updated.status ?? c.status) ||
+                  c.assigned_staff_name !== (updated.assigned_staff_name ?? c.assigned_staff_name) ||
+                  c.assigned_staff_id !== (updated.assigned_staff_id ?? c.assigned_staff_id))
+            );
+            if (!changed) return prev;
+            return prev.map((c) => {
               if (c.chat_jid === updated.chat_jid) {
                 return {
                   ...c,
@@ -1329,8 +1653,8 @@ export function NativeChatInbox() {
                 };
               }
               return c;
-            })
-          );
+            });
+          });
         }
       )
       .subscribe();
@@ -1340,28 +1664,58 @@ export function NativeChatInbox() {
     };
   }, []);
 
-  // --- دورة الإسناد: تحديث حالة المحادثة (محلي + Supabase) ---
+  // --- دورة الإسناد: تحديث حالة المحادثة (محلي + قاعدة حقيقية) ---
   const handleUpdateStatus = (newStatus: ConversationStatus) => {
     if (!activeConversation) return;
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, status: newStatus } : c))
     );
-    // حفظ في Supabase بشكل غير متزامن (لا ينتظر)
-    upsertConversationState(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, { status: newStatus });
+    // حفظ في القاعدة بشكل غير متزامن (لا ينتظر)
+    patchConversationDb(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, { status: newStatus });
   };
 
-  // --- دورة الإسناد: إسناد المحادثة لموظف (محلي + Supabase) ---
+  // --- دورة الإسناد: إسناد المحادثة لموظف (محلي + قاعدة حقيقية) — للمدير والمشرف فقط (قرار المالك) ---
   const handleAssignStaff = (staffName: string) => {
-    if (!activeConversation) return;
-    const staffMember = AVAILABLE_STAFF.find((s) => s.name === staffName);
+    if (!activeConversation || !isManager) return;
+    const staffMember = availableStaff.find((s) => s.name === staffName);
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, assigned_staff_name: staffName, assigned_staff_id: staffMember?.id } : c))
     );
-    // حفظ في Supabase بشكل غير متزامن (لا ينتظر)
-    upsertConversationState(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
-      assigned_staff_name: staffName,
-      assigned_staff_id: staffMember?.id,
+    // حفظ في القاعدة بشكل غير متزامن — الإسناد يولّد إشعاراً للموظف المختار
+    patchConversationDb(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
+      staff_id: staffMember?.id || null,
     });
+    toast({
+      title: staffMember?.id ? `أُسندت المحادثة إلى ${staffName}` : 'أُلغي الإسناد — عادت للصندوق العام',
+      kind: 'success',
+    });
+  };
+
+  // --- طلب ترخيص الوصول/الإسناد: إرسال حقيقي للمشرفين وصاحب المحادثة ---
+  const submitAccessRequest = async () => {
+    if (!activeConversation || !user?.id) return;
+    setRequestAccessSending(true);
+    setRequestAccessError(null);
+    try {
+      const res = await fetch('/api/access-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: user.id,
+          chat_jid: activeConversation.chat_jid,
+          instance: activeConversation.line_id || selectedInstanceName,
+          request_type: requestAccessType,
+          reason: requestAccessReason,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'تعذّر إرسال الطلب');
+      setRequestAccessSent(true);
+    } catch (e: any) {
+      setRequestAccessError(e.message || 'تعذّر إرسال الطلب، حاول مرة أخرى');
+    } finally {
+      setRequestAccessSending(false);
+    }
   };
 
   // --- حارس المخاطر: إعادة ضبط قاطع الدائرة ---
@@ -1370,13 +1724,61 @@ export function NativeChatInbox() {
     setIsBreakerTripped(false);
   };
 
+  // ─── بناء التوقيع الموحد — يُطبق على كل أنواع الرسائل (نص/صوت/صور/ملفات) ───
+  const buildSignature = useCallback((lineName: string): string => {
+    if (!includeSignature) return '';
+    if (signatureConfig && signatureConfig.send_mode !== 'disabled') {
+      const parts: string[] = [];
+      const staffSig = staffSignaturesList.find(
+        (s) => s.id === user?.id || s.name === user?.full_name
+      );
+      // قرار المالك: التوقيع ثلاثي — اسم الموظف / القسم الذي يعمل به / الخط المُرسل منه
+      if (signatureConfig.part1?.enabled) {
+        parts.push(staffSig?.custom_part1 || `*${user?.full_name || 'خدمة العملاء'}*`);
+      }
+      if (signatureConfig.part2?.enabled) {
+        parts.push(staffSig?.custom_part2 || (staffSig as any)?.department || 'قسم خدمة العملاء');
+      }
+      if (signatureConfig.part3?.enabled) {
+        parts.push(staffSig?.custom_part3 || `واتساب ${getLineDisplayTitle(lineName)}`);
+      }
+      if (parts.length > 0) {
+        return `\n\n${parts.join(signatureConfig.separator || ' — ')}`;
+      }
+      return '';
+    }
+    return `\n\n*${user?.full_name || 'خدمة العملاء'}* — ${getLineDisplayTitle(lineName)}`;
+  }, [includeSignature, signatureConfig, staffSignaturesList, user, getLineDisplayTitle]);
+
+  // ─── اختيار خط الإرسال — حر دائماً؛ الخط غير العضو/غير المصرح يفتح نافذة الحل ───
+  const handleChooseSendLine = (lineName: string) => {
+    setSendLineMenuOpen(false);
+    const st = sendLineStatus.get(lineName);
+    if (st && !st.allowed) {
+      setLineBlockModal({ line: lineName, reason: st.reason });
+      return;
+    }
+    setSendingLineInstance(lineName);
+    toast({ title: `سيتم الإرسال عبر: ${getLineDisplayTitle(lineName)}`, kind: 'success' });
+  };
+
   // تنفيذ الإرسال الفعلي بعد تدقيق حارس المخاطر
   const executeSendMessage = async (textToSend: string) => {
     if (!activeConversation || isSending) return;
 
+    // C4: حارس خط الإرسال — لا إرسال من خط غير مصرح (خط الوارد فقط أو بمنح مدير)
+    if (sendLineStatus.get(effectiveSendInstance)?.allowed === false) {
+      toast({
+        title: '⛔ الإرسال من هذا الخط محظور — يلزم إذن المدير',
+        body: 'استخدم خط الوارد، أو اطلب إذناً من المدير عبر التنبيه أعلى صندوق الإرسال',
+        kind: 'error',
+      });
+      return;
+    }
+
     // تدقيق قاطع الدائرة
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل! تم تعليق الإرسال التلقائي لحماية الخط من الحظر. يرجى إعادة الضبط يدوياً بعد التأكد من صحة الرقم والاتصال.');
+      toast({ title: 'قاطع الدائرة مفعل! تم تعليق الإرسال التلقائي لحماية الخط من الحظر. يرجى إعادة الضبط يدوياً بعد التأكد من صحة الرقم والاتصال.', kind: 'error', durationMs: 8000 });
       return;
     }
 
@@ -1384,28 +1786,8 @@ export function NativeChatInbox() {
 
     const effectiveLine = effectiveSendInstance;
 
-    let signature = '';
-    if (includeSignature && signatureConfig && signatureConfig.send_mode !== 'disabled') {
-      const parts: string[] = [];
-      const staffSig = staffSignaturesList.find(
-        (s) => s.id === user?.id || s.name === user?.full_name || s.email === (user as any)?.email_masked
-      );
-
-      if (signatureConfig.part1?.enabled) {
-        parts.push(staffSig?.custom_part1 || `*${user?.full_name || 'خدمة العملاء'}*`);
-      }
-      if (signatureConfig.part2?.enabled) {
-        parts.push(staffSig?.custom_part2 || `واتساب ${getLineDisplayTitle(effectiveLine)}`);
-      }
-      if (signatureConfig.part3?.enabled) {
-        parts.push(staffSig?.custom_part3 || signatureConfig.part3?.template || 'TripYou للسياحة والسفر ✈️');
-      }
-      if (parts.length > 0) {
-        signature = `\n\n${parts.join(signatureConfig.separator || ' — ')}`;
-      }
-    } else if (includeSignature) {
-      signature = `\n\n*${user?.full_name || 'خدمة العملاء'}* — ${currentInstance?.profileName || getLineDisplayTitle(effectiveLine)}`;
-    }
+    // التوقيع الموحد (ثلاثي حسب سياسة إدارة التواقيع) — مُطبق هنا وعلى الصوت والمرفقات
+    const signature = buildSignature(effectiveLine);
 
     const fullMessage = `${textToSend}${signature}`;
 
@@ -1416,6 +1798,10 @@ export function NativeChatInbox() {
         body: JSON.stringify({
           to: activeConversation.chat_jid,
           text: fullMessage,
+          // م8: الرد المقتبس — الرسالة تُرسل كرد مباشر على الرسالة الأصلية في واتساب
+          ...(replyingToMessage?.id && !replyingToMessage.id.startsWith('msg-')
+            ? { quoted_message_id: replyingToMessage.id }
+            : {}),
         }),
       });
 
@@ -1435,10 +1821,11 @@ export function NativeChatInbox() {
           sender_name: user.full_name,
           status: 'sent',
           line_id: effectiveLine,
-          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+          created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         };
 
         setMessages((prev) => [...prev, newMsg]);
+        setReplyingToMessage(null); // الرد أُرسل — إزالة شريط الاقتباس
 
         // تحديث حالة المحادثة
         setConversations((prev) =>
@@ -1463,9 +1850,9 @@ export function NativeChatInbox() {
 
         if (newErrCount >= 3) {
           setIsBreakerTripped(true);
-          alert(`⚡ تحذير قاطع الدائرة (Circuit Breaker): تم إيقاف الإرسال بعد 3 أخطاء متتالية لحماية خط واتساب من الحظر!`);
+          toast({ title: `⚡ تحذير قاطع الدائرة (Circuit Breaker): تم إيقاف الإرسال بعد 3 أخطاء متتالية لحماية خط واتساب من الحظر!`, kind: 'error', durationMs: 8000 });
         } else {
-          alert(`فشل الإرسال عبر واتساب (محاولة ${newErrCount}/3): ${errData.error || res.statusText}`);
+          toast({ title: `فشل الإرسال عبر واتساب (محاولة ${newErrCount}/3): ${errData.error || res.statusText}`, kind: 'error' });
         }
       }
     } catch (err: any) {
@@ -1474,11 +1861,65 @@ export function NativeChatInbox() {
       if (newErrCount >= 3) {
         setIsBreakerTripped(true);
       }
-      alert(`خطأ في الاتصال أثناء الإرسال: ${err.message}`);
+      toast({ title: `خطأ في الاتصال أثناء الإرسال: ${err.message}`, kind: 'error' });
     } finally {
       setIsSending(false);
       setQuietConfirmOpen(false);
       setPendingSendText('');
+    }
+  };
+
+  // ─── م4: منتقي الردود الجاهزة (زر ⚡ أو اختصار "/") ───
+  interface CannedQuick { id: string; title: string; body: string; shortcut: string | null; category: string | null; }
+  const [cannedList, setCannedList] = useState<CannedQuick[]>([]);
+  const [cannedOpen, setCannedOpen] = useState(false);
+  const [cannedSearch, setCannedSearch] = useState('');
+
+  // تحميل قائمة الردود الجاهزة مرة واحدة عند فتح الصندوق
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/canned-responses', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = await res.json();
+        setCannedList(json.data || []);
+      } catch { /* صامت */ }
+    })();
+  }, []);
+
+  /** استبدال متغيرات القالب: {name} اسم العميل، {staff} اسم الموظف الحالي */
+  const expandCannedBody = useCallback((body: string): string => {
+    const conv = activeConversation;
+    return body
+      .replace(/\{name\}/g, (conv?.title || '').replace(/^مجموعة.*/, 'الجميع') || 'عميلنا العزيز')
+      .replace(/\{staff\}/g, user?.full_name || 'فريق الدعم');
+  }, [activeConversation, user]);
+
+  /** إدراج رد جاهز في صندوق الإرسال مع استبدال المتغيرات + عدّاد الاستخدام */
+  const handleInsertCanned = async (item: CannedQuick) => {
+    setInputText((prev) => {
+      // استبدال الاختصار المكتوب "/" أو الإلحاق في النهاية
+      const slashIdx = prev.lastIndexOf('/');
+      return slashIdx >= 0 && prev.slice(slashIdx).trim() === prev.slice(slashIdx).trim() && prev.slice(slashIdx).startsWith('/')
+        ? prev.slice(0, slashIdx) + expandCannedBody(item.body)
+        : (prev ? prev + ' ' : '') + expandCannedBody(item.body);
+    });
+    setCannedOpen(false);
+    setCannedSearch('');
+    try {
+      fetch('/api/canned-responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'use', id: item.id }),
+      }).catch(() => {});
+    } catch { /* صامت */ }
+  };
+
+  // اختصار "/" يفتح المنتقي عندما يكون صندوق الإرسال فارغاً تقريباً
+  const handleComposerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === '/' && !cannedOpen && (inputText === '' || inputText === '/')) {
+      e.preventDefault();
+      setCannedOpen(true);
     }
   };
 
@@ -1489,7 +1930,7 @@ export function NativeChatInbox() {
     if (!trimmed || !activeConversation || isSending) return;
 
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل حالياً! اضغط على زر إعادة ضبط القاطع في الأعلى بعد مراجعة اتصال الخط.');
+      toast({ title: 'قاطع الدائرة مفعل حالياً! اضغط على زر إعادة ضبط القاطع في الأعلى بعد مراجعة اتصال الخط.', kind: 'error', durationMs: 8000 });
       return;
     }
 
@@ -1504,6 +1945,19 @@ export function NativeChatInbox() {
   };
 
   // ─── إدارة تثبيت الرسائل (حتى 5 رسائل بخيارات مدة واتساب) ───
+  // م8-ج3: التثبيت محفوظ في القاعدة (metadata.pinned) — يصمد بعد الخروج وتحديث الصفحة
+  const persistPins = async (chatJid: string, instance: string, patch: { pin?: any; unpin_message_id?: string }) => {
+    try {
+      await fetch('/api/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_jid: chatJid, instance, ...patch }),
+      });
+    } catch (err) {
+      console.warn('[persistPins] non-critical:', err);
+    }
+  };
+
   const handlePinMessage = (msg: ChatMessage, duration: '24h' | '7d' | '30d') => {
     if (!activeConversation) return;
     const convId = activeConversation.id;
@@ -1511,7 +1965,7 @@ export function NativeChatInbox() {
       const current = prev[convId] || [];
       const filtered = current.filter((m) => m.id !== msg.id);
       if (filtered.length >= 5) {
-        alert('يمكنك تثبيت ما يصل إلى 5 رسائل كحد أقصى في كل محادثة.');
+        toast({ title: 'يمكنك تثبيت ما يصل إلى 5 رسائل كحد أقصى في كل محادثة', kind: 'error' });
         return prev;
       }
       return {
@@ -1520,6 +1974,10 @@ export function NativeChatInbox() {
       };
     });
     setPinModalMsg(null);
+    // حفظ دائم بالقاعدة — snippets كافية للعرض حتى لو خرجت الرسالة عن آخر 50
+    persistPins(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
+      pin: { message_id: msg.id, body: msg.body || `[${msg.media_type || 'وسائط'}]`, sender: msg.sender_name || null, duration },
+    });
   };
 
   const handleUnpinMessage = (msgId: string) => {
@@ -1529,34 +1987,121 @@ export function NativeChatInbox() {
       ...prev,
       [convId]: (prev[convId] || []).filter((m) => m.id !== msgId),
     }));
+    persistPins(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, {
+      unpin_message_id: msgId,
+    });
   };
 
-  // ─── حفظ سريع كجهة اتصال ثلاثية الأبعاد مع وسم المصدر ───
+  // ─── C4: فحص عضوية المجموعة عند فتح محادثة مجموعة — أرقام الخطوط الأعضاء فقط ترسل ───
+  useEffect(() => {
+    if (!activeConversation?.is_group || !activeConversation?.chat_jid) {
+      setGroupMemberDigits(null);
+      return;
+    }
+    const inst = activeConversation.line_id || selectedInstanceName;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/evolution/instances/${encodeURIComponent(inst)}/group-members?jid=${encodeURIComponent(activeConversation.chat_jid)}`,
+          { cache: 'no-store' }
+        );
+        if (!res.ok || !alive) return;
+        const json = await res.json();
+        // م8: Evolution يعيد @lid غالباً — نبني المجموعة من أرقام الهواتف عند توفرها،
+        // وإن غابت كلياً نلغي الفحص الصارم (متساهل) حتى لا نعطّل خطوطاً أعضاء فعلاً
+        const phones: string[] = json.phones || [];
+        const fromPhones = new Set<string>(
+          phones.map((m: string) => m.replace(/@.*$/, '').replace(/\D/g, '')).filter(Boolean)
+        );
+        if (fromPhones.size > 0) {
+          if (alive) setGroupMemberDigits(fromPhones);
+        } else {
+          if (alive) setGroupMemberDigits(null);
+        }
+      } catch { if (alive) setGroupMemberDigits(null); }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.chat_jid, activeConversation?.is_group]);
+
+  // م8-ج3: ترطيب المثبتات من القاعدة عند فتح المحادثة — تظهر دائماً
+  useEffect(() => {
+    if (!activeConversation?.chat_jid) return;
+    const convId = activeConversation.id;
+    if (pinnedMessagesMap[convId]) return; // محملة مسبقاً لهذه الجلسة
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/conversations?chat_jid=${encodeURIComponent(activeConversation.chat_jid)}&instance=${encodeURIComponent(activeConversation.line_id || selectedInstanceName)}`,
+          { cache: 'no-store' }
+        );
+        if (!res.ok || !alive) return;
+        const json = await res.json();
+        const pins: any[] = json.pinned || [];
+        if (!alive || pins.length === 0) return;
+        const messagesList = messages;
+        const hydrated: ChatMessage[] = pins.map((p) => {
+          const live = messagesList.find((m) => m.id === p.id);
+          return live
+            ? { ...live, is_pinned: true, pinned_duration: p.duration }
+              : ({
+                  id: p.id,
+                  conversation_id: convId,
+                  chat_jid: activeConversation.chat_jid,
+                  direction: 'in',
+                  body: p.body || 'رسالة مثبتة',
+                  sender_name: p.sender || '',
+                  media_type: 'text',
+                  status: 'delivered',
+                  line_id: activeConversation.line_id || selectedInstanceName,
+                  created_at: p.pinned_at ? new Date(p.pinned_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : '',
+                  timestamp: p.pinned_at,
+                  is_pinned: true,
+                  pinned_duration: p.duration,
+                } as unknown as ChatMessage);
+        });
+        if (alive && hydrated.length > 0) {
+          setPinnedMessagesMap((prev) => (prev[convId] ? prev : { ...prev, [convId]: hydrated }));
+        }
+      } catch { /* صامت */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.chat_jid]);
+
+  // ─── م8: حفظ سريع كجهة اتصال — يدعم المجموعات بالـ jid الحقيقي + فحص التسجيل من القاعدة ───
   const handleQuickSaveContact = async () => {
     if (!activeConversation) return;
     try {
       const lineName = lockedLinesMap[activeConversation.chat_jid] || selectedInstanceName;
+      const isGroup = activeConversation.is_group || activeConversation.chat_jid.includes('@g.us');
       const res = await fetch('/api/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           display_name: activeConversation.title,
-          primary_phone: activeConversation.phone_or_jid,
-          entity_type: activeConversation.is_group ? 'group' : 'individual',
-          commercial_role: 'b2c',
+          primary_phone: isGroup ? activeConversation.chat_jid : activeConversation.phone_or_jid,
+          wa_jid: activeConversation.chat_jid,
+          entity_type: isGroup ? 'group' : 'individual',
+          commercial_role: isGroup ? 'b2b' : 'b2c',
           source: 'evolution',
           source_detail: 'evolution:' + lineName,
+          tags: isGroup ? ['مجموعة واتساب'] : [],
         }),
       });
 
       if (res.ok) {
-        alert('تم حفظ ' + activeConversation.title + ' بنجاح في دليل جهات الاتصال وربط مصدرها بخط (' + lineName + ')!');
+        const json = await res.json();
+        setIsContactSaved(true);
+        toast({ title: json.is_merged ? 'جهة مسجلة مسبقاً — تم تحديث بياناتها' : `تم حفظ "${activeConversation.title}" في دليل جهات الاتصال`, kind: 'success' });
       } else {
         const err = await res.json();
-        alert('فشل الحفظ: ' + err.error);
+        toast({ title: 'فشل الحفظ: ' + (err.error || 'خطأ غير معروف'), kind: 'error' });
       }
     } catch (e: any) {
-      alert('خطأ: ' + e.message);
+      toast({ title: 'خطأ: ' + e.message, kind: 'error' });
     }
   };
 
@@ -1609,25 +2154,70 @@ export function NativeChatInbox() {
     }
   };
 
-  // ─── تحويل رسالة إلى محادثة أخرى ───
+  // ─── م8: تحويل رسالة إلى محادثة أخرى — رسمي لكل الأنواع عبر key الأصلي ───
+  // تصحيح المالك: المجموعات موجودة في ذاكرة كل خط عضو — نجرّب خط رسالتها أولاً
+  // ثم نتدرج عبر باقي الخطوط المتاحة للمحادثة/المصرحة حتى ينجح أحدها.
   const handleForwardMessage = async (targetConv: ConversationItem) => {
     if (!forwardModalMsg || isSending) return;
     setIsSending(true);
     try {
-      if (forwardModalMsg.media_type === 'text') {
-        await fetch(`/api/evolution/instances/${targetConv.line_id || selectedInstanceName}/messages`, {
+      const targetJid = targetConv.chat_jid;
+
+      if (forwardModalMsg.msg_key_id) {
+        const primary = forwardModalMsg.line_id || selectedInstanceName;
+        const candidates: string[] = [primary];
+        const extras = [
+          ...(activeConversation?.available_lines || []),
+          ...(targetConv.available_lines || []),
+          ...allowedSendInstances.map((i) => i.name),
+        ];
+        for (const l of extras) {
+          if (l && !candidates.includes(l)) candidates.push(l);
+        }
+
+        let lastErr = '';
+        let succeeded = false;
+        for (const sourceInstance of candidates) {
+          try {
+            const res = await fetch(`/api/evolution/instances/${encodeURIComponent(sourceInstance)}/forward`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: targetJid,
+                key: {
+                  remoteJid: forwardModalMsg.chat_jid,
+                  fromMe: forwardModalMsg.key_from_me ?? forwardModalMsg.direction === 'out',
+                  id: forwardModalMsg.msg_key_id,
+                  participant: forwardModalMsg.key_participant || undefined,
+                },
+              }),
+            });
+            if (res.ok) {
+              toast({ title: `تم التحويل إلى «${targetConv.title}» من ${getLineDisplayTitle(sourceInstance)}`, kind: 'success' });
+              succeeded = true;
+              break;
+            }
+            const errData = await res.json().catch(() => ({}));
+            lastErr = errData.detail || errData.error || `HTTP ${res.status}`;
+          } catch (e: any) {
+            lastErr = e.message;
+          }
+        }
+        if (!succeeded) {
+          throw new Error(lastErr || 'فشل التحويل على كل الخطوط المتاحة');
+        }
+      } else {
+        // رسالة صادرة محلية (لم تصدر لها key بعد) — إرسال نصي بديل
+        await fetch(`/api/evolution/instances/${encodeURIComponent(targetConv.line_id || selectedInstanceName)}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: targetConv.chat_jid,
-            text: forwardModalMsg.body,
-          }),
+          body: JSON.stringify({ to: targetJid, text: forwardModalMsg.body }),
         });
+        toast({ title: `أُرسل النص إلى «${targetConv.title}»`, kind: 'success' });
       }
-      alert(`تم تحويل الرسالة بنجاح إلى "${targetConv.title}"`);
       setForwardModalMsg(null);
     } catch (err: any) {
-      alert(`فشل تحويل الرسالة: ${err.message}`);
+      toast({ title: `فشل التحويل: ${err.message}`, kind: 'error' });
     } finally {
       setIsSending(false);
     }
@@ -1678,15 +2268,15 @@ export function NativeChatInbox() {
     }
 
     if (imageCount > 25) {
-      alert('الحد الأقصى للصور دفعة واحدة هو 25 صورة.');
+      toast({ title: 'الحد الأقصى للصور دفعة واحدة هو 25 صورة.', kind: 'info' });
       return;
     }
     if (videoCount > 5) {
-      alert('الحد الأقصى لمقاطع الفيديو دفعة واحدة هو 5 مقاطع.');
+      toast({ title: 'الحد الأقصى لمقاطع الفيديو دفعة واحدة هو 5 مقاطع.', kind: 'info' });
       return;
     }
     if (docCount > 5) {
-      alert('الحد الأقصى للمستندات دفعة واحدة هو 5 ملفات.');
+      toast({ title: 'الحد الأقصى للمستندات دفعة واحدة هو 5 ملفات.', kind: 'info' });
       return;
     }
 
@@ -1758,7 +2348,7 @@ export function NativeChatInbox() {
           sender_name: user.full_name,
           status: 'sending',
           line_id: selectedInstanceName,
-          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+          created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         };
 
         setMessages((prev) => [...prev, optimisticMsg]);
@@ -1787,7 +2377,7 @@ export function NativeChatInbox() {
       setBatchCaption('');
       setMultiSendModalOpen(false);
     } catch (err: any) {
-      alert(`خطأ أثناء إرسال الدفعة: ${err.message}`);
+      toast({ title: `خطأ أثناء إرسال الدفعة: ${err.message}`, kind: 'error' });
     } finally {
       setIsSendingMedia(false);
     }
@@ -1826,7 +2416,7 @@ export function NativeChatInbox() {
     if (!selectedAttachment || !activeConversation || isSendingMedia) return;
 
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل حالياً! لا يمكن إرسال المرفقات قبل إعادة الضبط.');
+      toast({ title: 'قاطع الدائرة مفعل حالياً! لا يمكن إرسال المرفقات قبل إعادة الضبط.', kind: 'error', durationMs: 8000 });
       return;
     }
 
@@ -1863,7 +2453,7 @@ export function NativeChatInbox() {
           sender_name: user.full_name,
           status: 'sent',
           line_id: selectedInstanceName,
-          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+          created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         };
 
         setMessages((prev) => [...prev, newMsg]);
@@ -1884,10 +2474,10 @@ export function NativeChatInbox() {
         setSelectedAttachment(null);
       } else {
         const errData = await res.json();
-        alert(`فشل إرسال المرفق: ${errData.error || res.statusText}`);
+        toast({ title: `فشل إرسال المرفق: ${errData.error || res.statusText}`, kind: 'error' });
       }
     } catch (err: any) {
-      alert(`خطأ في الاتصال أثناء إرسال المرفق: ${err.message}`);
+      toast({ title: `خطأ في الاتصال أثناء إرسال المرفق: ${err.message}`, kind: 'error' });
     } finally {
       setIsSendingMedia(false);
     }
@@ -1902,7 +2492,7 @@ export function NativeChatInbox() {
   // ─── بدء تسجيل الصوت الحي ───
   const handleStartVoiceRecording = async () => {
     if (isBreakerTripped) {
-      alert('قاطع الدائرة مفعل حالياً! لا يمكن التسجيل.');
+      toast({ title: 'قاطع الدائرة مفعل حالياً! لا يمكن التسجيل.', kind: 'error', durationMs: 8000 });
       return;
     }
     try {
@@ -1925,7 +2515,7 @@ export function NativeChatInbox() {
         setRecordingSeconds((prev) => prev + 1);
       }, 1000);
     } catch (err: any) {
-      alert(`تعذر الوصول إلى الميكروفون: ${err.message || 'يرجى تفعيل صلاحية الميكروفون في المتصفح'}`);
+      toast({ title: `تعذر الوصول إلى الميكروفون: ${err.message || 'يرجى تفعيل صلاحية الميكروفون في المتصفح'}`, kind: 'error' });
     }
   };
 
@@ -1990,7 +2580,7 @@ export function NativeChatInbox() {
                 sender_name: user.full_name,
                 status: 'sent',
                 line_id: selectedInstanceName,
-                created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+                created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
               };
 
               setMessages((prev) => [...prev, newMsg]);
@@ -2003,17 +2593,17 @@ export function NativeChatInbox() {
               );
             } else {
               const err = await res.json();
-              alert(`فشل إرسال البصمة الصوتية: ${err.error || res.statusText}`);
+              toast({ title: `فشل إرسال البصمة الصوتية: ${err.error || res.statusText}`, kind: 'error' });
             }
           } catch (err: any) {
-            alert(`خطأ أثناء إرسال التسجيل: ${err.message}`);
+            toast({ title: `خطأ أثناء إرسال التسجيل: ${err.message}`, kind: 'error' });
           } finally {
             setIsSendingMedia(false);
           }
         };
         reader.readAsDataURL(audioBlob);
       } catch (err: any) {
-        alert(`خطأ في معالجة الصوت: ${err.message}`);
+        toast({ title: `خطأ في معالجة الصوت: ${err.message}`, kind: 'error' });
       }
     };
 
@@ -2022,470 +2612,28 @@ export function NativeChatInbox() {
     setRecordingSeconds(0);
   };
 
-  return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
-      
-      {/* --- حارس المخاطر: شريط تنبيه ساعات الهدوء وقاطع الدائرة --- */}
-      {isQuietHoursActive && (
-        <div className="bg-amber-950/70 border-b border-amber-600/40 px-4 py-1.5 flex items-center justify-between text-xs text-amber-200">
-          <div className="flex items-center gap-2">
-            <Moon className="w-4 h-4 text-amber-400 animate-pulse" />
-            <span className="font-semibold">وضع ساعات الهدوء نشط (01:00 ص - 07:00 ص بتوقيت مكة)</span>
-            <span className="text-[11px] text-amber-300/80 hidden sm:inline">— حارس المخاطر يراقب الرسائل لحماية الأرقام من شكاوى الإزعاج والحظر.</span>
-          </div>
-          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
-            Quiet Hours Guard Active
-          </span>
-        </div>
-      )}
-
-      {isBreakerTripped && (
-        <div className="bg-rose-950/90 border-b border-rose-600/50 px-4 py-2 flex items-center justify-between text-xs text-rose-200">
-          <div className="flex items-center gap-2">
-            <ZapOff className="w-4 h-4 text-rose-400 animate-bounce" />
-            <span className="font-bold">قاطع الدائرة مفعل (Circuit Breaker Tripped)!</span>
-            <span className="text-[11px] text-rose-300">تم تعليق الإرسال التلقائي بعد 3 أخطاء متتالية لحماية خط واتساب.</span>
-          </div>
-          <button
-            onClick={handleResetCircuitBreaker}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>إعادة ضبط القاطع</span>
-          </button>
-        </div>
-      )}
-
-      {/* Top Bar: Inboxes, Multi-Line Filter & Live Status */}
-      <div className="bg-[var(--card-bg)] border-b border-[var(--border-subtle)] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* اختيار الصندوق المشترك */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-purple-300">الصندوق:</span>
-            <select
-              value={selectedInboxId}
-              onChange={(e) => {
-                setSelectedInboxId(e.target.value);
-                setLineFilter('all');
-              }}
-              className="bg-purple-950/40 text-xs text-purple-200 border border-purple-500/40 rounded-xl px-3 py-1.5 outline-none focus:border-purple-400 font-bold"
-            >
-              {user?.role === 'super_admin' ? (
-                <option value="all">كل الصناديق (عرض مجمّع للإشراف)</option>
-              ) : inboxesList.length > 1 ? (
-                <option value="all">كل الصناديق المخصصة لي (مجمّع)</option>
-              ) : null}
-              {inboxesList.map((ib) => (
-                <option key={ib.id} value={ib.id}>
-                  {ib.name_ar} {ib.filter_type === 'groups' ? '(مجموعات)' : ib.filter_type === 'dm' ? '(فردي)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <span className="text-slate-600 hidden sm:inline">|</span>
-
-          {/* تبويبات فلترة الخطوط السريعة المقيدة بنطاق الصندوق فقط */}
-          <div className="flex items-center gap-1 bg-[var(--card-elevated)] p-1 rounded-xl border border-[var(--border-subtle)] text-xs">
-            <button
-              type="button"
-              onClick={() => setLineFilter('all')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                lineFilter === 'all'
-                  ? 'bg-purple-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              جميع الخطوط ({allUniqueCount})
-            </button>
-            {availableInstances.map((inst) => {
-              const count = inboxScopedConversations.filter((c) => c.line_id === inst.name).length;
-              const isOpen = inst.connectionStatus === 'open';
-              const active = lineFilter === inst.name;
-              const displayTitle = getLineDisplayTitle(inst.name);
-              return (
-                <button
-                  key={inst.name}
-                  type="button"
-                  onClick={() => setLineFilter(inst.name)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                    active
-                      ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 font-bold'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                  title={`${displayTitle} — ${isOpen ? 'متصل' : 'معلق'}`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-                  <bdi dir="ltr">{displayTitle}</bdi>
-                  <span className="text-[10px] opacity-70 font-mono">({count})</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* شارة تسخين الأرقام وحارس المخاطر */}
-          <span className="hidden lg:flex items-center gap-1 text-[10px] text-[var(--text-muted)] bg-[var(--card-elevated)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full">
-            <ShieldAlert className="w-3 h-3 text-purple-400" />
-            <span>حارس المخاطر: تسخين آمن (50 رسالة/يوم)</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Main Chat Workspace */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Right Pane: Real Conversations List */}
-        <div
-          className={`w-full md:w-80 lg:w-96 flex flex-col border-l border-[var(--border-subtle)] bg-[var(--card-bg)] shrink-0 ${
-            showMobileChat ? 'hidden md:flex' : 'flex'
-          }`}
-        >
-          {/* Search & Filters */}
-          <div className="p-3 border-b border-[var(--border-subtle)] space-y-2.5">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute right-3 top-3 text-[var(--text-muted)]" />
-              <input
-                type="text"
-                placeholder="بحث في المحادثات أو الأرقام..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[var(--card-elevated)] text-xs text-[var(--text-main)] pr-9 pl-3 py-2 rounded-2xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)]"
-              />
-            </div>
-
-            {/* Filter Tabs - مع تبويبات دورة الإسناد والرادار والمجموعات بنطاق الصندوق */}
-            <div className="flex items-center gap-1.5 text-[11px] overflow-x-auto pb-1 scrollbar-none" dir="rtl">
-              <button
-                onClick={() => setFilterTab('all')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'all'
-                    ? 'bg-purple-600/30 text-[var(--text-secondary)] font-bold border border-purple-500/50'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
-                }`}
-              >
-                الكل ({inboxScopedConversations.length})
-              </button>
-              <button
-                onClick={() => setFilterTab('mine')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'mine'
-                    ? 'bg-purple-600/30 text-[var(--text-secondary)] font-bold border border-purple-500/50'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
-                }`}
-              >
-                المسندة لي
-              </button>
-              <button
-                onClick={() => setFilterTab('unassigned')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'unassigned'
-                    ? 'bg-amber-600/30 text-amber-300 font-bold border border-amber-500/50'
-                    : 'text-slate-400 hover:text-white bg-slate-800/30'
-                }`}
-              >
-                غير مسندة ({inboxScopedConversations.filter((c) => !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند').length})
-              </button>
-              <button
-                onClick={() => setFilterTab('unread')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'unread'
-                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
-                    : 'text-slate-400 hover:text-white bg-slate-800/30'
-                }`}
-              >
-                غير مقروء ({inboxScopedConversations.filter((c) => c.unread_count > 0).length})
-              </button>
-              <button
-                onClick={() => setFilterTab('rescue')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'rescue'
-                    ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white font-bold shadow-md shadow-amber-900/40 border border-amber-400/60 animate-pulse'
-                    : 'text-amber-400 hover:text-amber-300 bg-amber-950/30 border border-amber-800/40'
-                }`}
-                title="محادثات تأخر الرد عليها أكثر من 15 دقيقة تنتظر الإسعاف والاقتناص"
-              >
-                <span>🎯 رادار الاقتناص السريع</span>
-              </button>
-              <button
-                onClick={() => setFilterTab('direct')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'direct'
-                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
-                    : 'text-slate-400 hover:text-white bg-slate-800/30'
-                }`}
-              >
-                العملاء ({inboxScopedConversations.filter((c) => !c.is_group).length})
-              </button>
-              <button
-                onClick={() => setFilterTab('groups')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'groups'
-                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
-                    : 'text-slate-400 hover:text-white bg-slate-800/30'
-                }`}
-              >
-                المجموعات ({inboxScopedConversations.filter((c) => c.is_group).length})
-              </button>
-              <button
-                onClick={() => setFilterTab('escalated')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
-                  filterTab === 'escalated'
-                    ? 'bg-rose-600/30 text-rose-300 font-semibold border border-rose-500/50'
-                    : 'text-slate-400 hover:text-white bg-slate-800/30'
-                }`}
-              >
-                المصعدة ({conversations.filter((c) => c.status === 'escalated').length})
-              </button>
-            </div>
-          </div>
-
-          {/* Conversations Scroll Area */}
-          <div
-            onScroll={(e) => {
-              const target = e.currentTarget;
-              if (target.scrollHeight - target.scrollTop - target.clientHeight < 250) {
-                if (visibleCount < filteredConversations.length) {
-                  setVisibleCount((prev) => Math.min(prev + 50, filteredConversations.length));
-                }
-              }
-            }}
-            className="flex-1 overflow-y-auto divide-y divide-purple-900/20"
-          >
-            {loadingChats ? (
-              <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-                <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-                <span className="text-xs">جاري تحميل المحادثات الحقيقية من واتساب...</span>
-              </div>
-            ) : isStaffWithoutInboxes ? (
-              <div className="p-8 text-center text-amber-400 text-xs flex flex-col items-center justify-center gap-2">
-                <ShieldAlert className="w-8 h-8 text-amber-400/80 mb-1" />
-                <span className="font-bold text-sm">لا يوجد صندوق مخصص لحسابك</span>
-                <span className="text-[11px] text-slate-400 max-w-[220px]">
-                  لم يتم إسناد أي صندوق محادثات لحسابك بعد. يرجى مراجعة إدارة النظام لربطك بالصندوق المطلوب.
-                </span>
-              </div>
-            ) : filteredConversations.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs">
-                {searchQuery ? 'لا توجد محادثات مطابقة للبحث' : 'لا توجد محادثات على هذا الخط حتى الآن'}
-              </div>
-            ) : (
-              <>
-                {filteredConversations.slice(0, visibleCount).map((conv) => {
-                  const isSelected = conv.id === activeConvId;
-                  return (
-                    <button
-                      key={conv.id}
-                      onClick={() => handleSelectConversation(conv.id)}
-                      className={`w-full p-3 text-right flex items-start gap-3 transition-colors ${
-                        isSelected
-                          ? 'bg-purple-950/40 border-r-4 border-purple-500'
-                          : 'hover:bg-purple-950/20'
-                      }`}
-                    >
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 mt-0.5 overflow-hidden border ${
-                          conv.is_group
-                            ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
-                            : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
-                        }`}
-                      >
-                        {conv.avatar_url ? (
-                          <img src={conv.avatar_url} alt={conv.title} className="w-full h-full object-cover" />
-                        ) : conv.is_group ? (
-                          <Users className="w-5 h-5" />
-                        ) : (
-                          initialsOrLetter(conv.title, conv.avatar_letter)
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-1">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="font-semibold text-xs text-[var(--text-main)] truncate">
-                              {conv.title}
-                            </span>
-                            {conv.participant_count && (
-                              <span className="text-[10px] text-purple-300/80 shrink-0 font-normal">
-                                ({conv.participant_count})
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-400 shrink-0 font-mono">
-                            {conv.last_message_at}
-                          </span>
-                        </div>
-
-                        <p className="text-[11px] text-slate-300 truncate mb-1.5 leading-snug">
-                          {conv.last_message_text}
-                        </p>
-
-                        <div className="flex items-center justify-between gap-1">
-                          {/* حالة المحادثة في القائمة مع وسام الخط */}
-                          <div className="flex items-center gap-1.5">
-                            {conv.available_lines && conv.available_lines.length > 1 && lineFilter === 'all' ? (
-                              <span
-                                className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-purple-950/70 text-purple-200 border border-purple-700/50 flex items-center gap-1"
-                                title={`محادثة مشتركة عبر الخطوط: ${conv.available_lines.map((l) => getLineDisplayTitle(l)).join(', ')}`}
-                              >
-                                <bdi dir="ltr">{conv.available_lines.map((l) => getLineDisplayTitle(l)).join(' • ')}</bdi>
-                              </span>
-                            ) : (
-                              <span
-                                className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border ${
-                                  conv.line_id === 'Master'
-                                    ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                                }`}
-                                title={`وارد عبر خط: ${getLineDisplayTitle(conv.line_id)}`}
-                              >
-                                <bdi dir="ltr">{getLineDisplayTitle(conv.line_id || 'Master')}</bdi>
-                              </span>
-                            )}
-
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                              conv.status === 'resolved'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : conv.status === 'escalated'
-                                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse'
-                                : conv.status === 'in_progress'
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                            }`}>
-                              {conv.status === 'resolved' ? 'تم الحل' : conv.status === 'escalated' ? 'مصعدة' : conv.status === 'in_progress' ? 'قيد المعالجة' : 'مفتوحة'}
-                            </span>
-
-                            <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
-                              {conv.assigned_staff_name || 'عام'}
-                            </span>
-                          </div>
-
-                          {conv.unread_count > 0 && (
-                            <span className="w-4 h-4 rounded-full bg-purple-500 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                              {conv.unread_count}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {filteredConversations.length > visibleCount && (
-                  <div className="p-3 text-center">
-                    <button
-                      onClick={() => setVisibleCount((prev) => Math.min(prev + 50, filteredConversations.length))}
-                      className="w-full py-2 px-3 rounded-xl bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 text-purple-200 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      <span>عرض المزيد من المحادثات (المتبقي: <bdi dir="ltr">{filteredConversations.length - visibleCount}</bdi>)</span>
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Left/Center Pane: Active Chat */}
-        <div
-          className={`flex-1 flex flex-col bg-[var(--bg-main)] ${
-            showMobileChat ? 'flex' : 'hidden md:flex'
-          }`}
-        >
-          {activeConversation ? (
-            <>
-              {/* Chat Header with Assignment Cycle & SLA Timers */}
-              <div className="bg-[var(--card-bg)] border-b border-[var(--border-subtle)] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setShowMobileChat(false)}
-                    className="md:hidden p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)]"
-                  >
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
-
-                  <div
-                    className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden border ${
-                      activeConversation.is_group
-                        ? 'bg-purple-600/20 text-purple-300 border-purple-500/30'
-                        : 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white border-transparent'
-                    }`}
-                  >
-                    {activeConversation.avatar_url ? (
-                      <img src={activeConversation.avatar_url} alt={activeConversation.title} className="w-full h-full object-cover" />
-                    ) : activeConversation.is_group ? (
-                      <Users className="w-5 h-5" />
-                    ) : (
-                      initialsOrLetter(activeConversation.title, activeConversation.avatar_letter)
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-[var(--text-main)]">
-                        {activeConversation.title}
-                      </span>
-                      {activeConversation.is_group && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/40 text-purple-300 border border-purple-700/50">
-                          {activeConversation.participant_count ? `مجموعة (${activeConversation.participant_count} عضو)` : 'مجموعة'}
-                        </span>
-                      )}
-
-                      {/* شارة الخط الوارد عليه المحادثة أو الخطوط المشتركة */}
-                      {activeConversation.available_lines && activeConversation.available_lines.length > 1 && lineFilter === 'all' ? (
-                        <span className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold bg-purple-950/80 text-purple-200 border-purple-600/50">
-                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-                          <span>الخطوط المشتركة:</span>
-                          <bdi dir="ltr">{activeConversation.available_lines.map((l) => getLineDisplayTitle(l)).join(' • ')}</bdi>
-                        </span>
-                      ) : (
-                        <span className={`flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold ${
-                          (lineFilter !== 'all' ? lineFilter : activeConversation.line_id) === 'Master'
-                            ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                            : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                        }`}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          <span>الخط:</span>
-                          <bdi dir="ltr">{getLineDisplayTitle(lineFilter !== 'all' ? lineFilter : (activeConversation.line_id || 'Master'))}</bdi>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
-                      <span className="font-mono text-[var(--text-secondary)]">{activeConversation.phone_or_jid}</span>
-                      <span>•</span>
-                      
-                      {/* عداد الاستجابة الذكي SLA Timer */}
-                      <span className={`flex items-center gap-1 text-[11px] font-medium px-2 py-0.2 rounded-full border ${
-                        slaStatus.level === 'critical'
-                          ? 'text-rose-400 bg-rose-500/10 border-rose-500/30 animate-pulse'
-                          : slaStatus.level === 'warning'
-                          ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-                          : slaStatus.level === 'resolved'
-                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                          : 'text-purple-300 bg-purple-500/10 border-purple-500/30'
-                      }`}>
-                        <Clock className="w-3 h-3" />
-                        <span>{slaStatus.text}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* عناصر تحكم دورة الإسناد السريعة */}
-                <div className="flex flex-wrap items-center gap-2">
+  // أدوات المحادثة الكاملة — تعيش داخل سلايد التفاصيل (واجهة ترويسة نظيفة)
+  const convActions = activeConversation ? (
+    <>
                   <div className="flex items-center gap-1.5 text-xs bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-2 py-1">
                     <UserPlus className="w-3.5 h-3.5 text-purple-400" />
-                    <select
-                      value={activeConversation.assigned_staff_name || 'غير مسند (عام)'}
-                      onChange={(e) => handleAssignStaff(e.target.value)}
-                      className="bg-transparent text-xs text-[var(--text-main)] outline-none font-medium cursor-pointer"
-                    >
-                      {AVAILABLE_STAFF.map((s) => (
-                        <option key={s.id} value={s.name} className="bg-[var(--card-bg)] text-[var(--text-main)]">
-                          {s.name} ({s.role.split(' ')[0]})
-                        </option>
-                      ))}
-                    </select>
+                    {isManager ? (
+                      <select
+                        value={activeConversation.assigned_staff_name || 'غير مسند (عام)'}
+                        onChange={(e) => handleAssignStaff(e.target.value)}
+                        className="bg-transparent text-xs text-[var(--text-main)] outline-none font-medium cursor-pointer"
+                      >
+                        {availableStaff.filter((s) => !/مدير/.test(s.role || '')).map((s) => (
+                          <option key={s.id || 'unassigned'} value={s.name} className="bg-[var(--card-bg)] text-[var(--text-main)]">
+                            {s.name} ({s.role.split(' ')[0]})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-[var(--text-main)] font-medium">
+                        {activeConversation.assigned_staff_name || 'غير مسند'}
+                      </span>
+                    )}
                   </div>
 
                   <select
@@ -2544,6 +2692,54 @@ export function NativeChatInbox() {
                     </button>
                   )}
 
+                  {/* 🏷 م3: محرر وسوم المحادثة الحالية (من القاعدة الحقيقية) */}
+                  {activeConversation && dbTags.length > 0 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setTagMenuOpen((v) => !v)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                          activeConvTagIds.length > 0
+                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700/80'
+                        }`}
+                        title="وسوم هذه المحادثة — تُحفظ في قاعدة البيانات"
+                      >
+                        <Tags className="w-3.5 h-3.5" />
+                        <span>الوسوم{activeConvTagIds.length > 0 ? ` (${activeConvTagIds.length})` : ''}</span>
+                      </button>
+
+                      {tagMenuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setTagMenuOpen(false)} />
+                          <div className="absolute left-0 mt-2 w-60 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-50 p-2" dir="rtl">
+                            <div className="px-2 py-1.5 text-[10px] font-bold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1">
+                              وسم هذه المحادثة (محفوظ مباشرة بالقاعدة)
+                            </div>
+                            {dbTags.map((t) => {
+                              const on = activeConvTagIds.includes(t.id);
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => handleToggleConversationTag(t.id)}
+                                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                                    on
+                                      ? 'bg-cyan-500/20 text-cyan-200'
+                                      : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                                  }`}
+                                >
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: t.hex_color || '#8b5cf6' }} />
+                                  <span className="flex-1 text-right">{t.name}</span>
+                                  {on && <Check className="w-3.5 h-3.5" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {/* ⭐ زر تمييز المحادثة الحالية كمفضلة (Star Conversation) */}
                   {activeConversation && (() => {
                     const isStarred = favoritesList.some((f) => f.id === activeConversation.id);
@@ -2556,7 +2752,11 @@ export function NativeChatInbox() {
                                 id: activeConversation.id,
                                 title: activeConversation.title,
                                 subtitle: activeConversation.phone_or_jid,
-                                meta: { is_group: activeConversation.is_group }
+                                meta: {
+                                  chat_jid: activeConversation.chat_jid,
+                                  instance_name: activeConversation.line_id || selectedInstanceName,
+                                  is_group: activeConversation.is_group,
+                                }
                               },
                               activeConversation.is_group ? 'group' : 'direct_chat'
                             );
@@ -2572,8 +2772,8 @@ export function NativeChatInbox() {
                           <span>{isStarred ? 'محادثة مفضلة' : 'إضافة للمفضلة'}</span>
                         </button>
 
-                        <button
-                          onClick={() => setFavoritesDrawerOpen(true)}
+                          <button
+                            onClick={() => setFavoritesDrawerOpen(true)}
                           className="px-2 py-1.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-purple-300 hover:text-white transition-all text-xs font-mono font-bold"
                           title="عرض أرشيف المفضلات للموظف"
                         >
@@ -2644,6 +2844,458 @@ export function NativeChatInbox() {
                       </button>
                     );
                   })()}
+    </>
+  ) : null;
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
+      
+      {/* --- حارس المخاطر: شريط تنبيه رفيع بنمط v1 --- */}
+      {isQuietHoursActive && (
+        <div className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium border-b border-[var(--border-subtle)]"
+          style={{ background: 'color-mix(in srgb, var(--warn) 12%, transparent)', color: 'var(--warn)' }}>
+          <Moon className="w-3.5 h-3.5 animate-pulse shrink-0" />
+          <span>وضع الهدوء نشط (01:00 – 07:00 بتوقيت مكة) — الإرسال الجديد يحتاج تأكيداً لحماية الأرقام من الحظر.</span>
+        </div>
+      )}
+
+      {isBreakerTripped && (
+        <div className="bg-rose-950/90 border-b border-rose-600/50 px-4 py-2 flex items-center justify-between text-xs text-rose-200">
+          <div className="flex items-center gap-2">
+            <ZapOff className="w-4 h-4 text-rose-400 animate-bounce" />
+            <span className="font-bold">قاطع الدائرة مفعل (Circuit Breaker Tripped)!</span>
+            <span className="text-[11px] text-rose-300">تم تعليق الإرسال التلقائي بعد 3 أخطاء متتالية لحماية خط واتساب.</span>
+          </div>
+          <button
+            onClick={handleResetCircuitBreaker}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>إعادة ضبط القاطع</span>
+          </button>
+        </div>
+      )}
+
+      {/* Top Bar: Inboxes, Multi-Line Filter & Live Status */}
+      <div className="bg-[var(--card-bg)] border-b border-[var(--border-subtle)] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* اختيار الصندوق المشترك */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-[var(--text-muted)]">الصندوق:</span>
+            <select
+              value={selectedInboxId}
+              onChange={(e) => {
+                setSelectedInboxId(e.target.value);
+                setLineFilter('all');
+              }}
+              className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none focus:border-[var(--primary)] font-bold transition-colors"
+            >
+              {user?.role === 'super_admin' ? (
+                <option value="all">كل الصناديق (عرض مجمّع للإشراف)</option>
+              ) : inboxesList.length > 1 ? (
+                <option value="all">كل الصناديق المخصصة لي (مجمّع)</option>
+              ) : null}
+              {inboxesList.map((ib) => (
+                <option key={ib.id} value={ib.id}>
+                  {ib.name_ar} {ib.filter_type === 'groups' ? '(مجموعات)' : ib.filter_type === 'dm' ? '(فردي)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <span className="text-slate-600 hidden sm:inline">|</span>
+
+          {/* تبويبات فلترة الخطوط السريعة المقيدة بنطاق الصندوق فقط */}
+          <div className="flex items-center gap-1 bg-[var(--card-elevated)] p-1 rounded-xl border border-[var(--border-subtle)] text-xs">
+            <button
+              type="button"
+              onClick={() => setLineFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                lineFilter === 'all'
+                  ? 'bg-[var(--primary)] text-white shadow'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+              }`}
+            >
+              جميع الخطوط ({allUniqueCount})
+            </button>
+            {availableInstances.map((inst) => {
+              const count = inboxScopedConversations.filter((c) => c.line_id === inst.name).length;
+              const isOpen = inst.connectionStatus === 'open';
+              const active = lineFilter === inst.name;
+              const displayTitle = getLineDisplayTitle(inst.name);
+              // قرار المالك: الخط غير المتصل فعلياً لا يظهر في الشريط العلوي إطلاقاً
+              if (!isOpen) return null;
+              return (
+                <button
+                  key={inst.name}
+                  type="button"
+                  onClick={() => setLineFilter(inst.name)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    active
+                      ? 'bg-[var(--accent-soft)] text-[var(--primary)] border border-[var(--border-glow)] font-bold'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                  }`}
+                  title={`${displayTitle} — ${isOpen ? 'متصل' : 'معلق'}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                  <bdi dir="ltr">{displayTitle}</bdi>
+                  <span className="text-[10px] opacity-70 font-mono">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* م3: فلتر الوسوم الحقيقية من القاعدة */}
+          {dbTags.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Tags className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-[var(--primary)] font-semibold transition-colors"
+                title="فلترة المحادثات حسب الوسم"
+              >
+                <option value="">كل الوسوم</option>
+                {dbTags.map((t) => (
+                  <option key={t.id} value={t.name}>🏷 {t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* شارة تسخين الأرقام وحارس المخاطر */}
+          <span className="hidden lg:flex items-center gap-1 text-[10px] text-[var(--text-muted)] bg-[var(--card-elevated)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full">
+            <ShieldAlert className="w-3 h-3 text-purple-400" />
+            <span>حارس المخاطر: تسخين آمن (50 رسالة/يوم)</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Main Chat Workspace */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Right Pane: Real Conversations List */}
+        <div
+          className={`w-full md:w-80 lg:w-96 flex flex-col border-l border-[var(--border-subtle)] bg-[var(--card-bg)] shrink-0 ${
+            showMobileChat ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          {/* Search & Filters */}
+          <div className="p-3 border-b border-[var(--border-subtle)] space-y-2.5">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute right-3 top-3 text-[var(--text-muted)]" />
+              <input
+                type="text"
+                placeholder="بحث في المحادثات أو الأرقام..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-[var(--card-elevated)] text-xs text-[var(--text-main)] pr-9 pl-3 py-2 rounded-2xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)]"
+              />
+            </div>
+
+            {/* Filter Tabs - سلايد تبويبات متحرك بنمط شريط تمرير ناعم وأنيق */}
+            <div className="flex items-center gap-1.5 text-[11px] overflow-x-auto pb-1 scrollbar-none snap-x" dir="rtl">
+              <button
+                onClick={() => setFilterTab('all')}
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
+                  filterTab === 'all'
+                    ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-900/30'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
+                }`}
+              >
+                الكل ({inboxScopedConversations.length})
+              </button>
+              <button
+                onClick={() => setFilterTab('mine')}
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
+                  filterTab === 'mine'
+                    ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-900/30'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
+                }`}
+              >
+                المسندة لي
+              </button>
+              <button
+                onClick={() => setFilterTab('unassigned')}
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
+                  filterTab === 'unassigned'
+                    ? 'bg-amber-600 text-white font-bold shadow-sm shadow-amber-900/30'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
+                }`}
+              >
+                غير مسندة ({inboxScopedConversations.filter((c) => !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند').length})
+              </button>
+              <button
+                onClick={() => setFilterTab('unread')}
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
+                  filterTab === 'unread'
+                    ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-900/30'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
+                }`}
+              >
+                غير مقروء ({inboxScopedConversations.filter((c) => c.unread_count > 0).length})
+              </button>
+              <button
+                onClick={() => setFilterTab('rescue')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
+                  filterTab === 'rescue'
+                    ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white font-bold shadow-md shadow-amber-900/40 animate-pulse'
+                    : 'text-amber-400 hover:text-amber-300 bg-amber-950/30 border border-amber-800/40'
+                }`}
+                title="محادثات تأخر الرد عليها أكثر من 15 دقيقة تنتظر الإسعاف والاقتناص"
+              >
+                <span>🎯 رادار الاقتناص السريع</span>
+              </button>
+              <button
+                onClick={() => setFilterTab('direct')}
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                  filterTab === 'direct'
+                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
+                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                }`}
+              >
+                العملاء ({inboxScopedConversations.filter((c) => !c.is_group).length})
+              </button>
+              <button
+                onClick={() => setFilterTab('groups')}
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                  filterTab === 'groups'
+                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
+                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                }`}
+              >
+                المجموعات ({inboxScopedConversations.filter((c) => c.is_group).length})
+              </button>
+              <button
+                onClick={() => setFilterTab('escalated')}
+                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                  filterTab === 'escalated'
+                    ? 'bg-rose-600/30 text-rose-300 font-semibold border border-rose-500/50'
+                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                }`}
+              >
+                المصعدة ({conversations.filter((c) => c.status === 'escalated').length})
+              </button>
+            </div>
+          </div>
+
+          {/* Conversations Scroll Area */}
+          <div
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              if (target.scrollHeight - target.scrollTop - target.clientHeight < 250) {
+                if (visibleCount < filteredConversations.length) {
+                  setVisibleCount((prev) => Math.min(prev + 50, filteredConversations.length));
+                }
+              }
+            }}
+            className="flex-1 overflow-y-auto divide-y divide-purple-900/20"
+          >
+            {loadingChats && conversations.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+                <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+                <span className="text-xs">جاري تحميل المحادثات الحقيقية من واتساب...</span>
+              </div>
+            ) : isStaffWithoutInboxes ? (
+              <div className="p-8 text-center text-amber-400 text-xs flex flex-col items-center justify-center gap-2">
+                <ShieldAlert className="w-8 h-8 text-amber-400/80 mb-1" />
+                <span className="font-bold text-sm">لا يوجد صندوق مخصص لحسابك</span>
+                <span className="text-[11px] text-slate-400 max-w-[220px]">
+                  لم يتم إسناد أي صندوق محادثات لحسابك بعد. يرجى مراجعة إدارة النظام لربطك بالصندوق المطلوب.
+                </span>
+              </div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">
+                {searchQuery ? 'لا توجد محادثات مطابقة للبحث' : 'لا توجد محادثات على هذا الخط حتى الآن'}
+              </div>
+            ) : (
+              <>
+                {filteredConversations.slice(0, visibleCount).map((conv) => (
+                  <ConversationRow
+                    key={conv.id}
+                    conv={conv}
+                    isSelected={conv.id === activeConvId}
+                    onSelect={handleSelectConversation}
+                    getLineDisplayTitle={getLineDisplayTitle}
+                    multiLine={lineFilter === 'all'}
+                  />
+                ))}
+
+                {filteredConversations.length > visibleCount && (
+                  <div className="p-3 text-center">
+                    <button
+                      onClick={() => setVisibleCount((prev) => Math.min(prev + 50, filteredConversations.length))}
+                      className="w-full py-2 px-3 rounded-xl bg-purple-950/50 hover:bg-purple-900/60 border border-purple-500/30 text-purple-200 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <span>عرض المزيد من المحادثات (المتبقي: <bdi dir="ltr">{filteredConversations.length - visibleCount}</bdi>)</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Left/Center Pane: Active Chat */}
+        <div
+          className={`flex-1 flex flex-col bg-[var(--bg-main)] ${
+            showMobileChat ? 'flex' : 'hidden md:flex'
+          }`}
+        >
+          {activeConversation ? (
+            <>
+              {/* Chat Header with Assignment Cycle & SLA Timers */}
+              <div className="bg-[var(--card-bg)] border-b border-[var(--border-subtle)] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowMobileChat(false)}
+                    className="md:hidden p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--card-elevated)]"
+                  >
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+
+                  <div className="w-11 h-11 rounded-2xl avatar-ring p-[2px] shrink-0 shadow-sm">
+                    <div
+                      className={`w-full h-full rounded-[14px] flex items-center justify-center font-bold text-sm overflow-hidden border ${
+                        activeConversation.is_group
+                          ? 'bg-[var(--card-elevated)] text-[var(--text-main)] border-[var(--border-subtle)]'
+                          : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
+                      }`}
+                    >
+                      {activeConversation.avatar_url ? (
+                        <img src={activeConversation.avatar_url} alt={activeConversation.title} className="w-full h-full object-cover" />
+                      ) : activeConversation.is_group ? (
+                        <Users className="w-5 h-5" />
+                      ) : (
+                        initialsOrLetter(activeConversation.title, activeConversation.avatar_letter)
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      {/* م8-ج3: اسم المحادثة قابل للضغط — قائمة خيارات سريعة */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setContactMenuOpen((v) => !v)}
+                          className="font-bold text-sm text-[var(--text-main)] hover:text-purple-300 transition-colors flex items-center gap-1"
+                          title="خيارات هذه الجهة"
+                        >
+                          {activeConversation.title}
+                          <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                        </button>
+
+                        {contactMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setContactMenuOpen(false)} />
+                            <div className="absolute right-0 mt-2 w-56 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-50 p-1.5" dir="rtl">
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  if (!isContactSaved) handleQuickSaveContact();
+                                }}
+                                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                                  isContactSaved ? 'text-emerald-300 bg-emerald-500/10 cursor-default' : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                                }`}
+                              >
+                                {isContactSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+                                {isContactSaved ? 'جهة اتصال مسجلة ✓' : 'حفظ كجهة اتصال'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  handleToggleFavorite(
+                                    {
+                                      id: activeConversation.id,
+                                      title: activeConversation.title,
+                                      subtitle: activeConversation.phone_or_jid,
+                                      meta: { chat_jid: activeConversation.chat_jid, instance_name: activeConversation.line_id || selectedInstanceName, is_group: activeConversation.is_group },
+                                    },
+                                    activeConversation.is_group ? 'group' : 'direct_chat'
+                                  );
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-amber-300 transition-colors"
+                              >
+                                <Star className="w-3.5 h-3.5" />
+                                إضافة للمفضلة
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  navigator.clipboard.writeText(activeConversation.phone_or_jid || activeConversation.chat_jid);
+                                  toast({ title: 'تم نسخ الرقم/المعرف', kind: 'success' });
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                نسخ الرقم / المعرف
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setContactMenuOpen(false);
+                                  setTagMenuOpen(true);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-cyan-300 transition-colors"
+                              >
+                                <Tags className="w-3.5 h-3.5" />
+                                وسوم المحادثة
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      {/* وسم أعضاء المجموعة بنمط ناعم */}
+                      {activeConversation.is_group && activeConversation.participant_count && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-semibold shrink-0 flex items-center gap-1">
+                          <Users className="w-3 h-3 opacity-70" />
+                          <span>{activeConversation.participant_count}</span>
+                        </span>
+                      )}
+
+                      {/* وسم الحالة الناعم بجانب العنوان (نمط v1) */}
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${statusBadge(activeConversation.status)}`}>
+                        {statusLabel(activeConversation.status)}
+                      </span>
+
+                      {/* عداد SLA النبّاض المختصر في سطر العنوان */}
+                      <SlaTimer
+                        since={activeConversation.last_customer_message_timestamp}
+                        status={activeConversation.status}
+                        isGroup={activeConversation.is_group}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* زر التحكم بالمحادثة المصمم بأناقة التطبيقات الاحترافية */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setMsgSelectionMode((v) => !v); setSelectedMsgIds(new Set()); }}
+                    className={`h-8 px-2.5 rounded-xl border text-[11px] font-semibold transition-all shrink-0 flex items-center gap-1.5 ${
+                      msgSelectionMode
+                        ? 'bg-[var(--accent-soft)] text-[var(--primary)] border-[var(--border-glow)]'
+                        : 'bg-[var(--card-elevated)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                    }`}
+                    title="تحديد رسائل — نسخ/تحويل/حذف للجميع"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>تحديد</span>
+                  </button>
+
+                  <button
+                    onClick={() => setInfoPanelOpen((v) => !v)}
+                    aria-pressed={infoPanelOpen}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+                      infoPanelOpen
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-transparent ring-2 ring-purple-400/40 shadow-purple-900/30'
+                        : 'bg-gradient-to-r from-purple-950/40 to-indigo-950/40 hover:from-purple-900/50 hover:to-indigo-900/50 text-purple-200 border-purple-500/30 hover:border-purple-400/60'
+                    }`}
+                    title="لوحة التحكم بالمحادثة: الإسناد، الحالة، الوسوم، المفضلة، القفل، وتفاصيل جهة الاتصال"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>التحكم بالمحادثة</span>
+                  </button>
                 </div>
               </div>
 
@@ -2700,7 +3352,7 @@ export function NativeChatInbox() {
               })()}
 
               {/* Messages Feed */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[var(--bg-main)]">
+              <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[var(--bg-main)]">
                 {activeConversation && lockedChatsPinMap[activeConversation.id] && !unlockedSessionChats[activeConversation.id] ? (
                   <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-6 space-y-4">
                     <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
@@ -2728,6 +3380,8 @@ export function NativeChatInbox() {
                       <button
                         onClick={() => {
                           setRequestAccessSent(false);
+                          setRequestAccessSending(false);
+                          setRequestAccessError(null);
                           setRequestAccessReason('');
                           setRequestAccessType('read');
                           setRequestAccessModalOpen(true);
@@ -2755,6 +3409,8 @@ export function NativeChatInbox() {
                       <button
                         onClick={() => {
                           setRequestAccessSent(false);
+                          setRequestAccessSending(false);
+                          setRequestAccessError(null);
                           setRequestAccessReason('');
                           setRequestAccessType('read');
                           setRequestAccessModalOpen(true);
@@ -2827,7 +3483,7 @@ export function NativeChatInbox() {
                                   id: msg.id,
                                   title: msg.body || msg.file_name || 'رسالة وسائط',
                                   subtitle: `${msg.sender_name} • ${activeConversation?.title}`,
-                                  meta: { chatJid: msg.chat_jid, mediaType: msg.media_type },
+                                  meta: { chat_jid: msg.chat_jid, instance_name: activeConversation?.line_id || selectedInstanceName, mediaType: msg.media_type },
                                 },
                                 msg.media_type === 'image' || msg.media_type === 'video'
                                   ? 'media'
@@ -2851,7 +3507,7 @@ export function NativeChatInbox() {
                             type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(msg.body || '');
-                              alert('تم نسخ النص إلى الحافظة بنجاح');
+                              toast({ title: 'تم نسخ النص إلى الحافظة بنجاح', kind: 'success' });
                             }}
                             className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
                             title="نسخ النص"
@@ -2867,6 +3523,16 @@ export function NativeChatInbox() {
                               : 'bubble-peer'
                           }`}
                         >
+                          {msgSelectionMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleMsgSelection(msg.id); }}
+                              className={`absolute top-1 right-1 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${selectedMsgIds.has(msg.id) ? 'bg-[var(--accent-soft)] border-[var(--border-glow)] text-[var(--primary)]' : 'bg-black/30 border-white/20 text-transparent hover:text-white'}`}
+                              title="تحديد الرسالة"
+                            >
+                              <CheckSquare className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {msg.reply_to && (
                             <div className="mb-2 p-2 rounded-xl bg-black/30 border-r-2 border-purple-400 text-xs">
                               <div className="font-semibold text-purple-300 text-[11px]">{msg.reply_to.sender_name}</div>
@@ -2875,7 +3541,18 @@ export function NativeChatInbox() {
                           )}
                           {!isOut && activeConversation.is_group && (
                             <div className="text-[11px] font-bold text-purple-300 mb-1">
-                              {msg.sender_name}
+                              {/* طلب المالك: قائمة لكل مرسل — جهة اتصال / نسخ المعرف */}
+                              <button
+                                onClick={(e) => {
+                                  const rct = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  setSenderMenu({ msgId: msg.id, name: msg.sender_name, jid: msg.key_participant || '', x: rct.left, y: rct.bottom });
+                                }}
+                                className="hover:underline flex items-center gap-1"
+                                title="خيارات المرسل"
+                              >
+                                {msg.sender_name}
+                                <ChevronDown className="w-3 h-3 inline" />
+                              </button>
                             </div>
                           )}
 
@@ -2885,7 +3562,7 @@ export function NativeChatInbox() {
                           {msg.media_type === 'sticker' && (() => {
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=sticker.webp`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, 'sticker.webp') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="my-1 flex items-center justify-center">
@@ -2914,7 +3591,7 @@ export function NativeChatInbox() {
                             // ✅ نستخدم msg_key_id (المعرّف الحقيقي لواتساب) لبناء رابط الوكيل
                             // وللرسائل الصادرة المؤقتة (blob:) نستخدم media_url مباشرةً
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(msg.body || 'image.jpg')}`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, msg.body || 'image.jpg') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="mb-1">
@@ -2952,7 +3629,7 @@ export function NativeChatInbox() {
                             const meta = getFileCardMeta(rawFileName);
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(rawFileName)}&download=true`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, rawFileName, true) ?? null)
                               : (msg.media_url || null);
 
                             return (
@@ -3001,7 +3678,7 @@ export function NativeChatInbox() {
                             // للرسائل الواردة: نبني رابط الوكيل من msg_key_id
                             // للرسائل الصادرة المؤقتة: نستخدم media_url مباشرةً (blob: أو proxy URL بعد الإرسال)
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=voice_note.ogg`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, 'voice_note.ogg') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="mb-1">
@@ -3027,7 +3704,7 @@ export function NativeChatInbox() {
                           {isVideo && (() => {
                             const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
                             const proxied = msg.msg_key_id
-                              ? `/api/evolution/instances/${effectiveInstance}/media/proxy?id=${encodeURIComponent(msg.msg_key_id)}&fileName=${encodeURIComponent(msg.body || 'video.mp4')}`
+                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, msg.body || 'video.mp4') ?? null)
                               : (msg.media_url || null);
                             return (
                               <div className="mb-1">
@@ -3160,6 +3837,161 @@ export function NativeChatInbox() {
               {/* Chat Input Bar with Risk Guard Checks */}
               <div className="bg-[var(--card-bg)] border-t border-[var(--border-subtle)] p-3 shrink-0 space-y-2">
 
+                {/* م8: شريط إجراءات التحديد المتعدد */}
+                {msgSelectionMode && selectedMsgIds.size > 0 && (
+                  <div className="rounded-2xl border border-[var(--border-glow)] bg-[var(--accent-soft)] px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap" dir="rtl">
+                    <span className="text-xs font-bold text-[var(--primary)]">{selectedMsgIds.size} رسالة محددة</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => {
+                          const text = selectedMessages.map((m) => m.body || `[${m.media_type}]`).join('\n---\n');
+                          navigator.clipboard.writeText(text);
+                          toast({ title: 'نُسخ نص الرسائل المحددة', kind: 'success' });
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] text-[11px] font-bold hover:border-[var(--border-glow)]"
+                      >
+                        نسخ المحدد
+                      </button>
+                      {selectedMessages[0] && (
+                        <button
+                          onClick={() => { setForwardModalMsg(selectedMessages[0]); setMsgSelectionMode(false); }}
+                          className="px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] text-[11px] font-bold hover:border-[var(--border-glow)]"
+                        >
+                          تحويل الأولى
+                        </button>
+                      )}
+                      <button
+                        onClick={handleBulkDelete}
+                        className="px-3 py-1.5 rounded-xl bg-rose-600/20 border border-rose-500/40 text-rose-300 text-[11px] font-bold hover:bg-rose-600/30"
+                      >
+                        حذف للجميع
+                      </button>
+                      <button
+                        onClick={() => { setMsgSelectionMode(false); setSelectedMsgIds(new Set()); }}
+                        className="px-3 py-1.5 rounded-xl text-[var(--text-muted)] text-[11px] font-bold hover:text-[var(--text-main)]"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* طبقات الرؤية: هيكل المحادثة المسندة لغيره + أزرار الطلبات */}
+                {activeConversation && contentAccess === 'shell' && (
+                  <div className="rounded-2xl border border-slate-500/40 bg-slate-900/40 px-4 py-3 flex items-center justify-between gap-3 flex-wrap" dir="rtl">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <ShieldAlert className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-xs font-bold text-slate-200">مسندة لزميلك — المحتوى غير متاح لك</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          {ownsConversationLine
+                            ? 'تملك خط هذه المحادثة — يمكنك طلب القراءة أو المشاركة في الرد (الإسناد يبقى لزميلك)'
+                            : 'لا تملك خطاً من خطوط هذه المحادثة — لا يمكن طلب الوصول'}
+                        </div>
+                      </div>
+                    </div>
+                    {ownsConversationLine && reqSentType !== 'read' && reqSentType !== 'read_write' && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => submitPermissionRequest('read', activeConversation.available_lines?.[0] || activeConversation.line_id)}
+                          disabled={reqSentType === 'read-sending'}
+                          className="px-3 py-2 rounded-xl bg-sky-600/20 border border-sky-500/40 text-sky-300 text-[11px] font-bold hover:bg-sky-600/30 transition-colors disabled:opacity-60">
+                          طلب قراءة
+                        </button>
+                        <button onClick={() => submitPermissionRequest('read_write', activeConversation.available_lines?.[0] || activeConversation.line_id)}
+                          disabled={reqSentType === 'read_write-sending'}
+                          className="px-3 py-2 rounded-xl bg-purple-600/20 border border-purple-500/40 text-purple-300 text-[11px] font-bold hover:bg-purple-600/30 transition-colors disabled:opacity-60">
+                          طلب قراءة وكتابة
+                        </button>
+                      </div>
+                    )}
+                    {reqSentType === 'read' && <span className="text-[10px] px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold shrink-0">⏳ طلب القراءة معلق</span>}
+                    {reqSentType === 'read_write' && <span className="text-[10px] px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold shrink-0">⏳ طلب المشاركة معلق</span>}
+                  </div>
+                )}
+
+                {/* طلب الإسناد — محادثة غير مسندة تظهر للموظف (اقتناص العميل) */}
+                {activeConversation && !isManager && contentAccess === 'full' && !(activeConversation as any).assigned_staff_id && !activeConversation.assigned_staff_name && reqSentType !== 'assignment' && (
+                  <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/30 px-4 py-2.5 flex items-center justify-between gap-3" dir="rtl">
+                    <span className="text-xs text-emerald-200 font-semibold">محادثة غير مسندة — يمكنك طلب اقتناصها</span>
+                    <button onClick={() => submitPermissionRequest('assignment')}
+                      disabled={reqSentType === 'assignment-sending'}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-[11px] font-bold transition-colors">
+                      طلب الإسناد لي
+                    </button>
+                  </div>
+                )}
+                {reqSentType === 'assignment' && (
+                  <div className="rounded-2xl border border-amber-500/40 bg-amber-950/30 px-4 py-2 text-center text-[11px] text-amber-300 font-bold" dir="rtl">
+                    ⏳ طلب الإسناد معلق — المشرف سيوافق أو يرشح الأفضل
+                  </div>
+                )}
+
+                {/* C4: تحذير صارم — لا إرسال من رقم مختلف عن خط الوارد دون إذن مدير */}
+                {activeConversation && sendLineStatus.get(effectiveSendInstance)?.allowed === false && (() => {
+                  const st = sendLineStatus.get(effectiveSendInstance);
+                  const isIncomingNoAuth = st?.reason?.includes('خط الوارد');
+                  return (
+                    <div className="rounded-2xl border border-rose-500/50 bg-rose-950/40 px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap" dir="rtl">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-rose-200">
+                            الإرسال من هذا الخط محظور — {st?.reason || 'يلزم إذن المدير'}
+                          </div>
+                          <div className="text-[10px] text-rose-300/80 mt-0.5 leading-relaxed">
+                            {isIncomingNoAuth
+                              ? 'المحادثة وردت على هذا الخط وهو مرتبط بصندوقك، لكنه غير مصرح لك به شخصياً — اطلب إذناً من المدير ليُفعَّل لك.'
+                              : 'العميل راسلك من رقم آخر — الرد من رقم مختلف يربكه ويتطلب موافقة المدير. عند الرفض يلزمك الرد من نفس الرقم الوارد.'}
+                          </div>
+                        </div>
+                      </div>
+                      {grantRequestState === 'sent' ? (
+                        <span className="text-[10px] px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold shrink-0">
+                          ⏳ طلبك معلق بموافقة المدير — ستصلك النتيجة إشعاراً
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!user?.id || !activeConversation) return;
+                            const lineId = lineIdMap[effectiveSendInstance];
+                            if (!lineId) { toast({ title: 'تعذر تحديد الخط — حاول تحديث الصفحة', kind: 'error' }); return; }
+                            setGrantRequestState('sending');
+                            try {
+                              const res = await fetch('/api/permission-requests', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'request',
+                                  type: activeConversation.is_group ? 'group_join' : 'line_reply',
+                                  staff_id: user.id,
+                                  line_id: lineId,
+                                  chat_jid: activeConversation.chat_jid,
+                                  inbox_id: currentInbox?.id || null,
+                                  reason: st?.reason || 'رد من خط غير الوارد',
+                                }),
+                              });
+                              const json = await res.json();
+                              if (res.ok) {
+                                setGrantRequestState('sent');
+                                toast({ title: json.already_pending ? 'طلبك معلق بالفعل بموافقة المدير' : 'أُرسل طلب الإذن إلى المدير', kind: 'success' });
+                              } else {
+                                toast({ title: json.error || 'فشل إرسال الطلب', kind: 'error' });
+                                setGrantRequestState('none');
+                              }
+                            } catch { setGrantRequestState('none'); }
+                          }}
+                          disabled={grantRequestState === 'sending'}
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white text-[11px] font-bold shadow-md transition-colors shrink-0"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5" />
+                          {grantRequestState === 'sending' ? 'جاري الإرسال...' : 'طلب إذن من المدير'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* الرد المقتبس إن وجد */}
                 {replyingToMessage && (
                   <div className="flex items-center justify-between bg-purple-950/70 border border-purple-500/40 rounded-2xl px-4 py-2 text-xs">
@@ -3223,6 +4055,70 @@ export function NativeChatInbox() {
                       accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,audio/*,video/*,.zip,.rar"
                     />
                     
+                    {/* ⚡ م4: زر الردود الجاهزة مع المنتقي القابل للبحث */}
+                    <div className="relative shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCannedOpen((v) => !v)}
+                        className="h-10 w-10 p-0 text-amber-400 hover:text-amber-300 shrink-0"
+                        title="الردود الجاهزة — أو اكتب / في حقل الإرسال"
+                      >
+                        <Zap className="w-5 h-5" />
+                      </Button>
+
+                      {cannedOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => { setCannedOpen(false); setCannedSearch(''); }} />
+                          <div className="absolute bottom-12 right-0 z-50 w-80 bg-[var(--card-bg)] border border-purple-500/40 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md" dir="rtl">
+                            <div className="p-2.5 border-b border-[var(--border-subtle)]">
+                              <input
+                                autoFocus
+                                type="text"
+                                value={cannedSearch}
+                                onChange={(e) => setCannedSearch(e.target.value)}
+                                placeholder="ابحث في الردود الجاهزة..."
+                                className="w-full bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none focus:border-purple-500"
+                              />
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                              {cannedList.length === 0 ? (
+                                <div className="p-5 text-center text-xs text-[var(--text-muted)]">
+                                  لا توجد ردود جاهزة — أضفها من صفحة "الردود الجاهزة"
+                                </div>
+                              ) : (() => {
+                                const s = cannedSearch.trim().toLowerCase();
+                                const filteredCanned = s
+                                  ? cannedList.filter((c) => c.title.toLowerCase().includes(s) || c.body.toLowerCase().includes(s) || (c.shortcut || '').toLowerCase().includes(s))
+                                  : cannedList;
+                                return filteredCanned.length === 0 ? (
+                                  <div className="p-4 text-center text-xs text-[var(--text-muted)]">لا نتائج مطابقة</div>
+                                ) : (
+                                  filteredCanned.map((c) => (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => handleInsertCanned(c)}
+                                      className="w-full text-right px-3 py-2.5 hover:bg-[var(--card-elevated)] transition-colors border-b border-[var(--border-subtle)] last:border-b-0"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-[var(--text-main)] truncate">{c.title}</span>
+                                        {c.shortcut && (
+                                          <code className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 shrink-0" dir="ltr">{c.shortcut}</code>
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] text-[var(--text-muted)] mt-0.5 line-clamp-1 leading-relaxed">{expandCannedBody(c.body)}</p>
+                                    </button>
+                                  ))
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
                     {/* زر المرفقات */}
                     <Button
                       type="button"
@@ -3272,19 +4168,26 @@ export function NativeChatInbox() {
                       )}
                     </div>
 
-                    {/* محدد خط الإرسال المقيد بالخطوط المسموح بها للموظف فقط */}
+                    {/* C4: محدد خط الإرسال — خط الوارد متاح دائماً؛ الخطوط الأخرى تتطلب منح المدير */}
                     <div className="flex items-center gap-1 shrink-0">
                       <select
                         value={effectiveSendInstance}
                         onChange={(e) => setSendingLineInstance(e.target.value)}
-                        className="h-10 px-2 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-200 text-xs font-semibold outline-none focus:border-purple-400 font-mono"
-                        title="الخطوط المصرح لك الإرسال منها وفق قائمة الموظفين"
+                        className={`h-10 px-2 rounded-xl border text-xs font-semibold outline-none font-mono ${
+                          sendLineStatus.get(effectiveSendInstance)?.allowed === false
+                            ? 'bg-rose-950/60 border-rose-500/50 text-rose-200'
+                            : 'bg-purple-950/60 border-purple-500/40 text-purple-200 focus:border-purple-400'
+                        }`}
+                        title="خط الإرسال — الرد الافتراضي من آخر رقم ورد منه العميل"
                       >
-                        {allowedSendInstances.map((inst) => (
-                          <option key={inst.name} value={inst.name}>
-                            إرسال عبر: {getLineDisplayTitle(inst.name)}
-                          </option>
-                        ))}
+                        {allowedSendInstances.map((inst) => {
+                          const st = sendLineStatus.get(inst.name);
+                          return (
+                            <option key={inst.name} value={inst.name} disabled={st ? !st.allowed : false}>
+                              {st?.allowed === false ? '⛔' : ''} إرسال عبر: {getLineDisplayTitle(inst.name)}{st && !st.allowed ? ' — يحتاج إذن' : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -3292,7 +4195,8 @@ export function NativeChatInbox() {
                       type="text"
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
-                      placeholder="اكتب رسالتك إلى العميل... (اضغط Enter للإرسال المباشر عبر واتساب)"
+                      onKeyDown={handleComposerKeyDown}
+                      placeholder="اكتب رسالتك... ( / للردود الجاهزة، Enter للإرسال)"
                       disabled={isSending || isBreakerTripped}
                       className="flex-1 bg-[var(--card-elevated)] text-sm text-[var(--text-main)] px-4 py-2.5 rounded-2xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)] disabled:opacity-50"
                     />
@@ -3345,10 +4249,39 @@ export function NativeChatInbox() {
         </div>
       </div>
 
-      {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء --- */}
+      {/* لوحة تفاصيل المحادثة — تنزلق من اليسار بنقرة واحدة */}
+      <ConversationInfoPanel
+        open={infoPanelOpen}
+        onClose={() => setInfoPanelOpen(false)}
+        conv={activeConversation}
+        dbTags={dbTags}
+        isFavoriteChat={(() => {
+          if (!activeConversation) return false;
+          return favoritesList.some(
+            (f) =>
+              (f.category === 'direct_chat' || f.category === 'group') &&
+              f.meta?.chat_jid === activeConversation.chat_jid
+          );
+        })()}
+        isContactSaved={isContactSaved}
+        pinnedCount={(activeConversation && pinnedMessagesMap[activeConversation.id]?.length) || 0}
+        getLineDisplayTitle={getLineDisplayTitle}
+        currentUserName={user?.full_name || ''}
+        actions={convActions}
+      />
+
+      {/* --- حارس المخاطر: نافذة تأكيد الإرسال في ساعات الهدوء (Modal الموحدة) --- */}
       {quietConfirmOpen && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-amber-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal
+          open
+          onClose={() => {
+            setQuietConfirmOpen(false);
+            setPendingSendText('');
+          }}
+          contained
+          ariaLabel="تأكيد الإرسال في ساعات الهدوء"
+          panelClassName="border border-amber-500/50 rounded-2xl max-w-md p-6 space-y-4 text-right"
+        >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
                 <Moon className="w-6 h-6 animate-pulse" />
@@ -3384,14 +4317,21 @@ export function NativeChatInbox() {
                 تأكيد الإرسال الاستثنائي الآن
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* --- نافذة معاينة وإرسال المرفقات --- */}
       {attachmentModalOpen && selectedAttachment && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal
+          open
+          onClose={() => {
+            setAttachmentModalOpen(false);
+            setSelectedAttachment(null);
+          }}
+          contained
+          ariaLabel="إرسال مرفق عبر واتساب"
+          panelClassName="border border-purple-500/40 rounded-3xl max-w-lg p-6 space-y-4 text-right"
+        >
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
@@ -3491,13 +4431,12 @@ export function NativeChatInbox() {
                 )}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════════════
           🖼️ Lightbox — نافذة عرض الصور/الفيديو بشاشة كاملة
-          اضغط على الخلفية أو زر X لإغلاقها
+          اضغط على الخلفية أو زر X أو Esc لإغلاقها
          ════════════════════════════════════════════════════════ */}
       {/* ════════════════════════════════════════════════════════
           🖼️ Lightbox المتطور — نافذة عرض الصور والفيديو بالدقة الكاملة
@@ -3574,8 +4513,7 @@ export function NativeChatInbox() {
           مع اختيار جودة HD أو عادية
          ════════════════════════════════════════════════════════ */}
       {multiSendModalOpen && batchAttachments.length > 0 && (
-        <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal open onClose={() => { setMultiSendModalOpen(false); }} contained ariaLabel="معاينة وإرسال دفعة الوسائط" panelClassName="border border-purple-500/40 rounded-3xl max-w-2xl p-6 space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
               <div className="flex items-center gap-2">
                 <FileUp className="w-5 h-5 text-purple-400" />
@@ -3705,16 +4643,14 @@ export function NativeChatInbox() {
                 )}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════════════
           📌 نافذة اختيار مدة تثبيت الرسالة (خيارات واتساب)
          ════════════════════════════════════════════════════════ */}
       {pinModalMsg && (
-        <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-amber-500/40 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 text-right">
+        <Modal open onClose={() => setPinModalMsg(null)} contained ariaLabel="اختيار مدة تثبيت الرسالة" panelClassName="border border-amber-500/40 rounded-3xl max-w-sm p-5 space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
                 <Pin className="w-4 h-4 rotate-45" />
@@ -3750,21 +4686,24 @@ export function NativeChatInbox() {
                 <span className="text-slate-400 font-mono text-[11px]">30d</span>
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ════════════════════════════════════════════════════════
           ↪️ نافذة تحويل الرسالة إلى محادثة أخرى
          ════════════════════════════════════════════════════════ */}
       {forwardModalMsg && (
-        <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
+        <Modal open onClose={() => setForwardModalMsg(null)} contained ariaLabel="تحويل الرسالة إلى محادثة أخرى" panelClassName="border border-purple-500/40 rounded-3xl max-w-xl p-6 space-y-4 text-right">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-purple-300 font-bold text-sm">
                 <Share2 className="w-4 h-4" />
                 <span>تحويل الرسالة إلى محادثة</span>
               </div>
+              {/* م8: توضيح خط المصدر — التحويل يتم من نفس الرقم الذي وردت منه الرسالة */}
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                سيتم التحويل من خط <b className="text-purple-300">{getLineDisplayTitle(forwardModalMsg.line_id || selectedInstanceName)}</b>{' '}
+                (الخط الذي وردت منه الرسالة) إلى المحادثة الهدف — للإرسال لمجموعة يجب أن يكون رقم المصدر عضواً فيها.
+              </p>
               <button onClick={() => setForwardModalMsg(null)} className="text-slate-400 hover:text-[var(--text-main)]">
                 <X className="w-4 h-4" />
               </button>
@@ -3781,6 +4720,7 @@ export function NativeChatInbox() {
             </div>
             <div className="max-h-60 overflow-y-auto space-y-1.5">
               {conversations
+                .filter((c) => c.chat_jid !== forwardModalMsg.chat_jid) // استبعاد محادثة المصدر
                 .filter((c) => !forwardSearch || c.title.toLowerCase().includes(forwardSearch.toLowerCase()))
                 .map((conv) => (
                   <button
@@ -3796,11 +4736,71 @@ export function NativeChatInbox() {
                   </button>
                 ))}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
-      {/* ════════════════════════════════════════════════════════
+            {/* طلب المالك: قائمة خيارات المرسل داخل المجموعة */}
+      {senderMenu && (
+        <>
+          <div className="fixed inset-0 z-[180]" onClick={() => setSenderMenu(null)} />
+          <div className="fixed z-[190] w-56 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl p-1.5" dir="rtl"
+            style={{ left: Math.min(senderMenu.x, (typeof window !== 'undefined' ? window.innerWidth - 240 : 400)), top: Math.min(senderMenu.y + 6, (typeof window !== 'undefined' ? window.innerHeight - 160 : 600)) }}>
+            <div className="px-3 py-2 text-[11px] font-bold text-purple-300 border-b border-[var(--border-subtle)] mb-1 truncate">
+              {senderMenu.name}
+            </div>
+            {(() => {
+              const digits = senderMenu.jid.replace(/@.*$/, '').replace(/\D/g, '');
+              const isPhone = senderMenu.jid.endsWith('@s.whatsapp.net') && digits.length >= 10;
+              return (
+                <>
+                  <button
+                    onClick={async () => {
+                      if (!isPhone) return;
+                      try {
+                        const res = await fetch('/api/contacts', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            display_name: senderMenu.name,
+                            primary_phone: '+' + digits,
+                            entity_type: 'individual',
+                            commercial_role: 'b2c',
+                            source: 'manual',
+                            source_detail: 'من محادثة مجموعة',
+                          }),
+                        });
+                        if (res.ok) toast({ title: 'تم حفظ ' + senderMenu.name + ' كجهة اتصال', kind: 'success' });
+                        else toast({ title: 'فشل الحفظ — قد يكون مسجلاً مسبقاً', kind: 'info' });
+                      } catch { toast({ title: 'فشل الاتصال', kind: 'error' }); }
+                      setSenderMenu(null);
+                    }}
+                    className={isPhone
+                      ? 'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors'
+                      : 'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed'}
+                    title={isPhone ? 'إضافة إلى دليل جهات الاتصال' : 'المعرف من نوع LID — لا يحتوي رقماً هاتفياً'}
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    إضافة كجهة اتصال
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(senderMenu.jid);
+                      toast({ title: 'تم نسخ المعرف', kind: 'success' });
+                      setSenderMenu(null);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    نسخ معرف المرسل
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
+
+{/* ════════════════════════════════════════════════════════
           ⭐️ درج المفضلة المركزي (المفضلة - 6 تبويبات متخصصة)
          ════════════════════════════════════════════════════════ */}
       {favoritesDrawerOpen && (
@@ -3879,13 +4879,48 @@ export function NativeChatInbox() {
                         )}
                         <div className="text-[9px] text-purple-400/80 mt-1">{item.createdAt}</div>
                       </div>
-                      <button
-                        onClick={() => setFavoritesList((prev) => prev.filter((x) => x.id !== item.id))}
-                        className="text-slate-500 hover:text-rose-400 p-1 opacity-60 group-hover:opacity-100 transition-opacity"
-                        title="إزالة من المفضلة"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {/* م8-ج3: فتح العنصر — يضبط الرابط العميق مباشرة (نبضة فورية) أو يفتح جهات الاتصال */}
+                        <button
+                          onClick={() => {
+                            const meta: any = (item as any).meta || {};
+                            const jid = meta.chat_jid || meta.chatJid;
+                            setFavoritesDrawerOpen(false);
+                            if (jid) {
+                              pendingChatDeepLink.current = jid;
+                              setDeepLinkTick((t) => t + 1);
+                              // مهلة فشل مطابقة للمراقب
+                              setTimeout(() => {
+                                if (pendingChatDeepLink.current === jid) {
+                                  pendingChatDeepLink.current = null;
+                                  toast({ title: 'لم تُوجد المحادثة في نطاق صندوقك الحالي — افتح صندوقها أو خطها', kind: 'error' });
+                                }
+                              }, 5000);
+                            } else if (item.category === 'contact') {
+                              router.push('/module/contacts');
+                            } else {
+                              toast({ title: 'لا يوجد رابط محادثة محفوظ لهذا العنصر (مفضل قديم قبل التسجيل)', kind: 'info' });
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-purple-600/20 text-purple-300 hover:bg-purple-600/40 transition-colors"
+                          title="فتح في المحادثة"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setFavoritesList((prev) => prev.filter((x) => x.id !== item.id));
+                            try {
+                              localStorage.setItem('hub_favorites_v1', JSON.stringify(favoritesList.filter((x) => x.id !== item.id)));
+                            } catch {}
+                            fetch(`/api/favorites?item_id=${encodeURIComponent(item.id)}&category=${item.category}`, { method: 'DELETE' }).catch(() => {});
+                          }}
+                          className="text-slate-500 hover:text-rose-400 p-1 opacity-60 group-hover:opacity-100 transition-opacity"
+                          title="إزالة من المفضلة"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))
               )}
@@ -3894,10 +4929,9 @@ export function NativeChatInbox() {
         </div>
       )}
 
-      {/* 🔒 نافذة إدخال / تعيين رمز PIN */}
+      {/* 🔒 نافذة إدخال / تعيين رمز PIN (Modal الموحدة) */}
       {pinModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-purple-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl" dir="rtl">
+        <Modal open onClose={() => setPinModalOpen(false)} contained ariaLabel="رمز حماية المحادثة" panelClassName="border border-purple-500/30 rounded-3xl p-6 max-w-sm space-y-4 shadow-2xl" >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
@@ -3975,14 +5009,12 @@ export function NativeChatInbox() {
                 إلغاء
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* 🛡️ نافذة طلب ترخيص الوصول والإسناد من المشرف أو صاحب القفل */}
       {requestAccessModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl text-right" dir="rtl">
+        <Modal open onClose={() => setRequestAccessModalOpen(false)} contained ariaLabel="طلب ترخيص الوصول" panelClassName="border border-amber-500/30 rounded-3xl p-6 max-w-md space-y-4 shadow-2xl text-right" >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
@@ -4091,12 +5123,24 @@ export function NativeChatInbox() {
 
             <div className="flex items-center gap-2 pt-2">
               {!requestAccessSent ? (
-                <button
-                  onClick={() => setRequestAccessSent(true)}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-900/40"
-                >
-                  إرسال الطلب والمبررات الآن
-                </button>
+                <div className="flex-1 space-y-2">
+                  {requestAccessError && (
+                    <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[11px] font-bold text-center">
+                      {requestAccessError}
+                    </div>
+                  )}
+                  <button
+                    onClick={submitAccessRequest}
+                    disabled={requestAccessSending || !activeConversation}
+                    className={`w-full py-2.5 rounded-xl text-white text-xs font-bold transition-all shadow-md shadow-purple-900/40 ${
+                      requestAccessSending
+                        ? 'bg-slate-600 cursor-not-allowed opacity-60'
+                        : 'bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500'
+                    }`}
+                  >
+                    {requestAccessSending ? '...جارٍ إرسال الطلب' : 'إرسال الطلب والمبررات الآن'}
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => setRequestAccessModalOpen(false)}
@@ -4106,8 +5150,7 @@ export function NativeChatInbox() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
     </div>

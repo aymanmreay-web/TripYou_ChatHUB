@@ -5,11 +5,37 @@ import { StaffMe, WhatsAppLine, ModuleContract } from '../types';
 import { MOCK_LINES, RAW_MODULES, filterModulesForUser } from '../lib/mock-data';
 import { loadAuthState, signOut, AuthStatus } from '../lib/authDb';
 import { supabase } from '../lib/supabase';
+import { loadAppearance, applyAppearance } from '../lib/appearance';
 
-export type AppTheme = 'theme-purple' | 'theme-blue' | 'theme-google';
+export type AppTheme =
+  | 'theme-google'
+  | 'theme-violet'
+  | 'theme-ocean'
+  | 'theme-emerald'
+  | 'theme-sunset'
+  | 'theme-graphite';
 
-/** الثيم الافتراضي للمستخدمين الجدد. بعد مراجعة التصميم الجديد غيّر القيمة إلى 'theme-google'. */
-export const DEFAULT_THEME: AppTheme = 'theme-purple';
+/** الثيمات الست المعتمدة من نظام v1 — ألوان الهوية الأربعة لكل ثيم تُستخدم في مبدّل الترويسة. */
+export const THEMES: { key: AppTheme; label: string; colors: [string, string, string, string] }[] = [
+  { key: 'theme-google', label: 'جوجل', colors: ['#4285F4', '#EA4335', '#FBBC04', '#34A853'] },
+  { key: 'theme-violet', label: 'بنفسجي ملكي', colors: ['#7C3AED', '#A855F7', '#F59E0B', '#C084FC'] },
+  { key: 'theme-ocean', label: 'محيط', colors: ['#0EA5E9', '#06B6D4', '#6366F1', '#22D3EE'] },
+  { key: 'theme-emerald', label: 'زمرد', colors: ['#10B981', '#34D399', '#FBBF24', '#059669'] },
+  { key: 'theme-sunset', label: 'غروب', colors: ['#F97316', '#EF4444', '#FBBF24', '#EC4899'] },
+  { key: 'theme-graphite', label: 'جرافيت', colors: ['#64748B', '#94A3B8', '#CBD5E1', '#475569'] },
+];
+
+const ALL_THEME_KEYS: AppTheme[] = THEMES.map((t) => t.key);
+
+/** ترحيل مفاتيح الثيمات القديمة إلى أسماء v1: purple→violet وblue→ocean، وأي قيمة غير معروفة ترجع للافتراضي. */
+function migrateTheme(saved: string | null): AppTheme {
+  if (saved === 'theme-purple') return 'theme-violet';
+  if (saved === 'theme-blue') return 'theme-ocean';
+  return (ALL_THEME_KEYS as string[]).includes(saved || '') ? (saved as AppTheme) : DEFAULT_THEME;
+}
+
+/** الثيم الافتراضي للمستخدمين الجدد — جوجل هو هوية v1 المعتمدة. */
+export const DEFAULT_THEME: AppTheme = 'theme-google';
 export type AppMode = 'dark' | 'light';
 
 interface AppContextType {
@@ -77,7 +103,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const savedLine = localStorage.getItem('tripyou_hub_line_id');
-      const savedTheme = (localStorage.getItem('tripyou_theme') as AppTheme) || DEFAULT_THEME;
+      const savedTheme = migrateTheme(localStorage.getItem('tripyou_theme'));
       const savedMode = (localStorage.getItem('tripyou_mode') as AppMode) || 'dark';
 
       if (savedLine) {
@@ -88,8 +114,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Synchronize <html> classes immediately
       const root = document.documentElement;
-      root.classList.remove('theme-purple', 'theme-blue', 'theme-google', 'dark', 'light');
+      root.classList.remove(...ALL_THEME_KEYS, 'theme-purple', 'theme-blue', 'dark', 'light');
       root.classList.add(savedTheme, savedMode);
+      // تطبيق إعدادات استوديو المظهر (حجم الخط، الاستدارة، الزجاج، الحركة، الخلفية...)
+      applyAppearance(loadAppearance());
     } catch {
       // ignore
     }
@@ -100,7 +128,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.setItem('tripyou_theme', newTheme);
       const root = document.documentElement;
-      root.classList.remove('theme-purple', 'theme-blue', 'theme-google');
+      root.classList.remove(...ALL_THEME_KEYS, 'theme-purple', 'theme-blue');
       root.classList.add(newTheme);
     } catch {
       // ignore

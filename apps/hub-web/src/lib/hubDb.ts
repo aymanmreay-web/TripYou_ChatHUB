@@ -156,35 +156,54 @@ export interface TagRow {
   name: string;
   hex_color: string;
   count: number;
+  /** نطاق التطبيق: contact | conversation | both (م8: الوسوم الموسعة) */
+  scope?: 'contact' | 'conversation' | 'both';
 }
 
 export async function fetchTags(): Promise<TagRow[]> {
-  const [tg, ct] = await Promise.all([
+  const [tg, ct, ctt] = await Promise.all([
     supabase.from('hub_tags').select('*').neq('kind', 'whatsapp').order('sort_order').order('created_at'),
     supabase.from('conversation_tags').select('tag_id'),
+    supabase.from('contact_tags').select('tag_id'),
   ]);
   const tags = check(tg) as any[];
-  const used = check(ct) as any[];
+  const usedConv = check(ct) as any[];
+  const usedContact = check(ctt) as any[];
   return (tags ?? []).map((t) => ({
     id: t.id,
     name: t.name_ar,
     hex_color: t.color || '#8b5cf6',
-    count: (used ?? []).filter((u) => u.tag_id === t.id).length,
+    scope: (t.scope as TagRow['scope']) || 'both',
+    count:
+      (usedConv ?? []).filter((u) => u.tag_id === t.id).length +
+      (usedContact ?? []).filter((u) => u.tag_id === t.id).length,
   }));
 }
 
-export async function createTag(name: string, hex: string, sortOrder = 0): Promise<void> {
+export async function createTag(
+  name: string,
+  hex: string,
+  sortOrder = 0,
+  scope: 'contact' | 'conversation' | 'both' = 'both'
+): Promise<void> {
   check(
     await supabase
       .from('hub_tags')
-      .insert({ key: `tag_${Date.now().toString(36)}`, name_ar: name.trim(), color: hex, kind: 'custom', sort_order: sortOrder })
+      .insert({ key: `tag_${Date.now().toString(36)}`, name_ar: name.trim(), color: hex, kind: 'custom', sort_order: sortOrder, scope })
       .select('id')
   );
 }
 
-export async function updateTag(id: string, name: string, hex: string): Promise<void> {
+export async function updateTag(
+  id: string,
+  name: string,
+  hex: string,
+  scope?: 'contact' | 'conversation' | 'both'
+): Promise<void> {
+  const payload: Record<string, any> = { name_ar: name.trim(), color: hex };
+  if (scope) payload.scope = scope;
   const rows = check(
-    await supabase.from('hub_tags').update({ name_ar: name.trim(), color: hex }).eq('id', id).select('id')
+    await supabase.from('hub_tags').update(payload).eq('id', id).select('id')
   ) as any[];
   if (!rows || rows.length === 0) throw new Error('الوسم غير موجود');
 }
@@ -274,6 +293,7 @@ export interface StaffRow {
   line_ids: string[];
   inbox_ids: string[];
   can_lock_conversations: boolean;
+  department_id: string | null;
   permissions_count: number;
 }
 
@@ -284,7 +304,7 @@ export async function fetchRoles(): Promise<RoleRow[]> {
 
 export async function fetchStaffAll(): Promise<StaffRow[]> {
   const [st, rl, rp, la, ia] = await Promise.all([
-    supabase.from('staff').select('id, full_name, email, phone, status, role_id, can_lock_conversations').order('created_at'),
+    supabase.from('staff').select('id, full_name, email, phone, status, role_id, can_lock_conversations, department_id').order('created_at'),
     supabase.from('roles').select('id, key, title_ar'),
     supabase.from('role_permissions').select('role_id'),
     supabase.from('line_access').select('staff_id, line_id'),
@@ -308,6 +328,7 @@ export async function fetchStaffAll(): Promise<StaffRow[]> {
       line_ids: lines.filter((x) => x.staff_id === s.id).map((x) => x.line_id),
       inbox_ids: inboxes.filter((x) => x.staff_id === s.id).map((x) => x.inbox_id),
       can_lock_conversations: !!s.can_lock_conversations,
+      department_id: s.department_id || null,
       permissions_count: perms.filter((p) => p.role_id === s.role_id).length,
     };
   });
@@ -329,6 +350,7 @@ export async function saveStaffMember(m: StaffRow, isNew: boolean): Promise<void
     status: m.status,
     role_id: role.id,
     can_lock_conversations: m.can_lock_conversations,
+      department_id: (m as any).department_id || null,
   };
   let id = m.id;
   if (isNew) {
@@ -338,21 +360,46 @@ export async function saveStaffMember(m: StaffRow, isNew: boolean): Promise<void
     const rows = check(await supabase.from('staff').update(payload).eq('id', id).select('id')) as any[];
     if (!rows || rows.length === 0) throw new Error('لم يتم العثور على الموظف');
   }
-  check(await supabase.from('line_access').delete().eq('staff_id', id).select('staff_id'));
+  // ─── مزامنة آمنة للصلاحيات: upsert بدل حذف-شامل-ثم-إدراج ───
+  // الحفظ المزدوج (نقرة ثانية أثناء الحفظ) كان يسبب:
+  // "duplicate key value violates unique constraint line_access_pkey"
+  // لأن حذفي النداءين يُنفذان قبل إدراجيهما. upsert يجعل الحفظ idempotent.
+  // 1) حذف الأسطر المُلغاة فقط (ما كان مسنداً ولم يعد في القائمة الجديدة)
+  if (m.line_ids.length > 0) {
+    check(
+      await supabase.from('line_access').delete().eq('staff_id', id).not('line_id', 'in', `(${m.line_ids.join(',')})`).select('staff_id')
+    );
+  } else {
+    check(await supabase.from('line_access').delete().eq('staff_id', id).select('staff_id'));
+  }
+  // 2) إدراج/تحديث الأسطر الحالية — onConflict يبتلع التكرار بأمان
   if (m.line_ids.length > 0) {
     check(
       await supabase
         .from('line_access')
-        .insert(m.line_ids.map((line_id) => ({ staff_id: id, line_id, can_read: true, can_send: true })))
+        .upsert(
+          m.line_ids.map((line_id) => ({ staff_id: id, line_id, can_read: true, can_send: true })),
+          { onConflict: 'staff_id,line_id' }
+        )
         .select('staff_id')
     );
   }
-  check(await supabase.from('inbox_access').delete().eq('staff_id', id).select('staff_id'));
+  // 3) نفس المنطق لصناديق الوارد
+  if (m.inbox_ids.length > 0) {
+    check(
+      await supabase.from('inbox_access').delete().eq('staff_id', id).not('inbox_id', 'in', `(${m.inbox_ids.join(',')})`).select('staff_id')
+    );
+  } else {
+    check(await supabase.from('inbox_access').delete().eq('staff_id', id).select('staff_id'));
+  }
   if (m.inbox_ids.length > 0) {
     check(
       await supabase
         .from('inbox_access')
-        .insert(m.inbox_ids.map((inbox_id) => ({ staff_id: id, inbox_id, can_reply: true, can_assign: false })))
+        .upsert(
+          m.inbox_ids.map((inbox_id) => ({ staff_id: id, inbox_id, can_reply: true, can_assign: false })),
+          { onConflict: 'inbox_id,staff_id' }
+        )
         .select('staff_id')
     );
   }

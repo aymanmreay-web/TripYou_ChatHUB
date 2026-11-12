@@ -61,6 +61,9 @@ export interface ChatMessage {
   is_pinned?: boolean;
   pinned_duration?: '24h' | '7d' | '30d';
   is_starred?: boolean;
+  // م8: مفاتيح واتساب الخام — للتحويل/الاقتباس الرسمي (موجودة للرسائل الحقيقية فقط)
+  key_from_me?: boolean;
+  key_participant?: string;
   reply_to?: {
     id: string;
     sender_name: string;
