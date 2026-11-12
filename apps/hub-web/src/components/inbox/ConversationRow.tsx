@@ -16,13 +16,12 @@ interface ConversationRowProps {
   conv: ConversationItem;
   isSelected: boolean;
   onSelect: (id: string) => void;
-  dbTags: { id: string; name: string; hex_color: string }[];
   getLineDisplayTitle: (id: string) => string;
   /** هل نحن في وضع «كل الخطوط»؟ عندها تظهر شارة الخطوط المتعددة للمحادثات المشتركة */
   multiLine: boolean;
 }
 
-export function ConversationRow({ conv, isSelected, onSelect, dbTags, getLineDisplayTitle, multiLine }: ConversationRowProps) {
+export function ConversationRow({ conv, isSelected, onSelect, getLineDisplayTitle, multiLine }: ConversationRowProps) {
   return (
     <button
       key={conv.id}
@@ -100,34 +99,10 @@ export function ConversationRow({ conv, isSelected, onSelect, dbTags, getLineDis
             {/* عدّاد الانتظار الحي (نمط v1) — للحالات النشطة فقط */}
             <SlaTimer since={conv.last_customer_message_timestamp} status={conv.status} />
 
-            <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
-              {conv.assigned_staff_name || 'عام'}
-            </span>
-
-            {/* م3: شارات الوسوم من القاعدة (أول وسمين + عدّاد) */}
-            {(conv.tags || []).length > 0 && (
-              <span className="flex items-center gap-1">
-                {(conv.tags || []).slice(0, 2).map((tagName) => {
-                  const t = dbTags.find((x) => x.name === tagName);
-                  return (
-                    <span
-                      key={tagName}
-                      className="text-[9px] px-1.5 py-0.5 rounded font-semibold border"
-                      style={{
-                        background: `${t?.hex_color || '#8b5cf6'}22`,
-                        color: t?.hex_color || '#8b5cf6',
-                        borderColor: `${t?.hex_color || '#8b5cf6'}55`,
-                      }}
-                    >
-                      🏷 {tagName}
-                    </span>
-                  );
-                })}
-                {(conv.tags || []).length > 2 && (
-                  <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400 font-mono">
-                    +{(conv.tags || []).length - 2}
-                  </span>
-                )}
+            {/* وسم الإسناد يظهر فقط عند إسناد فعلي لموظف (قرار المالك) */}
+            {conv.assigned_staff_name && (
+              <span className="text-[10px] text-slate-400 truncate max-w-[80px]">
+                {conv.assigned_staff_name}
               </span>
             )}
           </div>

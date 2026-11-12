@@ -118,9 +118,11 @@ export function ConversationInfoPanel({
                   <InfoRow icon={<MessageSquare className="w-3.5 h-3.5" />} label="الخط">
                     <bdi dir="ltr">{getLineDisplayTitle(conv.line_id || 'Master')}</bdi>
                   </InfoRow>
-                  <InfoRow icon={<UserPlus className="w-3.5 h-3.5" />} label="المسندة إلى">
-                    {conv.assigned_staff_name || 'عام'}
-                  </InfoRow>
+                  {conv.assigned_staff_name && (
+                    <InfoRow icon={<UserPlus className="w-3.5 h-3.5" />} label="المسندة إلى">
+                      {conv.assigned_staff_name}
+                    </InfoRow>
+                  )}
                   <InfoRow icon={<ShieldCheck className="w-3.5 h-3.5" />} label="صلاحية ردّك">
                     {conv.assigned_staff_name && conv.assigned_staff_name !== currentUserName
                       ? 'اقتراح فقط — المحادثة لزميلك'

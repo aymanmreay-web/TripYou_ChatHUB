@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { fetchStaffAll, fetchRoles, fetchLines, fetchInboxes, saveStaffMember, setStaffStatus, StaffRow, RoleRow, LineOption, InboxRow } from '../../../lib/hubDb';
+import { useEffect as _useEffect } from 'react';
 
 type StaffMember = StaffRow;
 
@@ -41,6 +42,14 @@ export default function StaffManagementPage() {
   const [saving, setSaving] = useState(false);
 
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  // م8: الأقسام — ربط الموظفين بالأقسام (يظهر في التوقيع)
+  const [departmentsList, setDepartmentsList] = useState<{ id: string; title_ar: string }[]>([]);
+  useEffect(() => {
+    fetch('/api/roles-matrix')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setDepartmentsList((j.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar }))))
+      .catch(() => {});
+  }, []);
   const [isNewModal, setIsNewModal] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -158,6 +167,7 @@ export default function StaffManagementPage() {
                   line_ids: [],
                   inbox_ids: [],
                   can_lock_conversations: false,
+                  department_id: null,
                   permissions_count: 0,
                 });
                 setIsNewModal(true);

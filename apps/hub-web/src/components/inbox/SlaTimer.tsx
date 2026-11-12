@@ -45,12 +45,12 @@ export function SlaTimer({ since, status, showLabel = false, className = '' }: S
 
   const label =
     level === 'resolved'
-      ? 'تم الحل وإغلاق التذكرة'
+      ? 'تم الحل'
       : level === 'critical'
-      ? `تجاوز مهلة الرد ${clock} — يلزم التصعيد!`
+      ? `⛔ ${clock}`
       : level === 'warning'
-      ? `تنبيه المشرف: انتظار ${clock}`
-      : `انتظار العميل: ${clock}`;
+      ? `تنبيه ${clock}`
+      : clock;
 
   return (
     <span

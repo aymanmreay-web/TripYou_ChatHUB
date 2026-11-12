@@ -293,6 +293,7 @@ export interface StaffRow {
   line_ids: string[];
   inbox_ids: string[];
   can_lock_conversations: boolean;
+  department_id: string | null;
   permissions_count: number;
 }
 
@@ -303,7 +304,7 @@ export async function fetchRoles(): Promise<RoleRow[]> {
 
 export async function fetchStaffAll(): Promise<StaffRow[]> {
   const [st, rl, rp, la, ia] = await Promise.all([
-    supabase.from('staff').select('id, full_name, email, phone, status, role_id, can_lock_conversations').order('created_at'),
+    supabase.from('staff').select('id, full_name, email, phone, status, role_id, can_lock_conversations, department_id').order('created_at'),
     supabase.from('roles').select('id, key, title_ar'),
     supabase.from('role_permissions').select('role_id'),
     supabase.from('line_access').select('staff_id, line_id'),
@@ -327,6 +328,7 @@ export async function fetchStaffAll(): Promise<StaffRow[]> {
       line_ids: lines.filter((x) => x.staff_id === s.id).map((x) => x.line_id),
       inbox_ids: inboxes.filter((x) => x.staff_id === s.id).map((x) => x.inbox_id),
       can_lock_conversations: !!s.can_lock_conversations,
+      department_id: s.department_id || null,
       permissions_count: perms.filter((p) => p.role_id === s.role_id).length,
     };
   });
@@ -348,6 +350,7 @@ export async function saveStaffMember(m: StaffRow, isNew: boolean): Promise<void
     status: m.status,
     role_id: role.id,
     can_lock_conversations: m.can_lock_conversations,
+      department_id: (m as any).department_id || null,
   };
   let id = m.id;
   if (isNew) {

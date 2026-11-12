@@ -72,6 +72,7 @@ import { SlaTimer } from './SlaTimer';
 import { ConversationRow } from './ConversationRow';
 import { ConversationInfoPanel } from './ConversationInfoPanel';
 import { Modal } from './Modal';
+import { statusBadge, statusLabel } from '../../lib/inbox/uiMaps';
 import { isQuietHoursNow } from '../../lib/inbox/time';
 
 interface EvolutionInstanceSummary {
@@ -198,6 +199,8 @@ export function NativeChatInbox() {
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   // م8-ج3: قائمة خيارات الجهة (اسم المحادثة قابل للنقر)
   const [contactMenuOpen, setContactMenuOpen] = useState(false);
+  // طلب المالك: قائمة خيارات لكل مرسل داخل المجموعة
+  const [senderMenu, setSenderMenu] = useState<{ msgId: string; name: string; jid: string; x: number; y: number } | null>(null);
 
   // ─── C4: قواعد الرد عبر الخطوط ───
   // منح المدير: خطوط يُسمح للموظف الرد منها رغم أنها ليست خط الوارد (بعد موافقة صريحة)
@@ -1194,6 +1197,31 @@ export function NativeChatInbox() {
   }, [activeConversation, allowedSendInstances]);
 
   const [reqSentType, setReqSentType] = useState<string>('');
+
+  // م٨: وضع التحديد المتعدد للرسائل + شريط الإجراءات الجماعية
+  const [msgSelectionMode, setMsgSelectionMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
+  const toggleMsgSelection = (id: string) => {
+    setSelectedMsgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const selectedMessages = messages.filter((m) => selectedMsgIds.has(m.id));
+  const handleBulkDelete = async () => {
+    const withKey = selectedMessages.filter((m) => m.msg_key_id);
+    for (const m of withKey) {
+      await fetch(`/api/evolution/instances/${encodeURIComponent(m.line_id || selectedInstanceName)}/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: { remoteJid: m.chat_jid, fromMe: m.key_from_me ?? m.direction === 'out', id: m.msg_key_id, participant: m.key_participant || undefined } }),
+      }).catch(() => {});
+    }
+    toast({ title: `أُرسل أمر الحذف للجميع لـ ${withKey.length} رسالة`, kind: 'success' });
+    setMsgSelectionMode(false);
+    setSelectedMsgIds(new Set());
+  };
   useEffect(() => { setReqSentType(''); }, [activeConversation?.id]);
 
   const submitPermissionRequest = async (type: 'assignment' | 'read' | 'read_write' | 'line_reply' | 'group_join', lineName?: string) => {
@@ -1512,6 +1540,31 @@ export function NativeChatInbox() {
       console.warn('[mergeDbTags] non-critical:', err);
     }
   }, []);
+
+  // الصور الحقيقية الناقصة تُجلب من واتساب تدريجياً وتُخزَّن في hub.contacts (قرار المالك)
+  const avatarRequestedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (conversations.length === 0) return;
+    const pending = conversations
+      .filter((c) => !c.avatar_url && !avatarRequestedRef.current.has(c.chat_jid))
+      .slice(0, 24);
+    if (pending.length === 0) return;
+    pending.forEach((c) => avatarRequestedRef.current.add(c.chat_jid));
+    fetch('/api/avatars', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: pending.map((c) => ({ jid: c.chat_jid, instance: c.line_id || selectedInstanceName })) }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const av: Record<string, string> = data?.avatars || {};
+        const has = Object.values(av).some(Boolean);
+        if (!has) return;
+        setConversations((prev) => prev.map((c) => (av[c.chat_jid] ? { ...c, avatar_url: av[c.chat_jid] } : c)));
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.length]);
 
   // --- Supabase Realtime: مزامنة تغييرات الحالة بين الموظفين ---
   useEffect(() => {
@@ -2496,7 +2549,7 @@ export function NativeChatInbox() {
                         onChange={(e) => handleAssignStaff(e.target.value)}
                         className="bg-transparent text-xs text-[var(--text-main)] outline-none font-medium cursor-pointer"
                       >
-                        {availableStaff.map((s) => (
+                        {availableStaff.filter((s) => !/مدير/.test(s.role || '')).map((s) => (
                           <option key={s.id || 'unassigned'} value={s.name} className="bg-[var(--card-bg)] text-[var(--text-main)]">
                             {s.name} ({s.role.split(' ')[0]})
                           </option>
@@ -2854,7 +2907,16 @@ export function NativeChatInbox() {
         >
           {/* Search & Filters */}
           <div className="p-3 border-b border-[var(--border-subtle)] space-y-2.5">
-            <div className="relative">
+            <button
+                        type="button"
+                        onClick={() => { setMsgSelectionMode((v) => !v); setSelectedMsgIds(new Set()); }}
+                        className={`h-9 px-3 rounded-xl border text-[11px] font-bold transition-all shrink-0 flex items-center gap-1.5 ${msgSelectionMode ? 'bg-[var(--accent-soft)] text-[var(--primary)] border-[var(--border-glow)]' : 'bg-[var(--card-elevated)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
+                        title="تحديد رسائل — نسخ/تحويل/حذف للجميع"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        تحديد
+                      </button>
+                      <div className="relative">
               <Search className="w-4 h-4 absolute right-3 top-3 text-[var(--text-muted)]" />
               <input
                 type="text"
@@ -2988,7 +3050,6 @@ export function NativeChatInbox() {
                     conv={conv}
                     isSelected={conv.id === activeConvId}
                     onSelect={handleSelectConversation}
-                    dbTags={dbTags}
                     getLineDisplayTitle={getLineDisplayTitle}
                     multiLine={lineFilter === 'all'}
                   />
@@ -3119,35 +3180,18 @@ export function NativeChatInbox() {
                         )}
                       </div>
                       {activeConversation.is_group && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/40 text-purple-300 border border-purple-700/50">
-                          {activeConversation.participant_count ? `مجموعة (${activeConversation.participant_count} عضو)` : 'مجموعة'}
+                        <span className="text-[9px] px-1.5 py-px rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-semibold shrink-0">
+                          {activeConversation.participant_count ? `مجموعة · ${activeConversation.participant_count}` : 'مجموعة'}
                         </span>
                       )}
 
-                      {/* شارة الخط الوارد عليه المحادثة أو الخطوط المشتركة */}
-                      {activeConversation.available_lines && activeConversation.available_lines.length > 1 && lineFilter === 'all' ? (
-                        <span className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold bg-purple-950/80 text-purple-200 border-purple-600/50">
-                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-                          <span>الخطوط المشتركة:</span>
-                          <bdi dir="ltr">{activeConversation.available_lines.map((l) => getLineDisplayTitle(l)).join(' • ')}</bdi>
-                        </span>
-                      ) : (
-                        <span className={`flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-md border font-mono font-bold ${
-                          (lineFilter !== 'all' ? lineFilter : activeConversation.line_id) === 'Master'
-                            ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
-                            : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                        }`}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          <span>الخط:</span>
-                          <bdi dir="ltr">{getLineDisplayTitle(lineFilter !== 'all' ? lineFilter : (activeConversation.line_id || 'Master'))}</bdi>
-                        </span>
-                      )}
+                      {/* وسم الحالة الناعم بجانب العنوان (نمط v1) */}
+                      <span className={`text-[10px] px-2 py-px rounded-full font-semibold shrink-0 ${statusBadge(activeConversation.status)}`}>
+                        {statusLabel(activeConversation.status)}
+                      </span>
                     </div>
 
                     <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
-                      <span className="font-mono text-[var(--text-secondary)]">{activeConversation.phone_or_jid}</span>
-                      <span>•</span>
-                      
                       {/* عداد الاستجابة الحي SLA Timer — ينبض كل ثانية (نمط v1) */}
                       <SlaTimer
                         since={activeConversation.last_customer_message_timestamp}
@@ -3398,6 +3442,16 @@ export function NativeChatInbox() {
                               : 'bubble-peer'
                           }`}
                         >
+                          {msgSelectionMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleMsgSelection(msg.id); }}
+                              className={`absolute top-1 right-1 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${selectedMsgIds.has(msg.id) ? 'bg-[var(--accent-soft)] border-[var(--border-glow)] text-[var(--primary)]' : 'bg-black/30 border-white/20 text-transparent hover:text-white'}`}
+                              title="تحديد الرسالة"
+                            >
+                              <CheckSquare className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {msg.reply_to && (
                             <div className="mb-2 p-2 rounded-xl bg-black/30 border-r-2 border-purple-400 text-xs">
                               <div className="font-semibold text-purple-300 text-[11px]">{msg.reply_to.sender_name}</div>
@@ -3406,7 +3460,18 @@ export function NativeChatInbox() {
                           )}
                           {!isOut && activeConversation.is_group && (
                             <div className="text-[11px] font-bold text-purple-300 mb-1">
-                              {msg.sender_name}
+                              {/* طلب المالك: قائمة لكل مرسل — جهة اتصال / نسخ المعرف */}
+                              <button
+                                onClick={(e) => {
+                                  const rct = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  setSenderMenu({ msgId: msg.id, name: msg.sender_name, jid: msg.key_participant || '', x: rct.left, y: rct.bottom });
+                                }}
+                                className="hover:underline flex items-center gap-1"
+                                title="خيارات المرسل"
+                              >
+                                {msg.sender_name}
+                                <ChevronDown className="w-3 h-3 inline" />
+                              </button>
                             </div>
                           )}
 
@@ -3690,6 +3755,45 @@ export function NativeChatInbox() {
 
               {/* Chat Input Bar with Risk Guard Checks */}
               <div className="bg-[var(--card-bg)] border-t border-[var(--border-subtle)] p-3 shrink-0 space-y-2">
+
+                {/* م8: شريط إجراءات التحديد المتعدد */}
+                {msgSelectionMode && selectedMsgIds.size > 0 && (
+                  <div className="rounded-2xl border border-[var(--border-glow)] bg-[var(--accent-soft)] px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap" dir="rtl">
+                    <span className="text-xs font-bold text-[var(--primary)]">{selectedMsgIds.size} رسالة محددة</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => {
+                          const text = selectedMessages.map((m) => m.body || `[${m.media_type}]`).join('\n---\n');
+                          navigator.clipboard.writeText(text);
+                          toast({ title: 'نُسخ نص الرسائل المحددة', kind: 'success' });
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] text-[11px] font-bold hover:border-[var(--border-glow)]"
+                      >
+                        نسخ المحدد
+                      </button>
+                      {selectedMessages[0] && (
+                        <button
+                          onClick={() => { setForwardModalMsg(selectedMessages[0]); setMsgSelectionMode(false); }}
+                          className="px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] text-[11px] font-bold hover:border-[var(--border-glow)]"
+                        >
+                          تحويل الأولى
+                        </button>
+                      )}
+                      <button
+                        onClick={handleBulkDelete}
+                        className="px-3 py-1.5 rounded-xl bg-rose-600/20 border border-rose-500/40 text-rose-300 text-[11px] font-bold hover:bg-rose-600/30"
+                      >
+                        حذف للجميع
+                      </button>
+                      <button
+                        onClick={() => { setMsgSelectionMode(false); setSelectedMsgIds(new Set()); }}
+                        className="px-3 py-1.5 rounded-xl text-[var(--text-muted)] text-[11px] font-bold hover:text-[var(--text-main)]"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* طبقات الرؤية: هيكل المحادثة المسندة لغيره + أزرار الطلبات */}
                 {activeConversation && contentAccess === 'shell' && (
@@ -4554,7 +4658,68 @@ export function NativeChatInbox() {
         </Modal>
       )}
 
-      {/* ════════════════════════════════════════════════════════
+            {/* طلب المالك: قائمة خيارات المرسل داخل المجموعة */}
+      {senderMenu && (
+        <>
+          <div className="fixed inset-0 z-[180]" onClick={() => setSenderMenu(null)} />
+          <div className="fixed z-[190] w-56 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl p-1.5" dir="rtl"
+            style={{ left: Math.min(senderMenu.x, (typeof window !== 'undefined' ? window.innerWidth - 240 : 400)), top: Math.min(senderMenu.y + 6, (typeof window !== 'undefined' ? window.innerHeight - 160 : 600)) }}>
+            <div className="px-3 py-2 text-[11px] font-bold text-purple-300 border-b border-[var(--border-subtle)] mb-1 truncate">
+              {senderMenu.name}
+            </div>
+            {(() => {
+              const digits = senderMenu.jid.replace(/@.*$/, '').replace(/\D/g, '');
+              const isPhone = senderMenu.jid.endsWith('@s.whatsapp.net') && digits.length >= 10;
+              return (
+                <>
+                  <button
+                    onClick={async () => {
+                      if (!isPhone) return;
+                      try {
+                        const res = await fetch('/api/contacts', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            display_name: senderMenu.name,
+                            primary_phone: '+' + digits,
+                            entity_type: 'individual',
+                            commercial_role: 'b2c',
+                            source: 'manual',
+                            source_detail: 'من محادثة مجموعة',
+                          }),
+                        });
+                        if (res.ok) toast({ title: 'تم حفظ ' + senderMenu.name + ' كجهة اتصال', kind: 'success' });
+                        else toast({ title: 'فشل الحفظ — قد يكون مسجلاً مسبقاً', kind: 'info' });
+                      } catch { toast({ title: 'فشل الاتصال', kind: 'error' }); }
+                      setSenderMenu(null);
+                    }}
+                    className={isPhone
+                      ? 'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors'
+                      : 'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed'}
+                    title={isPhone ? 'إضافة إلى دليل جهات الاتصال' : 'المعرف من نوع LID — لا يحتوي رقماً هاتفياً'}
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    إضافة كجهة اتصال
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(senderMenu.jid);
+                      toast({ title: 'تم نسخ المعرف', kind: 'success' });
+                      setSenderMenu(null);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    نسخ معرف المرسل
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
+
+{/* ════════════════════════════════════════════════════════
           ⭐️ درج المفضلة المركزي (المفضلة - 6 تبويبات متخصصة)
          ════════════════════════════════════════════════════════ */}
       {favoritesDrawerOpen && (
