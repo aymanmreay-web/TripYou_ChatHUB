@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, line_instance, text, audience } = body;
+    const { title, line_instance, text, audience, extra_texts, send_window, auto_tag_id } = body;
+    // م8-دفعة2: نصوص إضافية للاختيار العشوائي + نافذة إرسال مفصلة (ساعات محددة) + وسم تلقائي للمستلمين
     if (!title || !line_instance || !text || !audience) {
       return NextResponse.json({ error: 'title, line_instance, text, audience required' }, { status: 400 });
     }
@@ -101,7 +102,12 @@ export async function POST(req: NextRequest) {
         JSON.stringify(audience),
         String(text),
         JSON.stringify(body.media || null),
-        JSON.stringify(body.throttle || { per_minute: 20 }),
+        JSON.stringify({
+          ...(body.throttle || { per_minute: 20 }),
+          ...(Array.isArray(extra_texts) && extra_texts.length > 0 ? { extra_texts } : {}),
+          ...(send_window && (send_window.from || send_window.to) ? { send_window } : {}),
+          ...(auto_tag_id ? { auto_tag_id } : {}),
+        }),
         scheduledAt,
         JSON.stringify({ pending: contacts.length }),
         body.created_by || null,
@@ -115,6 +121,17 @@ export async function POST(req: NextRequest) {
        from unnest($2::uuid[], $3::text[], $4::text[]) as x(cid, phone, name)`,
       [campId, contacts.map((c) => c.id), contacts.map((c) => c.phone), contacts.map((c) => c.name)]
     );
+
+    // م8-دفعة2: وسم تلقائي لكل جهات المستلمين — فلترة فورية بصندوق المحادثات
+    if (auto_tag_id) {
+      await q(
+        `insert into hub.contact_tags (contact_id, tag_id)
+         select x.cid, $2::uuid
+         from unnest($1::uuid[]) as x(cid)
+         on conflict (contact_id, tag_id) do nothing`,
+        [contacts.map((c) => c.id), auto_tag_id]
+      ).catch((e: Error) => console.warn('[campaign auto-tag] non-critical:', e.message));
+    }
 
     // إشعار عام عبر البنية الموحدة — الحملة جاهزة
     await insertNotification({

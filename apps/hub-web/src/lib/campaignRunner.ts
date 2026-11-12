@@ -88,6 +88,18 @@ function expandCampaignText(text: string, name: string | null): string {
 
 async function processCampaign(camp: CampaignRow): Promise<void> {
   const perMinute = Math.max(1, Number(camp.throttle?.per_minute ?? 20));
+
+    // م8-دفعة2: نافذة الإرسال — لا إرسال خارج الساعات المحددة (مكة افتراضياً)
+    const win = camp.throttle?.send_window;
+    if (win && (win.from || win.to)) {
+      const nowH = Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: win.timezone || 'Asia/Riyadh' }));
+      const fromH = win.from != null ? Number(win.from) : 0;
+      const toH = win.to != null ? Number(win.to) : 24;
+      const inWindow = fromH <= toH ? (nowH >= fromH && nowH < toH) : (nowH >= fromH || nowH < toH);
+      if (!inWindow) return; // خارج النافذة — المحرك يكمل تلقائياً داخل الساعات المسموحة
+    }
+    // م8-دفعة2: نصوص متعددة — اختيار عشوائي لكل مستلم
+    const extraTexts: string[] = Array.isArray(camp.throttle?.extra_texts) ? camp.throttle.extra_texts : [];
   const batchSize = Math.min(20, Math.max(1, Math.round(perMinute / 6))); // كل 10 ثوانٍ → سدس الدقيقة
 
   // حد الخط اليومي: ما تبقى من daily_cap اليوم
@@ -151,7 +163,10 @@ async function processCampaign(camp: CampaignRow): Promise<void> {
       continue;
     }
 
-    const result = await sendWhatsAppText(camp.line_instance, r.phone_e164, expandCampaignText(camp.text, r.display_name));
+    const chosenText = extraTexts.length > 0 && Math.random() < 0.5
+      ? extraTexts[Math.floor(Math.random() * extraTexts.length)]
+      : camp.text;
+    const result = await sendWhatsAppText(camp.line_instance, r.phone_e164, expandCampaignText(chosenText, r.display_name));
     if (result.ok) {
       await q(
         `update public.campaign_recipients set status = 'sent', wa_message_id = $2, sent_at = now() where id = $1`,
