@@ -77,3 +77,61 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+/**
+ * إدارة الأقسام — تبويب «إدارة الشركة» (ربط الأقسام بالموظفين):
+ * POST   { action: 'dept_create' | 'dept_rename' | 'dept_delete' | 'dept_assign' | 'dept_unassign', ... }
+ */
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const action = body.action;
+
+    if (action === 'dept_create') {
+      const title = String(body.title_ar || '').trim();
+      if (!title) return NextResponse.json({ error: 'اسم القسم مطلوب' }, { status: 400 });
+      const rows = await q<{ id: string }>(
+        `insert into hub.departments (key, title_ar)
+         values ($1, $2)
+         on conflict (key) do update set title_ar = excluded.title_ar
+         returning id`,
+        [`dept_${Date.now().toString(36)}`, title]
+      );
+      return NextResponse.json({ success: true, id: rows[0]?.id });
+    }
+
+    if (action === 'dept_rename') {
+      const rows = await q(
+        `update hub.departments set title_ar = $2 where id = $1 returning id`,
+        [body.id, String(body.title_ar || '').trim()]
+      );
+      if (!rows.length) return NextResponse.json({ error: 'القسم غير موجود' }, { status: 404 });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'dept_delete') {
+      // فك ارتباط الموظفين أولاً ثم الحذف
+      await q(`update hub.staff set department_id = null where department_id = $1`, [body.id]);
+      await q(`delete from hub.departments where id = $1`, [body.id]);
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'dept_assign') {
+      await q(
+        `update hub.staff set department_id = $2 where id = any($1::uuid[])`,
+        [body.staff_ids || [], body.department_id]
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'dept_unassign') {
+      await q(`update hub.staff set department_id = null where id = $1`, [body.staff_id]);
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: 'action غير معروف' }, { status: 400 });
+  } catch (err: any) {
+    console.error('[roles-matrix PUT]', err?.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

@@ -25,6 +25,27 @@ const ROLE_TAG: Record<string, { label: string; cls: string }> = {
   trainee: { label: 'متدرب', cls: 'bg-slate-500/15 text-slate-300 border-slate-500/40' },
 };
 
+// أسماء عربية لمجموعات الصلاحيات (grp keys في القاعدة)
+const GRP_AR: Record<string, string> = {
+  inbox: 'المحادثات',
+  groups: 'المجموعات',
+  contacts: 'جهات الاتصال',
+  lines: 'الخطوط',
+  inboxes: 'الصناديق',
+  staff: 'الموظفون',
+  roles: 'الأدوار',
+  signature: 'التواقيع',
+  campaigns: 'الحملات',
+  reports: 'التقارير',
+  tasks: 'المهام',
+  meetings: 'الاجتماعات',
+  settings: 'الإعدادات',
+  system: 'النظام',
+  channels: 'القنوات',
+  audit: 'التدقيق',
+  appearance: 'المظهر',
+};
+
 function RolesPageContent() {
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [permissions, setPermissions] = useState<PermRow[]>([]);
@@ -185,7 +206,7 @@ function RolesPageContent() {
               <div key={grp}>
                 <div className="text-[11px] font-bold text-purple-300 mb-2 flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5" />
-                  {grp}
+                  {GRP_AR[grp] || grp}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {perms.map((p) => {

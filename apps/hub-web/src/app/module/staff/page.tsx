@@ -22,7 +22,9 @@ import {
   UserPlus,
   ShieldCheck,
   Sliders,
-  Check
+  Check,
+  Building2,
+  ArrowRight
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { fetchStaffAll, fetchRoles, fetchLines, fetchInboxes, saveStaffMember, setStaffStatus, StaffRow, RoleRow, LineOption, InboxRow } from '../../../lib/hubDb';
@@ -43,7 +45,9 @@ export default function StaffManagementPage() {
 
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   // م8: الأقسام — ربط الموظفين بالأقسام (يظهر في التوقيع)
-  const [departmentsList, setDepartmentsList] = useState<{ id: string; title_ar: string }[]>([]);
+  const [departmentsList, setDepartmentsList] = useState<{ id: string; title_ar: string; staff_count?: number }[]>([]);
+  // تبويب إدارة الشركة: staff = الموظفون / departments = الأقسام وربطهم
+  const [companyTab, setCompanyTab] = useState<'staff' | 'departments'>('staff');
   useEffect(() => {
     fetch('/api/roles-matrix')
       .then((r) => (r.ok ? r.json() : null))
@@ -113,6 +117,195 @@ export default function StaffManagementPage() {
   const pendingApprovals = staff.filter((s) => s.status === 'pending');
   const activeAndSuspended = staff.filter((s) => s.status !== 'pending');
 
+  // ─── تبويب «إدارة الشركة»: الأقسام + ربط الموظفين بالأقسام ───
+  const [deptBusy, setDeptBusy] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
+  const [editingDeptName, setEditingDeptName] = useState('');
+
+  const deptCall = async (payload: Record<string, unknown>) => {
+    setDeptBusy(true);
+    try {
+      const res = await fetch('/api/roles-matrix', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'فشل التنفيذ');
+      showNotification('تم الحفظ');
+      const fresh = await fetch('/api/roles-matrix').then((r) => r.json());
+      setDepartmentsList((fresh.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar, staff_count: d.staff_count })));
+      await reload();
+    } catch (e: any) {
+      setSaveError(e.message);
+    } finally {
+      setDeptBusy(false);
+    }
+  };
+
+  if (companyTab === 'departments') {
+    const deptCounts = new Map<string, number>();
+    for (const s of staff) {
+      if (s.department_id) deptCounts.set(s.department_id, (deptCounts.get(s.department_id) || 0) + 1);
+    }
+    return (
+      <AppShell>
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6" dir="rtl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-subtle)]">
+            <div>
+              <button
+                onClick={() => setCompanyTab('staff')}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors mb-1.5"
+              >
+                <ArrowRight className="w-3.5 h-3.5" /> رجوع إلى الموظفين
+              </button>
+              <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-main)] flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-lg">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                إدارة الشركة — الأقسام وربط الموظفين
+              </h1>
+              <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
+                أنشئ الأقسام، سمِّها، واربط كل موظف بقسمه — القسم يظهر تلقائياً في توقيع الموظف
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {saveError && <div className="px-3.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold">{saveError}</div>}
+              {actionSuccess && <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold">{actionSuccess}</div>}
+            </div>
+          </div>
+
+          {/* إنشاء قسم جديد */}
+          <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)]">
+            <Plus className="w-4 h-4 text-purple-400 shrink-0" />
+            <input
+              type="text"
+              value={newDeptName}
+              onChange={(e) => setNewDeptName(e.target.value)}
+              placeholder="اسم القسم الجديد (مثال: قسم الحجوزات)"
+              className="flex-1 bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2 text-sm text-[var(--text-main)] focus:outline-none focus:border-purple-500"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newDeptName.trim()) {
+                  deptCall({ action: 'dept_create', title_ar: newDeptName });
+                  setNewDeptName('');
+                }
+              }}
+            />
+            <button
+              disabled={!newDeptName.trim() || deptBusy}
+              onClick={() => {
+                deptCall({ action: 'dept_create', title_ar: newDeptName });
+                setNewDeptName('');
+              }}
+              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold"
+            >
+              إنشاء القسم
+            </button>
+          </div>
+
+          {/* بطاقات الأقسام */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {departmentsList.map((d) => {
+              const members = staff.filter((s) => s.department_id === d.id);
+              return (
+                <div key={d.id} className="p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    {editingDeptId === d.id ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          value={editingDeptName}
+                          onChange={(e) => setEditingDeptName(e.target.value)}
+                          className="flex-1 bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-sm text-[var(--text-main)] focus:outline-none focus:border-purple-500"
+                        />
+                        <button
+                          onClick={() => {
+                            deptCall({ action: 'dept_rename', id: d.id, title_ar: editingDeptName });
+                            setEditingDeptId(null);
+                          }}
+                          className="p-1.5 rounded-lg bg-emerald-600 text-white"
+                          title="حفظ الاسم"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setEditingDeptId(null)} className="p-1.5 rounded-lg bg-slate-700 text-white" title="إلغاء">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <div className="text-sm font-bold text-[var(--text-main)]">{d.title_ar}</div>
+                          <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{deptCounts.get(d.id) || 0} موظف مرتبط</div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => { setEditingDeptId(d.id); setEditingDeptName(d.title_ar); }}
+                            className="p-1.5 rounded-lg bg-[var(--card-elevated)] text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                            title="إعادة تسمية القسم"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`حذف قسم «${d.title_ar}»؟ سيتم فك ارتباط ${deptCounts.get(d.id) || 0} موظف به.`)) {
+                                deptCall({ action: 'dept_delete', id: d.id });
+                              }
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/30"
+                            title="حذف القسم"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* أعضاء القسم */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {members.map((m) => (
+                      <span key={m.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[11px] font-semibold text-[var(--text-main)]">
+                        {m.name}
+                        <button
+                          onClick={() => deptCall({ action: 'dept_unassign', staff_id: m.id })}
+                          className="text-rose-400 hover:text-rose-300"
+                          title="فك الارتباط"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    {members.length === 0 && <span className="text-[11px] text-[var(--text-muted)]">لا موظفين مرتبطين</span>}
+                  </div>
+
+                  {/* إضافة موظف للقسم */}
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) deptCall({ action: 'dept_assign', staff_ids: [e.target.value], department_id: d.id });
+                    }}
+                    className="w-full bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-main)] focus:outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    <option value="">+ ربط موظف بهذا القسم...</option>
+                    {staff.filter((s) => s.department_id !== d.id).map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+            {departmentsList.length === 0 && (
+              <div className="col-span-full p-8 text-center text-xs text-[var(--text-muted)]">
+                لا أقسام بعد — اكتب اسم القسم أعلاه واضغط إنشاء
+              </div>
+            )}
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
   const filteredStaff = activeAndSuspended.filter((s) => {
     const matchSearch =
       s.name.includes(search) ||
@@ -139,6 +332,36 @@ export default function StaffManagementPage() {
             <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
               ترخيص الموظفين الجدد عبر Google، ربط الأرقام والصناديق، والتحكم بصلاحية قفل المحادثات
             </p>
+
+            {/* تبويبات إدارة الشركة: الموظفون / الأقسام — بنية الشركة الحقيقية */}
+            <div className="flex items-center gap-1.5 mt-3 p-1 bg-[var(--card-elevated)]/80 rounded-2xl border border-[var(--border-subtle)] w-fit">
+              <button
+                onClick={() => setCompanyTab('staff')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  companyTab === 'staff'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-950/40'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5" /> الموظفون
+              </button>
+              <button
+                onClick={async () => {
+                  setCompanyTab('departments');
+                  try {
+                    const fresh = await fetch('/api/roles-matrix').then((r) => r.json());
+                    setDepartmentsList((fresh.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar, staff_count: d.staff_count })));
+                  } catch { /* صامت */ }
+                }}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  (companyTab as string) === 'departments'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-950/40'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" /> إدارة الشركة والأقسام
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">

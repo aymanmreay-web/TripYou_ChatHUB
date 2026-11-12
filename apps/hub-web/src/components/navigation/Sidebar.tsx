@@ -57,12 +57,12 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
   const [searchTerm, setSearchTerm] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // صلاحية ظهور لوحة الإدارة والإشراف: تظهر فقط للمشرفين والمدراء
+  // صلاحية ظهور لوحة الإدارة والإشراف: للمدير والمشرف حصراً (قرار المالك)
+  // حتى لو مُنحت صلاحية وحدة إدارية للموظف — القائمة لا تظهر له أساساً
   const canAccessAdmin = useMemo(() => {
     if (!user) return false;
-    if (user.role === 'super_admin' || user.role === 'sales_lead') return true;
-    return adminModules.length > 0;
-  }, [user, adminModules]);
+    return ['super_admin', 'sales_lead', 'admin'].includes(user.role);
+  }, [user]);
 
   // التبويب النشط في القائمة الجانبية: مساحة الموظف أم لوحة الإدارة
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user');

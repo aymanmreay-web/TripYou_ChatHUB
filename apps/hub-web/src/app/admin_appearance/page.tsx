@@ -2,8 +2,9 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Lock, Palette, Check, Copy, Upload, RotateCcw, Building2 } from 'lucide-react';
+import { Lock, Palette, Check, Copy, Upload, RotateCcw, Building2, ArrowRight } from 'lucide-react';
 import { useApp, THEMES } from '../../context/AppContext';
+import { AppShell } from '../../components/layout/AppShell';
 import { Segmented, Switch } from '../../components/ui';
 import { Button, Card } from '@tripyou/ui';
 import { FONT_OPTIONS } from '../../lib/fontOptions';
@@ -59,6 +60,14 @@ function Slider({ value, min, max, step, onChange, unit }: { value: number; min:
 type TabKey = 'themes' | 'colors' | 'fonts' | 'surfaces' | 'perm' | 'brand' | 'adv';
 
 export default function AdminAppearancePage() {
+  return (
+    <AppShell>
+      <AdminAppearanceContent />
+    </AppShell>
+  );
+}
+
+function AdminAppearanceContent() {
   const { user, adminModules, theme, setTheme, mode, setMode } = useApp();
 
   const canAccess = useMemo(() => {
@@ -138,6 +147,9 @@ export default function AdminAppearancePage() {
       {/* ترويسة الصفحة */}
       <header className="flex items-end justify-between gap-3 flex-wrap mb-4 mt-2">
         <div>
+          <Link href="/inbox" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors mb-1.5">
+            <ArrowRight className="w-3.5 h-3.5" /> رجوع إلى المحادثات
+          </Link>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight" style={{ fontFamily: 'var(--font-head)' }}>
             المظهر والتخصيص
           </h1>

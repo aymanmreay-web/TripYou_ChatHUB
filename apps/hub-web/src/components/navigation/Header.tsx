@@ -3,9 +3,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Menu, Bell, LogOut, Check, ChevronDown, CheckCheck } from 'lucide-react';
+import { Menu, Bell, LogOut, Check, ChevronDown, CheckCheck, Moon } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
+import { isQuietHoursNow } from '../../lib/inbox/time';
 import { toast } from '../common/Toaster';
 import { NotificationItem, kindIcon, timeAgo } from '../../lib/notificationsUi';
 import { Button, Avatar, Badge } from '@tripyou/ui';
@@ -119,6 +120,19 @@ export function Header({ onOpenMobile }: HeaderProps) {
           </div>
           <span className="text-xs font-bold text-[var(--text-main)]">النظام متصل ونشط</span>
         </div>
+
+        {/* حارس المخاطر — شريحة ساعات الهدوء في الشريط العلوي (قرار المالك: مكانها هنا لا فوق المحادثات) */}
+        {isQuietHoursNow() && (
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-right shadow-sm border"
+            style={{ background: 'color-mix(in srgb, var(--warn) 14%, transparent)', borderColor: 'color-mix(in srgb, var(--warn) 40%, transparent)', color: 'var(--warn)' }}
+            title="حارس المخاطر: الإرسال الجديد في ساعات الهدوء (01:00–07:00 بتوقيت مكة) يحتاج تأكيداً لحماية الأرقام من الحظر"
+          >
+            <Moon className="w-3.5 h-3.5 animate-pulse" />
+            <span className="text-xs font-bold hidden sm:inline">حارس المخاطر: ساعات الهدوء نشطة</span>
+            <span className="text-xs font-bold sm:hidden">هدوء</span>
+          </div>
+        )}
       </div>
 
       {/* Left side (RTL end): Theme Selector + Mode Toggle + Role Switcher + Profile */}

@@ -134,14 +134,20 @@ export async function POST(req: NextRequest) {
     if (action === 'add') {
       await q(
         `insert into hub.conversation_tags (conversation_id, tag_id)
-         values ($1, $2)
+         select c.id, $2
+         from hub.conversations c
+         where c.chat_jid = $1
+         ${body.all_lines ? '' : 'and c.line_id = (select id from hub.lines where instance_name = $3 limit 1)'}
          on conflict (conversation_id, tag_id) do nothing`,
-        [convId, tag_id]
+        body.all_lines ? [chat_jid, tag_id] : [chat_jid, tag_id, instance]
       );
     } else {
       await q(
-        `delete from hub.conversation_tags where conversation_id = $1 and tag_id = $2`,
-        [convId, tag_id]
+        `delete from hub.conversation_tags ct
+         using hub.conversations c
+         where ct.conversation_id = c.id and c.chat_jid = $1 and ct.tag_id = $2
+         ${body.all_lines ? '' : 'and c.line_id = (select id from hub.lines where instance_name = $3 limit 1)'}`,
+        body.all_lines ? [chat_jid, tag_id] : [chat_jid, tag_id, instance]
       );
     }
 
@@ -244,15 +250,28 @@ export async function PATCH(req: NextRequest) {
     // ─── تغيير الحالة ───
     if (body.status) {
       const st = String(body.status);
-      await q(
-        `update hub.conversations
-         set status = $2,
-             escalated_at = case when $2 = 'escalated' then now() else escalated_at end,
-             resolved_at  = case when $2 = 'resolved'  then now() else resolved_at  end,
-             updated_at = now()
-         where id = $1`,
-        [convId, st]
-      );
+      // all_lines: نفس العميل عبر كل خطوطه = نفس المحادثة — الحالة موحدة (لا يبقى خط open وآخر in_progress)
+      if (body.all_lines) {
+        await q(
+          `update hub.conversations
+           set status = $2,
+               escalated_at = case when $2 = 'escalated' then now() else escalated_at end,
+               resolved_at  = case when $2 = 'resolved'  then now() else resolved_at  end,
+               updated_at = now()
+           where chat_jid = $1`,
+          [chat_jid, st]
+        );
+      } else {
+        await q(
+          `update hub.conversations
+           set status = $2,
+               escalated_at = case when $2 = 'escalated' then now() else escalated_at end,
+               resolved_at  = case when $2 = 'resolved'  then now() else resolved_at  end,
+               updated_at = now()
+           where id = $1`,
+          [convId, st]
+        );
+      }
 
       // التصعيد يستدعي المشرفين — إشعار فوري عبر البنية العامة
       if (st === 'escalated') {

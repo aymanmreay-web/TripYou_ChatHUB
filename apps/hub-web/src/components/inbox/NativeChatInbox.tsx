@@ -57,7 +57,9 @@ import {
   ChevronRight,
   ChevronDown,
   SlidersHorizontal,
-  CheckSquare
+  CheckSquare,
+  PhoneCall,
+  Ban
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useRouter } from 'next/navigation';
@@ -230,6 +232,8 @@ export function NativeChatInbox() {
   const [sendLineMenuOpen, setSendLineMenuOpen] = useState(false);
   // إخفاء شريط الرسائل المثبتة لهذه الجلسة — X يخفي مؤقتاً ولا يلغي التثبيت
   const [pinsBarDismissed, setPinsBarDismissed] = useState<Record<string, boolean>>({});
+  // نافذة اختيار وجهة التحويل الجماعي للرسائل المحددة
+  const [forwardBulkTargetOpen, setForwardBulkTargetOpen] = useState(false);
   // طلب المالك: قائمة خيارات لكل مرسل داخل المجموعة
   const [senderMenu, setSenderMenu] = useState<{ msgId: string; name: string; jid: string; x: number; y: number } | null>(null);
 
@@ -922,6 +926,7 @@ export function NativeChatInbox() {
           msg_key_id: msgKeyId,
           key_from_me: fromMe,
           key_participant: m.key?.participant || undefined,
+          key_participant_alt: (m.key as any)?.participantAlt || (m.key as any)?.remoteJidAlt || undefined,
           conversation_id: chatJid,
           chat_jid: chatJid,
           direction: fromMe ? `out` : `in`,
@@ -1020,8 +1025,12 @@ export function NativeChatInbox() {
             (c.available_lines && c.available_lines.some((l) => allowedBoxLines.includes(l)))
         );
       } else {
-        // إذا كان الصندوق لا يحتوي على أي خط مربوط، تظهر المحادثات فارغة تماماً
-        return [];
+        // صندوق بلا خطوط مربوطة: لا نفرغ القائمة — المحادثات المسندة للموظف تبقى ظاهرة له (إصلاح اختفاء المحادثات)
+        list = list.filter((c) => (c as any).assigned_staff_id === user?.id || c.assigned_staff_name === user?.full_name);
+        if (!isManager && list.length === 0) {
+          // للموظف فقط: صندوقه فارغ من الخطوط ولا شيء مسند له — نظهر فارغاً بلا خطأ
+          list = conversations.filter((c) => (c as any).assigned_staff_id === user?.id || c.assigned_staff_name === user?.full_name);
+        }
       }
     } else if (selectedInboxId === 'all' && !isManager && inboxesList.length > 0) {
       const staffBoxLines = Array.from(new Set(inboxesList.flatMap((ib) => ib.line_ids || [])));
@@ -1031,9 +1040,8 @@ export function NativeChatInbox() {
             staffBoxLines.includes(c.line_id) ||
             (c.available_lines && c.available_lines.some((l) => staffBoxLines.includes(l)))
         );
-      } else {
-        return [];
       }
+      // بلا خطوط في كل صناديقه: لا نفرغ — الإسناد يحدد الرؤية (فلتر الإسناد أدناه)
     }
 
     // تقييد الموظف بخطوطه المصرح له بها
@@ -1212,6 +1220,13 @@ export function NativeChatInbox() {
         }
       }
     }
+    // حارس LID: إن حُجبت كل الخطوط دفعة واحدة فالمعرفات المتاحة ليست أرقام هواتف حقيقية —
+    // نعود متساهلين بدل تعطيل المجموعة كلها (يعمل أعضاء فعليون بمعرفات lid)
+    if (isGroup && map.size > 0 && Array.from(map.values()).every((v) => !v.allowed)) {
+      for (const key of Array.from(map.keys())) {
+        map.set(key, { allowed: true, reason: 'متاح (عضوية غير قابلة للتحقق)' });
+      }
+    }
     return map;
   }, [allowedSendInstances, lastIncomingLine, activeConversation, convGrants, groupMemberDigits, instances]);
 
@@ -1248,6 +1263,56 @@ export function NativeChatInbox() {
     });
   };
   const selectedMessages = messages.filter((m) => selectedMsgIds.has(m.id));
+  // تحويل كل الرسائل المحددة (متسلسل) — ليس الأولى فقط
+  const handleBulkForward = async (targetConvId: string) => {
+    const withKey = selectedMessages.filter((m) => m.msg_key_id);
+    if (!withKey.length || !activeConversation) return;
+    let okCount = 0;
+    let lastErr = '';
+    const targetConv = conversations.find((c) => c.id === targetConvId);
+    if (!targetConv) return;
+    const targetLines = Array.from(new Set([targetConv.line_id, ...(targetConv.available_lines || [])].filter(Boolean)));
+    for (const m of withKey) {
+      let sent = false;
+      for (const line of targetLines) {
+        try {
+          const res = await fetch(`/api/evolution/instances/${encodeURIComponent(line)}/forward`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: targetConv.chat_jid,
+              key: { remoteJid: m.chat_jid, fromMe: m.key_from_me ?? m.direction === 'out', id: m.msg_key_id, participant: m.key_participant || undefined },
+            }),
+          });
+          if (res.ok) { sent = true; break; }
+          lastErr = (await res.json().catch(() => ({}))).error || res.statusText;
+        } catch (e: any) { lastErr = e.message; }
+      }
+      if (sent) okCount++;
+    }
+    toast({
+      title: `تم تحويل ${okCount}/${withKey.length} رسالة إلى «${targetConv.title}»${okCount < withKey.length ? ' — آخر خطأ: ' + lastErr : ''}`,
+      kind: okCount > 0 ? 'success' : 'error',
+      durationMs: 6000,
+    });
+    setMsgSelectionMode(false);
+    setSelectedMsgIds(new Set());
+  };
+  // مشاركة الرسائل المحددة خارج المنصة (مشاركة المتصفح أو نسخ)
+  const handleBulkShare = async () => {
+    const text = selectedMessages
+      .map((m) => (m.body ? m.body : `[${m.media_type || 'وسائط'}]`))
+      .join('\n---\n');
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${selectedMessages.length} رسالة من المحادثة`, text });
+        toast({ title: 'تم فتح مشاركة النظام', kind: 'success' });
+      } else {
+        await navigator.clipboard.writeText(text);
+        toast({ title: 'المشاركة غير مدعومة في متصفحك — تم نسخ الرسائل بدلاً منها', kind: 'info' });
+      }
+    } catch { /* ألغى المستخدم */ }
+  };
   const handleBulkDelete = async () => {
     const withKey = selectedMessages.filter((m) => m.msg_key_id);
     for (const m of withKey) {
@@ -1526,6 +1591,7 @@ export function NativeChatInbox() {
           instance: activeConversation.line_id || selectedInstanceName,
           tag_id: tagId,
           action: has ? 'remove' : 'add',
+          all_lines: true, // الوسم يُطبق على المحادثة عبر كل خطوطها — نفس العميل = نفس المحادثة
         }),
       });
     } catch (err) {
@@ -1670,8 +1736,8 @@ export function NativeChatInbox() {
     setConversations((prev) =>
       prev.map((c) => (c.id === activeConversation.id ? { ...c, status: newStatus } : c))
     );
-    // حفظ في القاعدة بشكل غير متزامن (لا ينتظر)
-    patchConversationDb(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, { status: newStatus });
+    // حفظ في القاعدة بشكل غير متزامن (لا ينتظر) — الحالة موحدة عبر كل خطوط نفس المحادثة
+    patchConversationDb(activeConversation.chat_jid, activeConversation.line_id || selectedInstanceName, { status: newStatus, all_lines: true } as any);
   };
 
   // --- دورة الإسناد: إسناد المحادثة لموظف (محلي + قاعدة حقيقية) — للمدير والمشرف فقط (قرار المالك) ---
@@ -2696,7 +2762,13 @@ export function NativeChatInbox() {
                   {activeConversation && dbTags.length > 0 && (
                     <div className="relative">
                       <button
-                        onClick={() => setTagMenuOpen((v) => !v)}
+                        onClick={() => {
+                          setTagMenuOpen((v) => !v);
+                          // إعادة جلب الوسوم عند كل فتح — الوسم المخصص الجديد يظهر فوراً
+                          fetchTags()
+                            .then((rows) => setDbTags(rows.map((t) => ({ id: t.id, name: t.name, hex_color: t.hex_color }))))
+                            .catch(() => {});
+                        }}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
                           activeConvTagIds.length > 0
                             ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
@@ -2850,14 +2922,7 @@ export function NativeChatInbox() {
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
       
-      {/* --- حارس المخاطر: شريط تنبيه رفيع بنمط v1 --- */}
-      {isQuietHoursActive && (
-        <div className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium border-b border-[var(--border-subtle)]"
-          style={{ background: 'color-mix(in srgb, var(--warn) 12%, transparent)', color: 'var(--warn)' }}>
-          <Moon className="w-3.5 h-3.5 animate-pulse shrink-0" />
-          <span>وضع الهدوء نشط (01:00 – 07:00 بتوقيت مكة) — الإرسال الجديد يحتاج تأكيداً لحماية الأرقام من الحظر.</span>
-        </div>
-      )}
+      {/* حارس المخاطر انتقل لشريط الحالة العلوي بجانب «النظام متصل ونشط» — نافذة تأكيد الإرسال تبقى هنا */}
 
       {isBreakerTripped && (
         <div className="bg-rose-950/90 border-b border-rose-600/50 px-4 py-2 flex items-center justify-between text-xs text-rose-200">
@@ -3299,8 +3364,8 @@ export function NativeChatInbox() {
                 </div>
               </div>
 
-              {/* 📌 شريط الرسائل المثبتة أعلى المحادثة (حتى 5 رسائل) */}
-              {activeConversation && (pinnedMessagesMap[activeConversation.id]?.length || 0) > 0 && (() => {
+              {/* 📌 شريط الرسائل المثبتة أعلى المحادثة (حتى 5) — X يخفي مؤقتاً ولا يلغي التثبيت */}
+              {activeConversation && !pinsBarDismissed[activeConversation.id] && (pinnedMessagesMap[activeConversation.id]?.length || 0) > 0 && (() => {
                 const pins = pinnedMessagesMap[activeConversation.id];
                 const curPin = pins[pinnedIndex % pins.length] || pins[0];
                 return (
@@ -3340,16 +3405,33 @@ export function NativeChatInbox() {
                         </>
                       )}
                       <button
-                        onClick={() => handleUnpinMessage(curPin.id)}
-                        className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
-                        title="إلغاء تثبيت هذه الرسالة"
+                        onClick={() => setPinsBarDismissed((prev) => ({ ...prev, [activeConversation.id]: true }))}
+                        className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-slate-200 transition-colors"
+                        title="إخفاء الشريط مؤقتاً — التثبيت يبقى محفوظاً"
                       >
                         <X className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleUnpinMessage(curPin.id)}
+                        className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                        title="إلغاء تثبيت هذه الرسالة نهائياً"
+                      >
+                        <PinOff className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                 );
               })()}
+              {activeConversation && pinsBarDismissed[activeConversation.id] && (pinnedMessagesMap[activeConversation.id]?.length || 0) > 0 && (
+                <button
+                  onClick={() => setPinsBarDismissed((prev) => ({ ...prev, [activeConversation.id]: false }))}
+                  className="flex items-center gap-1.5 bg-purple-950/60 border-b border-purple-500/30 px-4 py-1 text-[10px] text-purple-300 hover:text-purple-200 transition-colors w-full"
+                  title="إظهار شريط الرسائل المثبتة مجدداً"
+                >
+                  <Pin className="w-3 h-3" />
+                  إظهار الشريط المثبت ({pinnedMessagesMap[activeConversation.id].length})
+                </button>
+              )}
 
               {/* Messages Feed */}
               <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[var(--bg-main)]">
@@ -3545,7 +3627,7 @@ export function NativeChatInbox() {
                               <button
                                 onClick={(e) => {
                                   const rct = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                  setSenderMenu({ msgId: msg.id, name: msg.sender_name, jid: msg.key_participant || '', x: rct.left, y: rct.bottom });
+                                  setSenderMenu({ msgId: msg.id, name: msg.sender_name, jid: msg.key_participant || msg.key_participant_alt || '', x: rct.left, y: rct.bottom });
                                 }}
                                 className="hover:underline flex items-center gap-1"
                                 title="خيارات المرسل"
@@ -3852,14 +3934,20 @@ export function NativeChatInbox() {
                       >
                         نسخ المحدد
                       </button>
-                      {selectedMessages[0] && (
+                      {selectedMessages.length > 0 && (
                         <button
-                          onClick={() => { setForwardModalMsg(selectedMessages[0]); setMsgSelectionMode(false); }}
+                          onClick={() => { setForwardBulkTargetOpen(true); }}
                           className="px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] text-[11px] font-bold hover:border-[var(--border-glow)]"
                         >
-                          تحويل الأولى
+                          تحويل ({selectedMessages.length})
                         </button>
                       )}
+                      <button
+                        onClick={handleBulkShare}
+                        className="px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] text-[11px] font-bold hover:border-[var(--border-glow)]"
+                      >
+                        مشاركة
+                      </button>
                       <button
                         onClick={handleBulkDelete}
                         className="px-3 py-1.5 rounded-xl bg-rose-600/20 border border-rose-500/40 text-rose-300 text-[11px] font-bold hover:bg-rose-600/30"
@@ -4168,27 +4256,56 @@ export function NativeChatInbox() {
                       )}
                     </div>
 
-                    {/* C4: محدد خط الإرسال — خط الوارد متاح دائماً؛ الخطوط الأخرى تتطلب منح المدير */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      <select
-                        value={effectiveSendInstance}
-                        onChange={(e) => setSendingLineInstance(e.target.value)}
-                        className={`h-10 px-2 rounded-xl border text-xs font-semibold outline-none font-mono ${
+                    {/* خط الإرسال — زر مدمج صغير يفتح قائمة الخطوط (لا يأكل مساحة الكتابة) */}
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSendLineMenuOpen((v) => !v)}
+                        className={`h-10 px-2.5 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 max-w-[150px] ${
                           sendLineStatus.get(effectiveSendInstance)?.allowed === false
                             ? 'bg-rose-950/60 border-rose-500/50 text-rose-200'
-                            : 'bg-purple-950/60 border-purple-500/40 text-purple-200 focus:border-purple-400'
+                            : 'bg-purple-950/60 border-purple-500/40 text-purple-200 hover:border-purple-400'
                         }`}
-                        title="خط الإرسال — الرد الافتراضي من آخر رقم ورد منه العميل"
+                        title="خط الإرسال — اضغط لاختيار الخط الذي ستُرسل منه"
                       >
-                        {allowedSendInstances.map((inst) => {
-                          const st = sendLineStatus.get(inst.name);
-                          return (
-                            <option key={inst.name} value={inst.name} disabled={st ? !st.allowed : false}>
-                              {st?.allowed === false ? '⛔' : ''} إرسال عبر: {getLineDisplayTitle(inst.name)}{st && !st.allowed ? ' — يحتاج إذن' : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
+                        <PhoneCall className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{getLineDisplayTitle(effectiveSendInstance)}</span>
+                        <ChevronDown className="w-3 h-3 shrink-0" />
+                      </button>
+
+                      {sendLineMenuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setSendLineMenuOpen(false)} />
+                          <div className="absolute bottom-12 right-0 z-50 w-64 bg-[var(--card-bg)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl p-1.5" dir="rtl">
+                            <div className="px-2.5 py-1.5 text-[10px] font-bold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1">
+                              خط الإرسال — اختر الرقم الذي ستُرسل منه
+                            </div>
+                            {allowedSendInstances.map((inst) => {
+                              const st = sendLineStatus.get(inst.name);
+                              const isCurrent = inst.name === effectiveSendInstance;
+                              return (
+                                <button
+                                  key={inst.name}
+                                  type="button"
+                                  onClick={() => handleChooseSendLine(inst.name)}
+                                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors text-right ${
+                                    isCurrent
+                                      ? 'bg-purple-600/20 text-purple-200'
+                                      : st && !st.allowed
+                                      ? 'text-slate-500 hover:bg-rose-950/30 hover:text-rose-300'
+                                      : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                                  }`}
+                                >
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${st?.allowed === false ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                  <span className="flex-1 truncate">{getLineDisplayTitle(inst.name)}</span>
+                                  {st?.allowed === false && <Ban className="w-3.5 h-3.5 shrink-0 text-rose-400" />}
+                                  {isCurrent && <Check className="w-3.5 h-3.5 shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <input
@@ -4317,6 +4434,134 @@ export function NativeChatInbox() {
                 تأكيد الإرسال الاستثنائي الآن
               </button>
             </div>
+        </Modal>
+      )}
+
+      {/* --- نافذة «الرقم غير متواجد في المجموعة» — اختيار حر مع خيارَي الحل --- */}
+      {lineBlockModal && (
+        <Modal
+          open
+          onClose={() => setLineBlockModal(null)}
+          contained
+          ariaLabel="الرقم غير متواجد في المجموعة"
+          panelClassName="border border-amber-500/50 rounded-2xl max-w-md p-6 space-y-4 text-right"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+              <Ban className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-amber-300">
+                {lineBlockModal.reason.includes('عضو') ? 'هذا الرقم غير متواجد في المجموعة' : 'الإرسال من هذا الرقم يحتاج إذن المدير'}
+              </h3>
+              <p className="text-xs text-slate-300 font-mono">{getLineDisplayTitle(lineBlockModal.line)}</p>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-300 leading-relaxed bg-amber-950/30 p-3 rounded-xl border border-amber-900/40">
+            {lineBlockModal.reason.includes('عضو')
+              ? `الخط «${getLineDisplayTitle(lineBlockModal.line)}» ليس عضواً في مجموعة «${activeConversation?.title}». واتساب لا يسمح بالإرسال إلى مجموعة إلا من رقم عضو فيها.`
+              : `الإرسال من «${getLineDisplayTitle(lineBlockModal.line)}» في هذه المحادثة يتطلب إذناً صريحاً من المدير.`}
+          </p>
+
+          <div className="flex flex-col gap-2 pt-1">
+            <button
+              onClick={() => {
+                // اختيار رقم آخر متاح فعلاً في المجموعة
+                const firstAllowed = allowedSendInstances.find((i) => sendLineStatus.get(i.name)?.allowed);
+                if (firstAllowed) {
+                  setSendingLineInstance(firstAllowed.name);
+                  toast({ title: `تم اختيار: ${getLineDisplayTitle(firstAllowed.name)}`, kind: 'success' });
+                }
+                setLineBlockModal(null);
+              }}
+              className="w-full px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
+            >
+              <PhoneCall className="w-4 h-4" />
+              اختيار رقم آخر متواجد في المجموعة
+            </button>
+            {lineBlockModal.reason.includes('عضو') ? (
+              <button
+                onClick={() => {
+                  submitPermissionRequest('group_join', lineBlockModal.line);
+                  setLineBlockModal(null);
+                }}
+                disabled={reqSentType === 'group_join-sending'}
+                className="w-full px-4 py-2.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 disabled:opacity-60 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                رفع طلب للمشرف لضم هذا الرقم إلى المجموعة
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  submitPermissionRequest('line_reply', lineBlockModal.line);
+                  setLineBlockModal(null);
+                }}
+                disabled={reqSentType === 'line_reply-sending'}
+                className="w-full px-4 py-2.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 disabled:opacity-60 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                رفع طلب إذن للمدير
+              </button>
+            )}
+            <button
+              onClick={() => setLineBlockModal(null)}
+              className="w-full px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+            >
+              إلغاء
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* نافذة اختيار وجهة التحويل الجماعي للرسائل المحددة */}
+      {forwardBulkTargetOpen && (
+        <Modal
+          open
+          onClose={() => setForwardBulkTargetOpen(false)}
+          contained
+          ariaLabel="تحويل الرسائل المحددة"
+          panelClassName="border border-purple-500/40 rounded-3xl max-w-xl p-6 space-y-4 text-right"
+        >
+          <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
+            <h3 className="font-bold text-base text-[var(--text-main)]">
+              تحويل {selectedMessages.length} رسالة محددة إلى محادثة أخرى
+            </h3>
+            <button
+              type="button"
+              onClick={() => setForwardBulkTargetOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-[var(--text-main)] hover:bg-white/10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            التحويل يتم رسمياً من نفس الخط الذي وردت منه كل رسالة (Forward) — لكل الرسائل النصية والوسائط.
+          </p>
+          <div className="max-h-72 overflow-y-auto space-y-1.5 pl-1">
+            {conversations
+              .filter((c) => c.chat_jid !== activeConversation?.chat_jid)
+              .slice(0, 60)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setForwardBulkTargetOpen(false);
+                    handleBulkForward(c.id);
+                  }}
+                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl border border-[var(--border-subtle)] hover:border-purple-500/50 hover:bg-purple-950/20 text-right transition-colors"
+                >
+                  <Users className="w-4 h-4 text-purple-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-[var(--text-main)] truncate">{c.title}</div>
+                    <div className="text-[10px] text-[var(--text-muted)] font-mono truncate" dir="ltr">{getLineDisplayTitle(c.line_id || '')}</div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-[var(--text-muted)] shrink-0 rotate-180" />
+                </button>
+              ))}
+          </div>
         </Modal>
       )}
 
@@ -4749,13 +4994,18 @@ export function NativeChatInbox() {
               {senderMenu.name}
             </div>
             {(() => {
+              // أولوية الرقم الحقيقي (participantAlt) ثم معرف LID — مرسلون بلا رقم لا يمكن حفظهم كجهة
               const digits = senderMenu.jid.replace(/@.*$/, '').replace(/\D/g, '');
               const isPhone = senderMenu.jid.endsWith('@s.whatsapp.net') && digits.length >= 10;
               return (
                 <>
                   <button
                     onClick={async () => {
-                      if (!isPhone) return;
+                      if (!isPhone) {
+                        toast({ title: 'معرّف هذا المرسل من نوع LID مخفي الرقم — لا يمكن حفظه كجهة اتصال حتى يراسلك من رقمه مباشرة', kind: 'info', durationMs: 6000 });
+                        setSenderMenu(null);
+                        return;
+                      }
                       try {
                         const res = await fetch('/api/contacts', {
                           method: 'POST',
@@ -4763,6 +5013,7 @@ export function NativeChatInbox() {
                           body: JSON.stringify({
                             display_name: senderMenu.name,
                             primary_phone: '+' + digits,
+                            wa_jid: senderMenu.jid,
                             entity_type: 'individual',
                             commercial_role: 'b2c',
                             source: 'manual',
@@ -4770,13 +5021,14 @@ export function NativeChatInbox() {
                           }),
                         });
                         if (res.ok) toast({ title: 'تم حفظ ' + senderMenu.name + ' كجهة اتصال', kind: 'success' });
-                        else toast({ title: 'فشل الحفظ — قد يكون مسجلاً مسبقاً', kind: 'info' });
+                        else {
+                          const err = await res.json().catch(() => ({}));
+                          toast({ title: err.error || 'فشل الحفظ — قد يكون مسجلاً مسبقاً', kind: 'info' });
+                        }
                       } catch { toast({ title: 'فشل الاتصال', kind: 'error' }); }
                       setSenderMenu(null);
                     }}
-                    className={isPhone
-                      ? 'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors'
-                      : 'w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed'}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors"
                     title={isPhone ? 'إضافة إلى دليل جهات الاتصال' : 'المعرف من نوع LID — لا يحتوي رقماً هاتفياً'}
                   >
                     <UserPlus className="w-3.5 h-3.5" />

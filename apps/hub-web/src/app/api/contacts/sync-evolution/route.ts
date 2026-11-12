@@ -57,9 +57,29 @@ export async function POST(req: NextRequest) {
     const onlyInstance = searchParams.get('instance');
 
     // 1) كل الخطوط المتصلة من القاعدة — الاستيراد الحقيقي لكل خط مفتوح
-    const lines = onlyInstance
+    // احتياطي: إن كانت حالة الخطوط في القاعدة قديمة (لا connected) نأخذ الخطوط المفتوحة فعلياً من Evolution
+    let lines = onlyInstance
       ? [{ instance_name: onlyInstance }]
       : await q<{ instance_name: string }>(`select instance_name from hub.lines where status = 'connected' order by instance_name`);
+
+    if (!onlyInstance && lines.length === 0) {
+      try {
+        const instRes = await fetch(`${EVOLUTION_URL}/instance/fetchInstances`, { headers: { apikey: EVOLUTION_API_KEY }, cache: 'no-store' });
+        if (instRes.ok) {
+          const instList = await instRes.json();
+          const openNames = (Array.isArray(instList) ? instList : [])
+            .filter((i: any) => i.connectionStatus === 'open' && i.name)
+            .map((i: any) => ({ instance_name: i.name as string }));
+          if (openNames.length > 0) {
+            lines = openNames;
+            // مزامنة حالة الخطوط في القاعدة كي يستقر الفحص مستقبلاً
+            for (const l of openNames) {
+              await q(`update hub.lines set status = 'connected', updated_at = now() where instance_name = $1 and status <> 'connected'`, [l.instance_name]).catch(() => {});
+            }
+          }
+        }
+      } catch { /* نُبقي القائمة فارغة → رسالة الخطأ الأصلية */ }
+    }
 
     if (lines.length === 0) {
       return NextResponse.json({ error: 'لا يوجد خطوط متصلة حالياً — افتح خطاً واحداً على الأقل' }, { status: 400 });

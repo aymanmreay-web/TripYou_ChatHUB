@@ -64,6 +64,8 @@ export interface ChatMessage {
   // م8: مفاتيح واتساب الخام — للتحويل/الاقتباس الرسمي (موجودة للرسائل الحقيقية فقط)
   key_from_me?: boolean;
   key_participant?: string;
+  /** رقم العضو الحقيقي إن توفر (participantAlt) — لإضافة مرسلي المجموعات ذوي LID كجهات اتصال */
+  key_participant_alt?: string;
   reply_to?: {
     id: string;
     sender_name: string;

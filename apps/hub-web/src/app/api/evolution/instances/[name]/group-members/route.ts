@@ -38,7 +38,11 @@ export async function GET(req: NextRequest, { params }: { params: { name: string
     const phones = list
       .map((p: any) => String(p?.phoneNumber || p?.phone || ''))
       .filter(Boolean);
-    return NextResponse.json({ members, phones, found: true });
+    // LID fallback: إن غابت الأرقام نمرر معرفات الأعضاء الخام (بلا @) — الصندوق يطابق ownerJid الرقمي بها
+    const effectivePhones = phones.length > 0
+      ? phones
+      : members.map((m: string) => m.replace(/@.*$/, '').replace(/\D/g, '')).filter((m: string) => m.length >= 10);
+    return NextResponse.json({ members, phones: effectivePhones, found: true });
   } catch (err: any) {
     console.error('[group-members]', err?.message);
     return NextResponse.json({ members: [], found: false, error: err.message }, { status: 500 });

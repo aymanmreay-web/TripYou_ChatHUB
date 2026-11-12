@@ -8,7 +8,7 @@ export async function POST(req: Request, { params }: { params: { name: string } 
   try {
     const { name } = params;
     const body = await req.json();
-    const { to, mediaType, mimeType, media, caption, fileName } = body;
+    const { to, mediaType, mimeType, media, caption, fileName, signature, staff_id } = body;
 
     if (!to || !media) {
       return NextResponse.json({ error: 'to and media are required' }, { status: 400 });
@@ -40,6 +40,24 @@ export async function POST(req: Request, { params }: { params: { name: string } 
 
         if (audioRes.ok) {
           const audioData = await audioRes.json();
+          // حفظ التوقيع مع الرسالة الصوتية — يظهر في الفقاعة حتى بعد إعادة تحميل المحادثة
+          const waId = audioData?.key?.id;
+          if (waId) {
+            try {
+              const { storeOutboundStaffMessage } = await import('../../../../../../lib/webhookHandlers/storeMessage');
+              await storeOutboundStaffMessage({
+                instance: name,
+                chatJid: cleanNumber,
+                waMessageId: waId,
+                staffId: staff_id || null,
+                body: '',
+                mediaType: 'audio',
+                signature: signature || null,
+              });
+            } catch (e: any) {
+              console.warn('[media store] non-critical:', e?.message);
+            }
+          }
           return NextResponse.json(audioData);
         }
       } catch (err: any) {
@@ -76,6 +94,26 @@ export async function POST(req: Request, { params }: { params: { name: string } 
     }
 
     const data = await res.json();
+
+    // حفظ التوقيع مع الرسالة الوسائطية (صور/ملفات/فيديو) — يظهر في الفقاعة بعد إعادة التحميل
+    const waId = data?.key?.id;
+    if (waId) {
+      try {
+        const { storeOutboundStaffMessage } = await import('../../../../../../lib/webhookHandlers/storeMessage');
+        await storeOutboundStaffMessage({
+          instance: name,
+          chatJid: cleanNumber,
+          waMessageId: waId,
+          staffId: staff_id || null,
+          body: caption || '',
+          mediaType: mediaType || 'document',
+          signature: signature || null,
+        });
+      } catch (e: any) {
+        console.warn('[media store] non-critical:', e?.message);
+      }
+    }
+
     return NextResponse.json(data);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
