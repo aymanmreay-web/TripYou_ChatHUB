@@ -658,7 +658,7 @@ export function NativeChatInbox() {
                 if (c.updatedAt) {
                   const date = new Date(c.updatedAt);
                   rawTimestamp = date.getTime();
-                  timeStr = date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+                  timeStr = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                 }
 
                 // ─── م8: عدّاد غير مقروء حقيقي ───
@@ -684,7 +684,7 @@ export function NativeChatInbox() {
                   line_title: instanceName === 'Master' ? 'الرقم الرئيسي (Master)' : instanceName === 'Sells_2' ? 'المبيعات 2 (Sells_2)' : instanceName,
                   last_message_text: lastText || 'بدء المحادثة',
                   last_message_at: timeStr || 'سابقاً',
-                  assigned_staff_name: user?.full_name || 'م. أيمن مريعي',
+                  assigned_staff_name: undefined,
                   tags: isGroup ? ['مجموعة'] : cleanPhone.startsWith('966') ? ['السعودية'] : [],
                   status: 'open',
                   last_customer_message_timestamp: rawTimestamp,
@@ -875,7 +875,7 @@ export function NativeChatInbox() {
         let timeStr = ``;
         if (m.messageTimestamp) {
           const date = new Date(m.messageTimestamp * 1000);
-          timeStr = date.toLocaleTimeString(`ar-SA`, { hour: `2-digit`, minute: `2-digit` });
+          timeStr = date.toLocaleTimeString(`en-GB`, { hour: `2-digit`, minute: `2-digit` });
         }
 
         return {
@@ -1747,7 +1747,7 @@ export function NativeChatInbox() {
           sender_name: user.full_name,
           status: 'sent',
           line_id: effectiveLine,
-          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+          created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         };
 
         setMessages((prev) => [...prev, newMsg]);
@@ -2274,7 +2274,7 @@ export function NativeChatInbox() {
           sender_name: user.full_name,
           status: 'sending',
           line_id: selectedInstanceName,
-          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+          created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         };
 
         setMessages((prev) => [...prev, optimisticMsg]);
@@ -2379,7 +2379,7 @@ export function NativeChatInbox() {
           sender_name: user.full_name,
           status: 'sent',
           line_id: selectedInstanceName,
-          created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+          created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         };
 
         setMessages((prev) => [...prev, newMsg]);
@@ -2506,7 +2506,7 @@ export function NativeChatInbox() {
                 sender_name: user.full_name,
                 status: 'sent',
                 line_id: selectedInstanceName,
-                created_at: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+                created_at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
               };
 
               setMessages((prev) => [...prev, newMsg]);
@@ -2907,16 +2907,7 @@ export function NativeChatInbox() {
         >
           {/* Search & Filters */}
           <div className="p-3 border-b border-[var(--border-subtle)] space-y-2.5">
-            <button
-                        type="button"
-                        onClick={() => { setMsgSelectionMode((v) => !v); setSelectedMsgIds(new Set()); }}
-                        className={`h-9 px-3 rounded-xl border text-[11px] font-bold transition-all shrink-0 flex items-center gap-1.5 ${msgSelectionMode ? 'bg-[var(--accent-soft)] text-[var(--primary)] border-[var(--border-glow)]' : 'bg-[var(--card-elevated)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)]'}`}
-                        title="تحديد رسائل — نسخ/تحويل/حذف للجميع"
-                      >
-                        <CheckSquare className="w-3.5 h-3.5" />
-                        تحديد
-                      </button>
-                      <div className="relative">
+            <div className="relative">
               <Search className="w-4 h-4 absolute right-3 top-3 text-[var(--text-muted)]" />
               <input
                 type="text"
@@ -2927,13 +2918,13 @@ export function NativeChatInbox() {
               />
             </div>
 
-            {/* Filter Tabs - مع تبويبات دورة الإسناد والرادار والمجموعات بنطاق الصندوق */}
-            <div className="flex items-center gap-1.5 text-[11px] overflow-x-auto pb-1 scrollbar-none" dir="rtl">
+            {/* Filter Tabs - سلايد تبويبات متحرك بنمط شريط تمرير ناعم وأنيق */}
+            <div className="flex items-center gap-1.5 text-[11px] overflow-x-auto pb-1 scrollbar-none snap-x" dir="rtl">
               <button
                 onClick={() => setFilterTab('all')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
                   filterTab === 'all'
-                    ? 'bg-purple-600/30 text-[var(--text-secondary)] font-bold border border-purple-500/50'
+                    ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-900/30'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
                 }`}
               >
@@ -2941,9 +2932,9 @@ export function NativeChatInbox() {
               </button>
               <button
                 onClick={() => setFilterTab('mine')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
                   filterTab === 'mine'
-                    ? 'bg-purple-600/30 text-[var(--text-secondary)] font-bold border border-purple-500/50'
+                    ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-900/30'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
                 }`}
               >
@@ -2951,29 +2942,29 @@ export function NativeChatInbox() {
               </button>
               <button
                 onClick={() => setFilterTab('unassigned')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
                   filterTab === 'unassigned'
-                    ? 'bg-amber-600/30 text-amber-300 font-bold border border-amber-500/50'
-                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                    ? 'bg-amber-600 text-white font-bold shadow-sm shadow-amber-900/30'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
                 }`}
               >
                 غير مسندة ({inboxScopedConversations.filter((c) => !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند').length})
               </button>
               <button
                 onClick={() => setFilterTab('unread')}
-                className={`px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
                   filterTab === 'unread'
-                    ? 'bg-purple-600/30 text-purple-300 font-semibold border border-purple-500/50'
-                    : 'text-slate-400 hover:text-white bg-slate-800/30'
+                    ? 'bg-purple-600 text-white font-bold shadow-sm shadow-purple-900/30'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)] bg-[var(--card-elevated)]'
                 }`}
               >
                 غير مقروء ({inboxScopedConversations.filter((c) => c.unread_count > 0).length})
               </button>
               <button
                 onClick={() => setFilterTab('rescue')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 snap-start font-medium ${
                   filterTab === 'rescue'
-                    ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white font-bold shadow-md shadow-amber-900/40 border border-amber-400/60 animate-pulse'
+                    ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white font-bold shadow-md shadow-amber-900/40 animate-pulse'
                     : 'text-amber-400 hover:text-amber-300 bg-amber-950/30 border border-amber-800/40'
                 }`}
                 title="محادثات تأخر الرد عليها أكثر من 15 دقيقة تنتظر الإسعاف والاقتناص"
@@ -3179,48 +3170,59 @@ export function NativeChatInbox() {
                           </>
                         )}
                       </div>
-                      {activeConversation.is_group && (
-                        <span className="text-[9px] px-1.5 py-px rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-semibold shrink-0">
-                          {activeConversation.participant_count
-                            ? <><span className="opacity-60">👥</span> {activeConversation.participant_count}</>
-                            : '👥'}
+                      {/* وسم أعضاء المجموعة بنمط ناعم */}
+                      {activeConversation.is_group && activeConversation.participant_count && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-semibold shrink-0 flex items-center gap-1">
+                          <Users className="w-3 h-3 opacity-70" />
+                          <span>{activeConversation.participant_count}</span>
                         </span>
                       )}
 
                       {/* وسم الحالة الناعم بجانب العنوان (نمط v1) */}
-                      <span className={`text-[10px] px-2 py-px rounded-full font-semibold shrink-0 ${statusBadge(activeConversation.status)}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${statusBadge(activeConversation.status)}`}>
                         {statusLabel(activeConversation.status)}
                       </span>
 
-                      {/* عداد SLA النبّاض المختصر في سطر العنوان — رمز ⏱ فقط مع mm:ss */}
+                      {/* عداد SLA النبّاض المختصر في سطر العنوان */}
                       <SlaTimer
                         since={activeConversation.last_customer_message_timestamp}
                         status={activeConversation.status}
+                        isGroup={activeConversation.is_group}
                       />
-                    </div>
-
-                    <div className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
-                      {activeConversation.is_group
-                        ? `مجموعة · ${activeConversation.participant_count ?? ''} عضو`
-                        : activeConversation.phone_or_jid || ''}
                     </div>
                   </div>
                 </div>
 
-                {/* الواجهة النظيفة: زر واحد فقط — كل الأدوات في سلايد التفاصيل (convActions) */}
-                <button
-                  onClick={() => setInfoPanelOpen((v) => !v)}
-                  aria-pressed={infoPanelOpen}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
-                    infoPanelOpen
-                      ? 'bg-[var(--primary)] text-white border-transparent'
-                      : 'bg-[var(--card-elevated)] hover:bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
-                  }`}
-                  title="تفاصيل المحادثة الكاملة: الإسناد، الحالة، الوسوم، المفضلة، القفل، جهة الاتصال"
-                >
-                  <Info className="w-4 h-4" />
-                  <span>التفاصيل</span>
-                </button>
+                {/* زر التحكم بالمحادثة المصمم بأناقة التطبيقات الاحترافية */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setMsgSelectionMode((v) => !v); setSelectedMsgIds(new Set()); }}
+                    className={`h-8 px-2.5 rounded-xl border text-[11px] font-semibold transition-all shrink-0 flex items-center gap-1.5 ${
+                      msgSelectionMode
+                        ? 'bg-[var(--accent-soft)] text-[var(--primary)] border-[var(--border-glow)]'
+                        : 'bg-[var(--card-elevated)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                    }`}
+                    title="تحديد رسائل — نسخ/تحويل/حذف للجميع"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>تحديد</span>
+                  </button>
+
+                  <button
+                    onClick={() => setInfoPanelOpen((v) => !v)}
+                    aria-pressed={infoPanelOpen}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+                      infoPanelOpen
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-transparent ring-2 ring-purple-400/40 shadow-purple-900/30'
+                        : 'bg-gradient-to-r from-purple-950/40 to-indigo-950/40 hover:from-purple-900/50 hover:to-indigo-900/50 text-purple-200 border-purple-500/30 hover:border-purple-400/60'
+                    }`}
+                    title="لوحة التحكم بالمحادثة: الإسناد، الحالة، الوسوم، المفضلة، القفل، وتفاصيل جهة الاتصال"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>التحكم بالمحادثة</span>
+                  </button>
+                </div>
               </div>
 
               {/* 📌 شريط الرسائل المثبتة أعلى المحادثة (حتى 5 رسائل) */}

@@ -77,12 +77,18 @@ export function ConversationRow({ conv, isSelected, onSelect, getLineDisplayTitl
             </span>
 
             {/* عدّاد الانتظار الحي (نمط v1) */}
-            <SlaTimer since={conv.last_customer_message_timestamp} status={conv.status} />
+            <SlaTimer since={conv.last_customer_message_timestamp} status={conv.status} isGroup={conv.is_group} />
 
-            {/* وسم الإسناد يظهر فقط عند إسناد فعلي لموظف */}
+            {/* وسم الإسناد: يظهر فقط عند إسناد فعلي لموظف بصورة مصغرة وأنيقة */}
             {conv.assigned_staff_name && (
-              <span className="text-[9px] text-slate-400 truncate max-w-[70px] bg-slate-800/50 px-1.5 py-0.5 rounded-full border border-slate-700/40">
-                {conv.assigned_staff_name}
+              <span
+                className="inline-flex items-center gap-1 text-[9px] text-[var(--text-muted)] bg-[var(--card-elevated)] px-1.5 py-0.5 rounded-full border border-[var(--border-subtle)] shrink-0"
+                title={`مسندة إلى: ${conv.assigned_staff_name}`}
+              >
+                <span className="w-3.5 h-3.5 rounded-full bg-purple-600/30 text-purple-300 font-bold text-[8px] flex items-center justify-center shrink-0">
+                  {conv.assigned_staff_name.charAt(0)}
+                </span>
+                <span className="truncate max-w-[60px] font-medium">{conv.assigned_staff_name}</span>
               </span>
             )}
           </div>
