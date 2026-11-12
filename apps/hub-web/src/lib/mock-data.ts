@@ -19,7 +19,7 @@ export const RAW_MODULES: ModuleContract[] = [
   { key: 'appearance', area: 'admin', title_ar: 'المظهر والتخصيص', status: 'live', required_permission: 'settings.manage', sort: 125 },
   { key: 'inboxes', area: 'admin', title_ar: 'الصناديق', status: 'live', required_permission: 'inboxes.manage', sort: 130 },
   { key: 'labels', area: 'admin', title_ar: 'الوسوم والحالات', status: 'live', required_permission: 'inboxes.manage', sort: 135 },
-  { key: 'groups_admin', area: 'admin', title_ar: 'المجموعات', status: 'coming_soon', required_permission: 'groups.manage', sort: 140 },
+  { key: 'groups_admin', area: 'admin', title_ar: 'المجموعات', status: 'live', required_permission: 'groups.manage', sort: 140 },
   { key: 'staff', area: 'admin', title_ar: 'الموظفون', status: 'live', required_permission: 'staff.view', sort: 150 },
   { key: "roles", area: 'admin', title_ar: 'الأدوار والصلاحيات', status: "live", required_permission: 'roles.manage', sort: 160 },
   { key: 'signature', area: 'admin', title_ar: 'إدارة التوقيع', status: 'live', required_permission: 'signature.manage', sort: 170 },
