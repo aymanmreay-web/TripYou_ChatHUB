@@ -135,6 +135,28 @@ export function NativeChatInbox() {
   const conversationsRef = useRef<ConversationItem[]>([]);
   conversationsRef.current = conversations;
   const [loadingChats, setLoadingChats] = useState<boolean>(false);
+
+  // ─── مراجع مستقرة تمنع إعادة إنشاء دوال الجلب عند كل تحديث حالة (منع إعادة الجلب العشوائي) ───
+  const instancesRef = useRef<EvolutionInstanceSummary[]>([]);
+  instancesRef.current = instances;
+
+  // ─── كاش محلي لقائمة المحادثات (نمط وتساب ويب) ───
+  // تُرطَّب القائمة فوراً من localStorage عند فتح الصفحة — لا سبينر ولا وميض للمستخدم العائد،
+  // ثم يُحدَّث الجديد بصمت في الخلفية. صلاحية الكاش 24 ساعة.
+  const CHATS_CACHE_KEY = 'hub_chats_cache_v1';
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHATS_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const list: ConversationItem[] = Array.isArray(parsed?.conversations) ? parsed.conversations : [];
+      const fresh = Date.now() - (parsed?.savedAt || 0) < 24 * 60 * 60 * 1000;
+      if (fresh && list.length > 0 && conversationsRef.current.length === 0) {
+        setConversations(list);
+      }
+    } catch { /* كاش تالف — تجاهل بصمت */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [activeConvId, setActiveConvId] = useState<string>('');
 
   // Messages State (Real)
@@ -151,6 +173,9 @@ export function NativeChatInbox() {
 
   // ─── سجل المقروء المحفوظ في الداتابيز للصندوق الحالي والمستخدم ───
   const [readChatJids, setReadChatJids] = useState<Set<string>>(new Set());
+  // مرجع مستقر لسجل المقروء — يُقرأ داخل دوال الجلب ذات التبعيات الثابتة دون قفل نسخة قديمة
+  const readChatJidsRef = useRef<Set<string>>(readChatJids);
+  readChatJidsRef.current = readChatJids;
   // ─── حالة فحص جهة الاتصال الحالية في الداتابيز ───
   const [isContactSaved, setIsContactSaved] = useState<boolean>(false);
   // لوحة تفاصيل المحادثة المنزلقة من اليسار (نقرة واحدة)
@@ -199,6 +224,12 @@ export function NativeChatInbox() {
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   // م8-ج3: قائمة خيارات الجهة (اسم المحادثة قابل للنقر)
   const [contactMenuOpen, setContactMenuOpen] = useState(false);
+  // نافذة «الرقم غير متواجد في المجموعة» — تظهر عند محاولة اختيار خط غير عضو في مجموعة (اختيار حر + خيارا الحل)
+  const [lineBlockModal, setLineBlockModal] = useState<{ line: string; reason: string } | null>(null);
+  // قائمة خط الإرسال المدمجة (منسدلة صغيرة بدل select كبير يأكل مساحة الكتابة)
+  const [sendLineMenuOpen, setSendLineMenuOpen] = useState(false);
+  // إخفاء شريط الرسائل المثبتة لهذه الجلسة — X يخفي مؤقتاً ولا يلغي التثبيت
+  const [pinsBarDismissed, setPinsBarDismissed] = useState<Record<string, boolean>>({});
   // طلب المالك: قائمة خيارات لكل مرسل داخل المجموعة
   const [senderMenu, setSenderMenu] = useState<{ msgId: string; name: string; jid: string; x: number; y: number } | null>(null);
 
@@ -570,16 +601,19 @@ export function NativeChatInbox() {
   }, [fetchInstances]);
 
   // 2. Fetch real chats & WhatsApp groups across multiple instances in parallel
+  // م‑الوميض: الجلب صامت افتراضياً بعد أول تحميل — لا سبينر ولا تفكيك للقائمة (نمط وتساب ويب).
+  // الدوّار يظهر فقط في أول تحميل حقيقي حين لا توجد بيانات أصلاً.
   const fetchChats = useCallback(async (targetInstances?: string[]) => {
+    const silent = conversationsRef.current.length > 0;
     try {
-      setLoadingChats(true);
+      if (!silent) setLoadingChats(true);
       // م8-ج2: انتظر ترطيب سجلات القراءة أولاً — العدادات ترسم صح من أول مرة
       if (hydratedReadsRef.current) await hydratedReadsRef.current;
 
       // تحديد الخطوط المستهدفة للجلب
       let instancesToFetch = targetInstances;
       if (!instancesToFetch || instancesToFetch.length === 0) {
-        const openInst = instances.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
+        const openInst = instancesRef.current.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
         instancesToFetch = openInst.length > 0 ? openInst : ['Master', 'Sells_2'];
       }
 
@@ -664,7 +698,7 @@ export function NativeChatInbox() {
                 // ─── م8: عدّاد غير مقروء حقيقي ───
                 // قاعدة القراءة: المحادثة مقروءة إذا (أ) ضمن سجل المقروء، أو (ب) وقت آخر قراءة مسجل
                 // أحدث من طابع آخر رسالة. بهذا لا يعود العداد برسالة قديمة ولا يظهر لرسالة قرأتها فعلاً.
-                const isReadLocally = readChatJids.has(jid) || readChatsSet.current.has(jid);
+                const isReadLocally = readChatJidsRef.current.has(jid) || readChatsSet.current.has(jid);
                 const lastRead = lastReadAtRef.current.get(jid);
                 const readByTime = lastRead != null && rawTimestamp <= lastRead;
                 const unread = isReadLocally || readByTime ? 0 : (c.unreadCount || 0);
@@ -707,6 +741,11 @@ export function NativeChatInbox() {
       // نحتفظ ببيانات كل خط كاملة ومستقلة دون أي حذف أو استقطاع لتكون عدادات كل خط دقيقة 100%
       allMerged.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
 
+      // ─── تسجيل محلي (كاش): القائمة تُرطَّب فوراً في الزيارة القادمة بلا دوّار ───
+      try {
+        localStorage.setItem(CHATS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), conversations: allMerged.slice(0, 400) }));
+      } catch { /* تجاوز حد التخزين — غير حرج */ }
+
       // م8: دمج يحافظ على مرجع الكائنات غير المتغيرة — القائمة لا "تقفز" ولا تعيد رسمها إن لم يتغير شيء
       setConversations((prev) => {
         if (prev.length === allMerged.length) {
@@ -725,9 +764,9 @@ export function NativeChatInbox() {
     } catch (err) {
       console.error('Failed to load chats:', err);
     } finally {
-      setLoadingChats(false);
+      if (!silent) setLoadingChats(false);
     }
-  }, [instances, user]);
+  }, []);
 
   // استدعاء جلب المحادثات لكافة الخطوط فور جاهزية الخطوط أو تغيير الصندوق
   useEffect(() => {
@@ -1143,17 +1182,17 @@ export function NativeChatInbox() {
     for (const inst of allowedSendInstances) {
       const name = inst.name;
       if (isGroup) {
-        const authorized = allowedSendInstances.some((i) => i.name === name);
         let member = true;
-        let reason = 'متاح — خط مصرح';
+        let reason = 'متاح — خط مصرح ومصرح لك به';
         if (groupMemberDigits && groupMemberDigits.size > 0) {
-          const phoneDigits = (instances.find((i) => i.name === name)?.ownerJid || '').replace(/@.*$/, '').replace(/\D/g, '');
-          member = !phoneDigits || groupMemberDigits.has(phoneDigits);
+          const ownerDigits = (instances.find((i) => i.name === name)?.ownerJid || '').replace(/@.*$/, '').replace(/\D/g, '');
+          // المجموعة تحتوي أرقام هواتف + معرفات LID للأعضاء — نطابق الاثنين
+          member = !ownerDigits || groupMemberDigits.has(ownerDigits);
           if (!member) reason = 'الخط ليس عضوًا في هذه المجموعة';
         }
         map.set(name, {
-          allowed: authorized && member,
-          reason: !authorized ? 'الخط غير مصرح لك به' : reason,
+          allowed: member,
+          reason,
         });
       } else {
         const isIncoming = name === incoming;
@@ -1299,6 +1338,24 @@ export function NativeChatInbox() {
     }, 6000);
     return () => clearInterval(interval);
   }, [activeConversation?.id, activeConversation?.line_id, activeConversation?.chat_jid, activeConversation?.available_lines, selectedInstanceName, fetchMessagesForChat]);
+
+  // ─── تحديث صامت لقائمة المحادثات (نمط وتساب ويب) ───
+  // دوري كل 45 ثانية + فوري عند العودة إلى التبويب: يدمج الجديد فقط بلا دوّار ولا تفكيك للقائمة،
+  // ومقارنة البصمة داخل fetchChats تضمن عدم أي إعادة رسم إن لم يتغير شيء فعلاً.
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const open = instancesRef.current.filter((i) => i.connectionStatus === 'open').map((i) => i.name);
+      fetchChats(open.length > 0 ? open : ['Master', 'Sells_2']);
+    };
+    const interval = setInterval(tick, 45000);
+    const onVisible = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchChats]);
 
   useEffect(() => {
     // طبقات الرؤية: المحادثة المرسلة لزميله بلا منح قراءة = هيكل فقط بلا محتوى
@@ -1667,6 +1724,44 @@ export function NativeChatInbox() {
     setIsBreakerTripped(false);
   };
 
+  // ─── بناء التوقيع الموحد — يُطبق على كل أنواع الرسائل (نص/صوت/صور/ملفات) ───
+  const buildSignature = useCallback((lineName: string): string => {
+    if (!includeSignature) return '';
+    if (signatureConfig && signatureConfig.send_mode !== 'disabled') {
+      const parts: string[] = [];
+      const staffSig = staffSignaturesList.find(
+        (s) => s.id === user?.id || s.name === user?.full_name
+      );
+      // قرار المالك: التوقيع ثلاثي — اسم الموظف / القسم الذي يعمل به / الخط المُرسل منه
+      if (signatureConfig.part1?.enabled) {
+        parts.push(staffSig?.custom_part1 || `*${user?.full_name || 'خدمة العملاء'}*`);
+      }
+      if (signatureConfig.part2?.enabled) {
+        parts.push(staffSig?.custom_part2 || (staffSig as any)?.department || 'قسم خدمة العملاء');
+      }
+      if (signatureConfig.part3?.enabled) {
+        parts.push(staffSig?.custom_part3 || `واتساب ${getLineDisplayTitle(lineName)}`);
+      }
+      if (parts.length > 0) {
+        return `\n\n${parts.join(signatureConfig.separator || ' — ')}`;
+      }
+      return '';
+    }
+    return `\n\n*${user?.full_name || 'خدمة العملاء'}* — ${getLineDisplayTitle(lineName)}`;
+  }, [includeSignature, signatureConfig, staffSignaturesList, user, getLineDisplayTitle]);
+
+  // ─── اختيار خط الإرسال — حر دائماً؛ الخط غير العضو/غير المصرح يفتح نافذة الحل ───
+  const handleChooseSendLine = (lineName: string) => {
+    setSendLineMenuOpen(false);
+    const st = sendLineStatus.get(lineName);
+    if (st && !st.allowed) {
+      setLineBlockModal({ line: lineName, reason: st.reason });
+      return;
+    }
+    setSendingLineInstance(lineName);
+    toast({ title: `سيتم الإرسال عبر: ${getLineDisplayTitle(lineName)}`, kind: 'success' });
+  };
+
   // تنفيذ الإرسال الفعلي بعد تدقيق حارس المخاطر
   const executeSendMessage = async (textToSend: string) => {
     if (!activeConversation || isSending) return;
@@ -1691,29 +1786,8 @@ export function NativeChatInbox() {
 
     const effectiveLine = effectiveSendInstance;
 
-    let signature = '';
-    if (includeSignature && signatureConfig && signatureConfig.send_mode !== 'disabled') {
-      const parts: string[] = [];
-      const staffSig = staffSignaturesList.find(
-        (s) => s.id === user?.id || s.name === user?.full_name || s.email === (user as any)?.email_masked
-      );
-
-      // قرار المالك: التوقيع ثلاثي — اسم الموظف / القسم الذي يعمل به / الخط المُرسل منه
-      if (signatureConfig.part1?.enabled) {
-        parts.push(staffSig?.custom_part1 || `*${user?.full_name || 'خدمة العملاء'}*`);
-      }
-      if (signatureConfig.part2?.enabled) {
-        parts.push(staffSig?.custom_part2 || (staffSig as any)?.department || 'قسم خدمة العملاء');
-      }
-      if (signatureConfig.part3?.enabled) {
-        parts.push(staffSig?.custom_part3 || `واتساب ${getLineDisplayTitle(effectiveLine)}`);
-      }
-      if (parts.length > 0) {
-        signature = `\n\n${parts.join(signatureConfig.separator || ' — ')}`;
-      }
-    } else if (includeSignature) {
-      signature = `\n\n*${user?.full_name || 'خدمة العملاء'}* — ${currentInstance?.profileName || getLineDisplayTitle(effectiveLine)}`;
-    }
+    // التوقيع الموحد (ثلاثي حسب سياسة إدارة التواقيع) — مُطبق هنا وعلى الصوت والمرفقات
+    const signature = buildSignature(effectiveLine);
 
     const fullMessage = `${textToSend}${signature}`;
 
@@ -3016,7 +3090,7 @@ export function NativeChatInbox() {
             }}
             className="flex-1 overflow-y-auto divide-y divide-purple-900/20"
           >
-            {loadingChats ? (
+            {loadingChats && conversations.length === 0 ? (
               <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
                 <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
                 <span className="text-xs">جاري تحميل المحادثات الحقيقية من واتساب...</span>
