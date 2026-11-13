@@ -286,14 +286,14 @@ export async function POST(req: NextRequest) {
            select c.id, tt.tid
            from hub.contacts c
            join (values
-             ('individual', $2::uuid),
-             ('group', $3::uuid),
-             ('organization', $4::uuid)
+             ('individual', $1::uuid),
+             ('group', $2::uuid),
+             ('organization', $3::uuid)
            ) as tt(etype, tid) on tt.tid is not null and c.entity_type = tt.etype
            where c.source = 'evolution'
            on conflict (contact_id, tag_id) do nothing
            returning 1`,
-          [instance, tagIdFor('auto_individual'), tagIdFor('auto_group'), tagIdFor('auto_organization')]
+          [tagIdFor('auto_individual'), tagIdFor('auto_group'), tagIdFor('auto_organization')]
         );
 
         // وسم القطاع السياحي حسب الاسم
