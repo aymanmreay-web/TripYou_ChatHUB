@@ -181,10 +181,10 @@ export async function POST(req: NextRequest) {
                     'individual', now(), now()
              from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[]) as x(phone, name, jid, avatar, issaved)
              on conflict (primary_phone_e164) do update set
-               display_name = case when x.name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then x.name else hub.contacts.display_name end,
-               full_name = case when x.name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then x.name else hub.contacts.full_name end,
-               wa_jid = coalesce(hub.contacts.wa_jid, x.jid),
-               avatar_url = coalesce(x.avatar, hub.contacts.avatar_url),
+               display_name = case when excluded.full_name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then excluded.full_name else hub.contacts.display_name end,
+               full_name = case when excluded.full_name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then excluded.full_name else hub.contacts.full_name end,
+               wa_jid = coalesce(hub.contacts.wa_jid, excluded.wa_jid),
+               avatar_url = coalesce(excluded.avatar_url, hub.contacts.avatar_url),
                last_activity_at = now(),
                updated_at = now()`,
             [
@@ -267,7 +267,7 @@ export async function POST(req: NextRequest) {
                display_name = x.name, full_name = x.name,
                avatar_url = coalesce(x.pic, c.avatar_url),
                updated_at = now()
-             from (select * from unnest($1::text[], $2::text[], $3::text[]) as t(jid, name, pic)) x
+             from unnest($1::text[], $2::text[], $3::text[]) as x(jid, name, pic)
              where c.wa_jid = x.jid`,
             [groupRows.map((g) => g.jid), groupRows.map((g) => g.name), groupRows.map((g) => g.pic)]
           );
