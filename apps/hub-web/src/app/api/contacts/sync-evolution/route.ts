@@ -299,9 +299,9 @@ export async function POST(req: NextRequest) {
         // وسم القطاع السياحي حسب الاسم
         await q(
           `insert into hub.contact_tags (contact_id, tag_id)
-           select c.id, $1
+           select c.id, $1::uuid
            from hub.contacts c
-           where $1 is not null
+           where $1::uuid is not null
              and (c.display_name ~* '(فندق|سياح|حج|عمرة|رحل|طيران|شرك|مؤسس|وكال|travel|hotel|tours|agency)')
              and c.source = 'evolution'
            on conflict (contact_id, tag_id) do nothing`,
