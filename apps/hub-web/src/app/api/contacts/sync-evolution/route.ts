@@ -283,7 +283,7 @@ export async function POST(req: NextRequest) {
         // ─── الفرز التلقائي: ربط الوسوم المركزية بكل جهة مستوردة (دفعة واحدة) ───
         const tagLinks = await q(
           `insert into hub.contact_tags (contact_id, tag_id)
-           select c.id, t.id
+           select c.id, tt.tid
            from hub.contacts c
            join (values
              ('individual', $2::uuid),
