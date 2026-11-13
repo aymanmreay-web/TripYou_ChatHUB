@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
                (display_name, full_name, primary_phone_e164, wa_jid, entity_type, commercial_role,
                 source, source_detail, avatar_url, country_code, kind, updated_at, last_activity_at)
              select x.phone, x.name, x.phone, x.jid, 'individual', 'b2c',
-                    'evolution', 'evolution:' || $1, x.avatar,
+                    'evolution', 'evolution:' || $1::text, x.avatar,
                     case when x.phone like '+966%' then 'SA' when x.phone like '+971%' then 'AE'
                          when x.phone like '+962%' then 'JO' when x.phone like '+20%'  then 'EG'
                          when x.phone like '+965%' then 'KW' when x.phone like '+974%' then 'QA'
@@ -253,7 +253,7 @@ export async function POST(req: NextRequest) {
             `insert into hub.contacts
                (display_name, full_name, entity_type, commercial_role, source, source_detail,
                 kind, wa_jid, avatar_url, country_code, updated_at, last_activity_at)
-             select x.name, x.name, 'group', 'b2b', 'evolution', 'evolution:' || $1,
+             select x.name, x.name, 'group', 'b2b', 'evolution', 'evolution:' || $1::text,
                     'group_entity', x.jid, x.pic, 'SA', now(), now()
              from unnest($2::text[], $3::text[], $4::text[]) as x(jid, name, pic)
              where not exists (select 1 from hub.contacts c where c.wa_jid = x.jid)
