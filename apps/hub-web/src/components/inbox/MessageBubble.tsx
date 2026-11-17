@@ -116,7 +116,7 @@ function MessageBubbleImpl({
                         <div
                           className={`absolute -top-3 ${
                             isOut ? 'left-2' : 'right-2'
-                          } hidden group-hover/msg:flex items-center gap-1 bg-[var(--card-bg)] border border-purple-500/40 rounded-xl px-2 py-0.5 shadow-2xl z-30 backdrop-blur-md transition-all`}
+                          } hidden group-hover/msg:flex items-center gap-1 bg-[var(--card-bg)] border border-purple-500/40 rounded-xl px-2 py-0.5 shadow-lg z-30`}
                         >
                           <button
                             type="button"
@@ -184,7 +184,7 @@ function MessageBubbleImpl({
                         </div>
 
                         <div
-                          className={`max-w-[85%] sm:max-w-xl px-4 py-2.5 text-sm transition-all ${
+                          className={`max-w-[85%] sm:max-w-xl px-4 py-2.5 text-sm ${
                             isOut
                               ? 'bubble-user'
                               : 'bubble-peer'
@@ -194,7 +194,7 @@ function MessageBubbleImpl({
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); toggleMsgSelection(msg.id); }}
-                              className={`absolute top-1 right-1 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-[var(--accent-soft)] border-[var(--border-glow)] text-[var(--primary)]' : 'bg-black/30 border-white/20 text-transparent hover:text-white'}`}
+                              className={`absolute top-1 right-1 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${isSelected ? 'bg-[var(--accent-soft)] border-[var(--border-glow)] text-[var(--primary)]' : 'bg-black/30 border-white/20 text-transparent hover:text-white'}`}
                               title="تحديد الرسالة"
                             >
                               <CheckSquare className="w-3.5 h-3.5" />

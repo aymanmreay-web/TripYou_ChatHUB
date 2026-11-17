@@ -4003,7 +4003,7 @@ export function NativeChatInbox() {
                       {cannedOpen && (
                         <>
                           <div className="fixed inset-0 z-40" onClick={() => { setCannedOpen(false); setCannedSearch(''); }} />
-                          <div className="absolute bottom-12 right-0 z-50 w-80 bg-[var(--card-bg)] border border-purple-500/40 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md" dir="rtl">
+                          <div className="absolute bottom-12 right-0 z-50 w-80 bg-[var(--card-bg)] border border-purple-500/40 rounded-2xl shadow-2xl overflow-hidden" dir="rtl">
                             <div className="p-2.5 border-b border-[var(--border-subtle)]">
                               <input
                                 autoFocus
@@ -4082,7 +4082,7 @@ export function NativeChatInbox() {
                             className="fixed inset-0 z-40"
                             onClick={() => setShowEmojiPicker(false)}
                           />
-                          <div className="absolute bottom-12 right-0 z-50 bg-[var(--card-bg)] border border-purple-500/40 rounded-2xl p-3 shadow-2xl w-72 grid grid-cols-8 gap-1.5 text-xl backdrop-blur-md">
+                          <div className="absolute bottom-12 right-0 z-50 bg-[var(--card-bg)] border border-purple-500/40 rounded-2xl p-3 shadow-2xl w-72 grid grid-cols-8 gap-1.5 text-xl">
                             {['😀','😂','🤣','😍','🥰','😘','😜','😎','🥳','🤔','🤫','🙄','😬','😴','👍','👎','👏','🙌','🙏','🤝','🔥','❤️','🎉','✨','🇸🇦','🌹','✈️','🏨','💼','📞','💬','✅','❌','⚠️','💯','👌','🤲','👋','💪','🎯'].map((em) => (
                               <button
                                 key={em}
@@ -4572,7 +4572,7 @@ export function NativeChatInbox() {
          ════════════════════════════════════════════════════════ */}
       {lightboxMedia && (
         <div
-          className="fixed inset-0 z-[200] bg-black/94 backdrop-blur-md flex flex-col items-center justify-between p-4 cursor-zoom-out select-none"
+          className="fixed inset-0 z-[200] bg-black/94 flex flex-col items-center justify-between p-4 cursor-zoom-out select-none"
           onClick={() => setLightboxMedia(null)}
         >
           {/* شريط أدوات Lightbox العلوي */}

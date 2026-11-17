@@ -10,6 +10,29 @@ import React, { useEffect, useState } from 'react';
 import { slaAppliesTo, slaLevelFor, SLA_PILL_CLASS, SlaLevel } from '../../lib/inbox/uiMaps';
 import { ConversationStatus } from '../../types';
 
+// ─── نبضة واحدة مشتركة لكل العدّادات (بدل setInterval لكل صف) ───
+// تعمل فقط ما دام هناك عدّاد حي واحد على الأقل، وتتوقف والتبويب مخفي، وتُحدّث فوراً عند العودة له.
+const tickListeners = new Set<() => void>();
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+const fireTick = () => tickListeners.forEach((l) => l());
+const onVisibleTick = () => { if (!document.hidden) fireTick(); };
+
+function subscribeTick(cb: () => void): () => void {
+  tickListeners.add(cb);
+  if (!tickTimer) {
+    tickTimer = setInterval(() => { if (!document.hidden) fireTick(); }, 1000);
+    document.addEventListener('visibilitychange', onVisibleTick);
+  }
+  return () => {
+    tickListeners.delete(cb);
+    if (tickListeners.size === 0 && tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+      document.removeEventListener('visibilitychange', onVisibleTick);
+    }
+  };
+}
+
 interface SlaTimerProps {
   /** طابع زمني لآخر رسالة عميل (epoch ms أو نص ISO) */
   since?: number | string | null;
@@ -31,8 +54,7 @@ export function SlaTimer({ since, status, isGroup = false, showLabel = false, cl
   useEffect(() => {
     if (!live) return;
     setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    return subscribeTick(() => setNow(Date.now()));
   }, [live, since]);
 
   if (!since) return null;
