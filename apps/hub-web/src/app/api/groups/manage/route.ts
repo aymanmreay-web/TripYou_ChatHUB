@@ -115,6 +115,15 @@ export async function POST(req: NextRequest) {
           group_jid,
           subject,
         ]);
+        // ─── م8: المزامنة اللحظية مع جدول جهات الاتصال والمحادثات ───
+        await q(
+          `update hub.contacts set display_name = $2, full_name = $2, updated_at = now() where wa_jid = $1`,
+          [group_jid, subject]
+        ).catch(() => {});
+        await q(
+          `update hub.conversations set title = $2, updated_at = now() where chat_jid = $1`,
+          [group_jid, subject]
+        ).catch(() => {});
         await auditGroup('group.subject', group_jid, staff_id || null, { instance, subject });
         return NextResponse.json({ success: true, subject });
       }
@@ -157,6 +166,12 @@ export async function POST(req: NextRequest) {
           group_jid,
           pictureUrl,
         ]);
+        if (pictureUrl) {
+          await q(
+            `update hub.contacts set avatar_url = $2, updated_at = now() where wa_jid = $1`,
+            [group_jid, pictureUrl]
+          ).catch(() => {});
+        }
         await auditGroup('group.picture', group_jid, staff_id || null, { instance });
         return NextResponse.json({ success: true, picture_url: pictureUrl });
       }

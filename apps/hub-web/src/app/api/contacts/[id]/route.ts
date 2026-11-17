@@ -61,6 +61,24 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // ─── م8: المزامنة اللحظية مع المجموعات والمحادثات ───
+    if (updated?.wa_jid) {
+      const { q } = await import('../../../../lib/pg');
+      const newName = updated.display_name || updated.full_name;
+      if (newName) {
+        if (updated.entity_type === 'group' || updated.wa_jid.endsWith('@g.us')) {
+          await q(
+            `update hub.whatsapp_groups set subject = $2, updated_at = now() where group_jid = $1`,
+            [updated.wa_jid, newName]
+          ).catch(() => {});
+        }
+        await q(
+          `update hub.conversations set title = $2, updated_at = now() where chat_jid = $1 or contact_id = $3`,
+          [updated.wa_jid, newName, id]
+        ).catch(() => {});
+      }
+    }
+
     return NextResponse.json({ contact: updated });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

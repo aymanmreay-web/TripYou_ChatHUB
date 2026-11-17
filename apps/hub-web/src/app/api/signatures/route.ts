@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
               staff_id: st.id,
               custom_part1: st.custom_part1,
               custom_part2: st.custom_part2,
-              custom_part3: st.custom_part3,
+              // ⛔ custom_part3 لا يُحفَظ أبداً — يُحقَن تلقائياً من اسم الخط وقت الإرسال
               is_active: st.is_active ?? true,
               allow_custom_edit: st.allow_custom_edit ?? true,
               can_disable_signature: st.can_disable_signature ?? false,

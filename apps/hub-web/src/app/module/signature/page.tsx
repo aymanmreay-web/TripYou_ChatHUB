@@ -213,12 +213,13 @@ export default function SignatureSettingsPage() {
       parts.push(p1);
     }
     if (config.part2.enabled) {
-      const p2 = st.allow_custom_edit && st.custom_part2 ? st.custom_part2 : `واتساب ${st.default_line}`;
+      // Part 2 = القسم (department) وليس الخط — قرار المالك
+      const p2 = st.allow_custom_edit && st.custom_part2 ? st.custom_part2 : ((st as any).department || 'قسم خدمة العملاء');
       parts.push(p2);
     }
     if (config.part3.enabled) {
-      const p3 = st.allow_custom_edit && st.custom_part3 ? st.custom_part3 : config.part3.template;
-      parts.push(p3);
+      // Part 3 = دائماً من النظام — اسم خط الإرسال المُختار وقت الإرسال — لا يُعدَّل
+      parts.push(`واتساب ${st.default_line} [يُحدَّد تلقائياً]`);
     }
 
     return parts.join(config.separator);
@@ -495,7 +496,8 @@ export default function SignatureSettingsPage() {
                     <th className="p-3.5 font-bold">الخط الافتراضي</th>
                     <th className="p-3.5 font-bold text-center">صلاحية التعديل الشخصي</th>
                     <th className="p-3.5 font-bold text-center">السماح بعدم الإرسال (اختياري)</th>
-                    <th className="p-3.5 font-bold">التوقيع المخصص الفعلي</th>
+                    <th className="p-3.5 font-bold">السطر الأول المخصص (الاسم/الصفة)</th>
+                    <th className="p-3.5 font-bold text-slate-500">الجزء الثالث</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -560,6 +562,15 @@ export default function SignatureSettingsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            {/* ملاحظة Part 3 */}
+            <div className="mt-3 p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 flex items-start gap-2 text-xs text-emerald-300/80">
+              <PhoneCall className="w-3.5 h-3.5 mt-0.5 text-emerald-400 shrink-0" />
+              <span>
+                <strong>الجزء الثالث (خط الإرسال)</strong> يُضاف تلقائياً وقت الإرسال الفعلي من كل رسالة صادرة بالشكل:{' '}
+                <bdi dir="ltr" className="font-mono">واتساب [اسم الخط]</bdi>
+                {' '}— لا يظهر في هذا الجدول ولا يمكن لأي موظف تعديله يدوياً. هذا تصميم مقصود لضمان دقة معلومات القناة.
+              </span>
             </div>
           </div>
         )}
@@ -630,6 +641,15 @@ export default function SignatureSettingsPage() {
                   </span>
                 </button>
               ))}
+            </div>
+            {/* ملاحظة Part 3 */}
+            <div className="mt-3 p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 flex items-start gap-2 text-xs text-emerald-300/80">
+              <PhoneCall className="w-3.5 h-3.5 mt-0.5 text-emerald-400 shrink-0" />
+              <span>
+                <strong>الجزء الثالث (خط الإرسال)</strong> يُضاف تلقائياً وقت الإرسال الفعلي من كل رسالة صادرة بالشكل:{' '}
+                <bdi dir="ltr" className="font-mono">واتساب [اسم الخط]</bdi>
+                {' '}— لا يظهر في هذا الجدول ولا يمكن لأي موظف تعديله يدوياً. هذا تصميم مقصود لضمان دقة معلومات القناة.
+              </span>
             </div>
           </div>
         )}

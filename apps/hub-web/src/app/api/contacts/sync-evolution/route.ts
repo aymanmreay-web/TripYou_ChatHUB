@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
         }
 
         // ─── الأفراد: تجميع مع تخطي المكرر في نفس الدفعة ───
-        const individuals: { phone: string; name: string; jid: string; avatar: string | null; isSaved: boolean }[] = [];
+        const individuals: { phone: string; name: string; dispName: string | null; jid: string; avatar: string | null; isSaved: boolean }[] = [];
         const seenPhones = new Set<string>();
         let skipped = 0;
 
@@ -161,8 +161,11 @@ export async function POST(req: NextRequest) {
           if (!phone || phone === '+' || seenPhones.has(phone)) { skipped++; continue; }
           seenPhones.add(phone);
 
-          const name = isMeaningfulName(c.name) ? c.name!.trim() : isMeaningfulName(c.pushName) ? c.pushName.trim() : phone;
-          individuals.push({ phone, name, jid, avatar: c.profilePicUrl || null, isSaved: !!c.isSaved });
+          const hasRealName = isMeaningfulName(c.name);
+          const hasPushName = isMeaningfulName(c.pushName);
+          const name = hasRealName ? c.name!.trim() : hasPushName ? c.pushName!.trim() : '';
+          const dispName = hasRealName ? c.name!.trim() : hasPushName ? c.pushName!.trim() : null;
+          individuals.push({ phone, name, dispName, jid, avatar: c.profilePicUrl || null, isSaved: !!c.isSaved });
         }
 
         // ─── الأفراد: upsert ذري واحد (no limit — unnest) ───
@@ -171,7 +174,7 @@ export async function POST(req: NextRequest) {
             `insert into hub.contacts
                (display_name, full_name, primary_phone_e164, wa_jid, entity_type, commercial_role,
                 source, source_detail, avatar_url, country_code, kind, updated_at, last_activity_at)
-             select x.phone, x.name, x.phone, x.jid, 'individual', 'b2c',
+             select x.dispname, x.name, x.phone, x.jid, 'individual', 'b2c',
                     'evolution', 'evolution:' || $1::text, x.avatar,
                     case when x.phone like '+966%' then 'SA' when x.phone like '+971%' then 'AE'
                          when x.phone like '+962%' then 'JO' when x.phone like '+20%'  then 'EG'
@@ -179,10 +182,10 @@ export async function POST(req: NextRequest) {
                          when x.phone like '+968%' then 'OM' when x.phone like '+973%' then 'BH'
                          when x.phone like '+90%'  then 'TR' else 'XX' end,
                     'individual', now(), now()
-             from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[]) as x(phone, name, jid, avatar, issaved)
+             from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::boolean[]) as x(phone, name, dispname, jid, avatar, issaved)
              on conflict (primary_phone_e164) do update set
-               display_name = case when excluded.full_name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then excluded.full_name else hub.contacts.display_name end,
-               full_name = case when excluded.full_name <> '+' || replace(hub.contacts.primary_phone_e164, '+', '') then excluded.full_name else hub.contacts.full_name end,
+               display_name = coalesce(nullif(hub.contacts.display_name, ''), excluded.display_name),
+               full_name = coalesce(nullif(hub.contacts.full_name, ''), excluded.full_name),
                wa_jid = coalesce(hub.contacts.wa_jid, excluded.wa_jid),
                avatar_url = coalesce(excluded.avatar_url, hub.contacts.avatar_url),
                last_activity_at = now(),
@@ -191,6 +194,7 @@ export async function POST(req: NextRequest) {
               instance,
               individuals.map((i) => i.phone),
               individuals.map((i) => i.name),
+              individuals.map((i) => i.dispName),
               individuals.map((i) => i.jid),
               individuals.map((i) => i.avatar),
               individuals.map((i) => i.isSaved),
@@ -306,6 +310,15 @@ export async function POST(req: NextRequest) {
              and c.source = 'evolution'
            on conflict (contact_id, tag_id) do nothing`,
           [tagIdFor('auto_tourism')]
+        );
+
+        // ربط المحادثات بجهات الاتصال المستوردة فوراً
+        await q(
+          `update hub.conversations cv
+           set contact_id = c.id
+           from hub.contacts c
+           where (c.wa_jid = cv.chat_jid or c.primary_phone_e164 = split_part(cv.chat_jid, '@', 1))
+             and cv.contact_id is null`
         );
 
         summary.lines_processed.push({ instance, individuals: individuals.length, groups: groupRows.length, skipped });

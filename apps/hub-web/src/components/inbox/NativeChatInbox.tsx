@@ -964,16 +964,39 @@ export function NativeChatInbox() {
     [inboxesList, selectedInboxId]
   );
 
-  const isManager = useMemo(() => {
-    // الأدوار الثلاثة المعتمدة: مدير (super_admin) / مشرف (sales_lead) / موظف (البقية)
+  // ─── قرار المالك: تعريف صلاحيات الأدوار بدقة ───
+  // super_admin: وصول كامل لكل شيء — لا يرى أي نافذة طلب صلاحيات
+  // sales_lead / manager / admin: مشرف في صناديقه المخصصة فقط
+  // بقية الأدوار: موظف عادي — يرى محادثاته المسندة فقط
+
+  const isSuperAdmin = useMemo(() => {
     return (
-      user?.role === 'manager' ||
-      user?.role === 'admin' ||
       user?.role === 'super_admin' ||
-      user?.role === 'sales_lead' ||
       Boolean(user?.email_masked?.toLowerCase().includes('ayman'))
     );
   }, [user]);
+
+  // isManager = تُستخدَم للتحقق من صلاحيات الإدارة العامة (مثل رؤية قائمة كل الموظفين)
+  const isManager = useMemo(() => {
+    return (
+      isSuperAdmin ||
+      user?.role === 'manager' ||
+      user?.role === 'admin' ||
+      user?.role === 'sales_lead'
+    );
+  }, [isSuperAdmin, user]);
+
+  // isManagerInCurrentInbox = هل هذا المستخدم مشرف في الصندوق المفتوح حالياً؟
+  // super_admin: دائماً نعم
+  // sales_lead/manager/admin: نعم فقط إذا كان الصندوق ضمن صناديقه المخصصة
+  const isManagerInCurrentInbox = useMemo(() => {
+    if (isSuperAdmin) return true;
+    if (user?.role === 'sales_lead' || user?.role === 'manager' || user?.role === 'admin') {
+      if (!currentInbox) return false;
+      return user?.assigned_inbox_ids?.includes(currentInbox.id) ?? false;
+    }
+    return false;
+  }, [isSuperAdmin, user, currentInbox]);
 
   // التحقق هل الموظف غير مسند لأي صندوق محادثات
   const isStaffWithoutInboxes = useMemo(() => {
@@ -1231,18 +1254,40 @@ export function NativeChatInbox() {
   }, [allowedSendInstances, lastIncomingLine, activeConversation, convGrants, groupMemberDigits, instances]);
 
   // ─── طبقات الرؤية (قرار المالك): من يرى المحتوى ومن يرى الهيكل فقط ───
+  // القيم الممكنة:
+  //   'full'               → رؤية كاملة بلا قيود
+  //   'shell'              → محادثة مسندة لزميل آخر — محجوبة
+  //   'unassigned_locked'  → محادثة شاغرة بلا إسناد — الموظف يرى بوابة الاقتناص
+  //   'none'               → لا محادثة نشطة
   const contentAccess = useMemo(() => {
     if (!activeConversation) return 'none';
-    if (isManager) return 'full';
+
+    // super_admin: وصول فوري كامل بلا أي شرط
+    if (isSuperAdmin) return 'full';
+
     const assignedId = (activeConversation as any).assigned_staff_id;
     const assignedName = activeConversation.assigned_staff_name;
+
+    // مشرف في صندوق محدد: وصول كامل لكل محادثات صندوقه
+    if (isManagerInCurrentInbox) return 'full';
+
+    // الموظف: وصول كامل إن كانت المحادثة مسندة إليه شخصياً
     if (assignedId && user?.id && assignedId === user.id) return 'full';
-    if (!assignedId && !assignedName) return 'full';
+
+    // الموظف: وصول كامل إن كانت مسندة بالاسم
+    if (!assignedId && assignedName && assignedName !== 'غير مسند' && assignedName === user?.full_name) return 'full';
+
+    // الموظف + محادثة شاغرة بلا إسناد → بوابة الاقتناص (ليست متاحة حرة!)
+    if (!assignedId && (!assignedName || assignedName === 'غير مسند')) return 'unassigned_locked';
+
+    // الموظف لديه منح مدير سابقة لهذه المحادثة
     const jid = activeConversation.chat_jid;
     const hasRead = Array.from(convGrants).some((k) => k.startsWith(jid + '|'));
     if (hasRead) return 'full';
+
+    // المحادثة مسندة لزميل آخر → محجوبة
     return 'shell';
-  }, [activeConversation, isManager, user, convGrants]);
+  }, [activeConversation, isSuperAdmin, isManagerInCurrentInbox, user, convGrants]);
 
   const ownsConversationLine = useMemo(() => {
     if (!activeConversation) return false;
@@ -1340,8 +1385,9 @@ export function NativeChatInbox() {
       });
       const json = await res.json();
       if (res.ok) {
-        setReqSentType(type);
-        toast({ title: json.already_pending ? 'طلبك معلق بالفعل' : 'أُرسل الطلب للمشرف — التصعيد للمدير بعد 10 دقائق بلا رد', kind: 'success' });
+        // ✅ نضع اللاحقة -sent حتى تعرف الأزرار أن الطلب أُرسل
+        setReqSentType(type + '-sent');
+        toast({ title: json.already_pending ? 'طلبك معلق بالفعل — تم إشعار المشرف سابقاً' : 'أُرسل الطلب للمشرف — سيُصعَّد للمدير بعد 10 دقائق بلا رد', kind: 'success' });
         refreshGrants();
       } else {
         toast({ title: json.error || 'فشل إرسال الطلب', kind: 'error' });
@@ -1824,7 +1870,8 @@ export function NativeChatInbox() {
         parts.push(staffSig?.custom_part2 || (staffSig as any)?.department || 'قسم خدمة العملاء');
       }
       if (signatureConfig.part3?.enabled) {
-        parts.push(staffSig?.custom_part3 || `واتساب ${getLineDisplayTitle(lineName)}`);
+        // قرار المالك: Part 3 دائماً من النظام — اسم خط الإرسال المُختار وقت الإرسال — لا يُعدَّل
+        parts.push(`واتساب ${getLineDisplayTitle(lineName)}`);
       }
       if (parts.length > 0) {
         return `\n\n${parts.join(signatureConfig.separator || ' — ')}`;
@@ -3453,7 +3500,11 @@ export function NativeChatInbox() {
 
               {/* Messages Feed */}
               <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[var(--bg-main)]">
-                {activeConversation && lockedChatsPinMap[activeConversation.id] && !unlockedSessionChats[activeConversation.id] ? (
+                {/* ══════════════════════════════════════════════════════════════
+                    🔐 بوابة الأمان — مبنية على contentAccess (قرار المالك)
+                    ══════════════════════════════════════════════════════════════ */}
+                {activeConversation && lockedChatsPinMap[activeConversation.id] && !unlockedSessionChats[activeConversation.id] && !isSuperAdmin ? (
+                  /* 🔒 PIN Lock — محادثة مقفلة بكلمة سر */
                   <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-6 space-y-4">
                     <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
                       <Lock className="w-8 h-8" />
@@ -3493,8 +3544,53 @@ export function NativeChatInbox() {
                       </button>
                     </div>
                   </div>
-                ) : activeConversation && activeConversation.assigned_staff_name && activeConversation.assigned_staff_name !== 'غير مسند' && user?.full_name && activeConversation.assigned_staff_name !== user.full_name && !unlockedSessionChats[activeConversation.id] ? (
-                  /* 🛡️ حالة: المحادثة مسندة لزميل آخر في الصندوق - المحتوى محجوب لحماية العمل */
+                ) : activeConversation && contentAccess === 'unassigned_locked' ? (
+                  /* 🟢 بوابة الاقتناص — محادثة شاغرة بلا إسناد (للموظف العادي فقط) */
+                  <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-6 space-y-4">
+                    <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                      <Unlock className="w-8 h-8" />
+                    </div>
+                    <div className="max-w-md space-y-2">
+                      <h3 className="text-base font-bold text-[var(--text-main)]">محادثة جديدة غير مسندة</h3>
+                      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                        هذه المحادثة متاحة ولم تُسنَد لأحد بعد. يمكنك اقتناصها وإسنادها لنفسك، أو طلب إذن قراءة فقط من المشرف.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                      {reqSentType === 'assignment-sent' ? (
+                        <div className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>تم إرسال طلب الاقتناص — بانتظار موافقة المشرف</span>
+                        </div>
+                      ) : (
+                        <button
+                          disabled={reqSentType === 'assignment-sending'}
+                          onClick={() => submitPermissionRequest('assignment')}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-60 text-white text-xs font-bold shadow-lg shadow-emerald-900/40 transition-all"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                          <span>🙋 اقتناص المحادثة وإسنادها لي</span>
+                        </button>
+                      )}
+                      {reqSentType === 'read-sent' ? (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>تم إرسال طلب إذن القراءة</span>
+                        </div>
+                      ) : (
+                        <button
+                          disabled={reqSentType === 'read-sending'}
+                          onClick={() => submitPermissionRequest('read')}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-300 text-xs font-medium border border-slate-700 transition-all"
+                        >
+                          <ShieldAlert className="w-4 h-4 text-blue-400" />
+                          <span>👁️ طلب إذن قراءة فقط من المشرف</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : activeConversation && contentAccess === 'shell' && !unlockedSessionChats[activeConversation.id] ? (
+                  /* 🛡️ بوابة الزميل — محادثة مسندة لشخص آخر */
                   <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-6 space-y-4">
                     <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
                       <ShieldAlert className="w-8 h-8" />
@@ -3502,24 +3598,37 @@ export function NativeChatInbox() {
                     <div className="max-w-md space-y-2">
                       <h3 className="text-base font-bold text-[var(--text-main)]">المحادثة قيد المتابعة بواسطة زميل</h3>
                       <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                        هذه المحادثة مسندة حالياً للموظف <strong className="text-amber-300 font-semibold">{activeConversation.assigned_staff_name}</strong>. محتوى الرسائل محجوب لمنع تضارب الردود، ولكن يمكنك تقديم طلب رسمي للمشرف للاطلاع أو الاستلام.
+                        هذه المحادثة مسندة حالياً للموظف{' '}
+                        <strong className="text-amber-300 font-semibold">{activeConversation.assigned_staff_name}</strong>.{' '}
+                        محتوى الرسائل محجوب لمنع تضارب الردود. يمكنك تقديم طلب رسمي للمشرف للاطلاع أو الاستلام.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                      <button
-                        onClick={() => {
-                          setRequestAccessSent(false);
-                          setRequestAccessSending(false);
-                          setRequestAccessError(null);
-                          setRequestAccessReason('');
-                          setRequestAccessType('read');
-                          setRequestAccessModalOpen(true);
-                        }}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-900/40 transition-all"
-                      >
-                        <ShieldAlert className="w-4 h-4" />
-                        <span>تقديم طلب وصول / إسناد للمشرف</span>
-                      </button>
+                      {reqSentType === 'read-sent' || reqSentType === 'read_write-sent' ? (
+                        <div className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-bold">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>تم إرسال طلبك — بانتظار رد المشرف</span>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            disabled={reqSentType.endsWith('-sending')}
+                            onClick={() => submitPermissionRequest('read')}
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 disabled:opacity-60 text-white text-xs font-bold shadow-lg shadow-purple-900/40 transition-all"
+                          >
+                            <ShieldAlert className="w-4 h-4" />
+                            <span>👁️ طلب إذن الاطلاع فقط</span>
+                          </button>
+                          <button
+                            disabled={reqSentType.endsWith('-sending')}
+                            onClick={() => submitPermissionRequest('assignment')}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-300 text-xs font-medium border border-slate-700 transition-all"
+                          >
+                            <UserPlus className="w-4 h-4 text-emerald-400" />
+                            <span>🔁 طلب نقل الإسناد إليّ</span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : loadingMessages ? (
@@ -4455,13 +4564,13 @@ export function NativeChatInbox() {
         </Modal>
       )}
 
-      {/* --- نافذة «الرقم غير متواجد في المجموعة» — اختيار حر مع خيارَي الحل --- */}
+      {/* --- نافذة «الرقم غير متواجد في المجموعة / يلزم إذن» --- */}
       {lineBlockModal && (
         <Modal
           open
           onClose={() => setLineBlockModal(null)}
           contained
-          ariaLabel="الرقم غير متواجد في المجموعة"
+          ariaLabel="تنبيه خط الإرسال"
           panelClassName="border border-amber-500/50 rounded-2xl max-w-md p-6 space-y-4 text-right"
         >
           <div className="flex items-center gap-3">
@@ -4470,45 +4579,84 @@ export function NativeChatInbox() {
             </div>
             <div>
               <h3 className="font-bold text-base text-amber-300">
-                {lineBlockModal.reason.includes('عضو') ? 'هذا الرقم غير متواجد في المجموعة' : 'الإرسال من هذا الرقم يحتاج إذن المدير'}
+                {lineBlockModal.reason.includes('عضو')
+                  ? `🚫 الرقم «${getLineDisplayTitle(lineBlockModal.line)}» ليس عضواً في المجموعة`
+                  : `⚠️ الرقم «${getLineDisplayTitle(lineBlockModal.line)}» يحتاج إذن الإرسال`}
               </h3>
-              <p className="text-xs text-slate-300 font-mono">{getLineDisplayTitle(lineBlockModal.line)}</p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                <bdi dir="ltr">{lineBlockModal.line}</bdi>
+              </p>
             </div>
           </div>
 
           <p className="text-xs text-slate-300 leading-relaxed bg-amber-950/30 p-3 rounded-xl border border-amber-900/40">
             {lineBlockModal.reason.includes('عضو')
-              ? `الخط «${getLineDisplayTitle(lineBlockModal.line)}» ليس عضواً في مجموعة «${activeConversation?.title}». واتساب لا يسمح بالإرسال إلى مجموعة إلا من رقم عضو فيها.`
-              : `الإرسال من «${getLineDisplayTitle(lineBlockModal.line)}» في هذه المحادثة يتطلب إذناً صريحاً من المدير.`}
+              ? `الخط «${getLineDisplayTitle(lineBlockModal.line)}» غير مشارك في مجموعة «${activeConversation?.title}». واتساب لا يسمح بالإرسال إلى مجموعة إلا من رقم عضو فيها. اختر رقماً آخر مشاركاً، أو اطلب إضافة هذا الرقم.`
+              : `العميل تواصل عبر «${getLineDisplayTitle(lastIncomingLine || activeConversation?.line_id || '')}». الرد من رقم مختلف قد يُربك العميل أو يتسبب في رفضه للرسالة. يلزم إذن صريح من المدير.`}
           </p>
 
           <div className="flex flex-col gap-2 pt-1">
+            {/* الخيار الأول: اختيار خط آخر مناسب */}
             <button
               onClick={() => {
-                // اختيار رقم آخر متاح فعلاً في المجموعة
                 const firstAllowed = allowedSendInstances.find((i) => sendLineStatus.get(i.name)?.allowed);
                 if (firstAllowed) {
                   setSendingLineInstance(firstAllowed.name);
-                  toast({ title: `تم اختيار: ${getLineDisplayTitle(firstAllowed.name)}`, kind: 'success' });
+                  toast({ title: `✅ تم اختيار: ${getLineDisplayTitle(firstAllowed.name)}`, kind: 'success' });
+                } else {
+                  toast({ title: 'لا يوجد خط آخر متاح حالياً', kind: 'error' });
                 }
                 setLineBlockModal(null);
               }}
               className="w-full px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
             >
               <PhoneCall className="w-4 h-4" />
-              اختيار رقم آخر متواجد في المجموعة
+              {lineBlockModal.reason.includes('عضو') ? 'اختيار رقم آخر مشارك في المجموعة' : 'العودة لخط الوارد الأصلي (موصى به)'}
             </button>
-            {lineBlockModal.reason.includes('عضو') ? (
+
+            {/* الخيار الثاني: super_admin → تصرف مباشر | الموظف → رفع طلب */}
+            {isSuperAdmin ? (
+              lineBlockModal.reason.includes('عضو') ? (
+                <button
+                  onClick={() => {
+                    // super_admin: فتح صفحة إدارة المجموعة مباشرة
+                    router.push(`/module/groups?group=${encodeURIComponent(activeConversation?.chat_jid || '')}`);
+                    setLineBlockModal(null);
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <Users className="w-4 h-4" />
+                  إضافة الرقم للمجموعة مباشرة (صلاحية مدير أعلى)
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    // super_admin: منح إذن فوري لنفسه
+                    if (activeConversation) {
+                      const grantKey = `${activeConversation.chat_jid}|${lineBlockModal.line}`;
+                      setConvGrants((prev) => new Set(Array.from(prev).concat([grantKey])));
+                      setSendingLineInstance(lineBlockModal.line);
+                      toast({ title: `✅ منحت نفسك إذن الإرسال من «${getLineDisplayTitle(lineBlockModal.line)}»`, kind: 'success' });
+                    }
+                    setLineBlockModal(null);
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-4 h-4" />
+                  منح إذن الإرسال الآن (صلاحية مدير أعلى)
+                </button>
+              )
+            ) : lineBlockModal.reason.includes('عضو') ? (
               <button
                 onClick={() => {
                   submitPermissionRequest('group_join', lineBlockModal.line);
                   setLineBlockModal(null);
                 }}
-                disabled={reqSentType === 'group_join-sending'}
+                disabled={reqSentType === 'group_join-sending' || reqSentType === 'group_join-sent'}
                 className="w-full px-4 py-2.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 disabled:opacity-60 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
               >
                 <ShieldAlert className="w-4 h-4" />
-                رفع طلب للمشرف لضم هذا الرقم إلى المجموعة
+                {reqSentType === 'group_join-sent' ? '✅ تم إرسال طلب الانضمام' : 'رفع طلب للمشرف لضم هذا الرقم إلى المجموعة'}
               </button>
             ) : (
               <button
@@ -4516,13 +4664,14 @@ export function NativeChatInbox() {
                   submitPermissionRequest('line_reply', lineBlockModal.line);
                   setLineBlockModal(null);
                 }}
-                disabled={reqSentType === 'line_reply-sending'}
+                disabled={reqSentType === 'line_reply-sending' || reqSentType === 'line_reply-sent'}
                 className="w-full px-4 py-2.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 disabled:opacity-60 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
               >
                 <ShieldAlert className="w-4 h-4" />
-                رفع طلب إذن للمدير
+                {reqSentType === 'line_reply-sent' ? '✅ تم إرسال طلب الإذن' : 'طلب ترخيص الرد من هذا الخط من المدير'}
               </button>
             )}
+
             <button
               onClick={() => setLineBlockModal(null)}
               className="w-full px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"

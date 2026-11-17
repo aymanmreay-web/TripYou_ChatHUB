@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageCircle, Pin, Megaphone, Moon as MoonIcon, Info, CheckSquare, CalendarClock, Truck, Receipt, WifiOff, Star, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { MessageCircle, Pin, Megaphone, Moon as MoonIcon, Info, CheckSquare, CalendarClock, Truck, Receipt, WifiOff, Star, ShieldAlert, ShieldCheck, UserPlus, Users, CheckCircle, XCircle } from 'lucide-react';
 
 /**
  * سجل عرض الإشعارات الموحد (الجرس + صفحة الإشعارات).
@@ -16,6 +16,13 @@ export interface NotificationItem {
   instance_name?: string | null;
   read_at: string | null;
   created_at: string;
+  // حقول إضافية للطلبات القابلة للموافقة
+  meta?: {
+    request_id?: string;
+    request_type?: string;
+    requester_id?: string;
+    requester_name?: string;
+  } | null;
 }
 
 export const KIND_ICON: Record<string, React.ReactNode> = {
@@ -31,9 +38,21 @@ export const KIND_ICON: Record<string, React.ReactNode> = {
   booking_created: <Star className="w-4 h-4 text-yellow-400" />,
   payment_received: <Receipt className="w-4 h-4 text-teal-400" />,
   line_offline: <WifiOff className="w-4 h-4 text-red-400" />,
+  // طلبات الصلاحيات (access_request يأتي من /api/access-requests)
   access_request: <ShieldAlert className="w-4 h-4 text-amber-300" />,
+  // طلبات الإذن (permission_request يأتي من /api/permission-requests)
+  permission_request: <ShieldAlert className="w-4 h-4 text-amber-400" />,
+  permission_result: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
+  // للتوافق مع الأسماء القديمة
   line_permission_request: <ShieldAlert className="w-4 h-4 text-amber-400" />,
   line_permission_result: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
+  // نتائج الموافقة/الرفض (يُرسَل للموظف الطالب)
+  request_approved: <CheckCircle className="w-4 h-4 text-emerald-400" />,
+  request_rejected: <XCircle className="w-4 h-4 text-rose-400" />,
+  // طلب انضمام لمجموعة
+  group_join_request: <Users className="w-4 h-4 text-amber-400" />,
+  // إسناد محادثة
+  assignment_request: <UserPlus className="w-4 h-4 text-blue-400" />,
 };
 
 export const KIND_LABEL: Record<string, string> = {
@@ -49,8 +68,14 @@ export const KIND_LABEL: Record<string, string> = {
   payment_received: 'دفعة واردة',
   line_offline: 'انقطاع خط',
   access_request: 'طلب وصول/إسناد',
+  permission_request: 'طلب إذن',
+  permission_result: 'نتيجة طلب الإذن',
   line_permission_request: 'طلب إذن رد من خط',
   line_permission_result: 'نتيجة إذن رد',
+  request_approved: '✅ موافقة على الطلب',
+  request_rejected: '❌ رفض الطلب',
+  group_join_request: 'طلب انضمام لمجموعة',
+  assignment_request: 'طلب استلام محادثة',
 };
 
 export function kindLabel(kind: string): string {

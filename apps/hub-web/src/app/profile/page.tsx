@@ -1,21 +1,25 @@
-﻿'use client';
+'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { User, Phone, Mail, Clock, Shield, Check, Search, Radio, Key, PenTool, Loader2, Save } from 'lucide-react';
+import { User, Phone, Mail, Clock, Shield, Check, Search, Radio, Key, PenTool, Loader2, Save, Eye, Lock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AppShell } from '../../components/layout/AppShell';
 import { Card, Avatar, Badge, Input } from '@tripyou/ui';
 import { toast } from '../../components/common/Toaster';
 
-/** بطاقة "توقيعي" — تحرير أجزاء التوقيع الثلاثة المسموحة للموظف من /api/signatures */
+/** بطاقة "توقيعي" — قرار المالك: Part3 (خط الإرسال) محجوب ومحقون تلقائياً، لا يُعدَّل */
 function MySignatureCard() {
   const { user } = useApp();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sig, setSig] = useState<{
-    part1: string; part2: string; part3: string; is_active: boolean;
-    editable1: boolean; editable2: boolean; editable3: boolean;
-    labels: { p1: string; p2: string; p3: string };
+    part1: string;
+    part2: string;
+    is_active: boolean;
+    allow_custom_edit: boolean;
+    department: string;
+    label_p1: string;
+    label_p2: string;
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -26,18 +30,12 @@ function MySignatureCard() {
       const g = json.global;
       setSig({
         part1: mine?.custom_part1 || '',
-        part2: mine?.custom_part2 || '',
-        part3: mine?.custom_part3 || '',
+        part2: mine?.custom_part2 || mine?.department || 'قسم خدمة العملاء',
         is_active: mine?.is_active ?? true,
-        // قابلية التحرير: إعداد عام editable_by=staff/both أو ما لم يُقيَّد
-        editable1: !g?.part1?.editable_by || ['staff', 'both'].includes(g.part1.editable_by),
-        editable2: !g?.part2?.editable_by || ['staff', 'both'].includes(g.part2.editable_by),
-        editable3: !g?.part3?.editable_by || ['staff', 'both'].includes(g.part3.editable_by),
-        labels: {
-          p1: g?.part1?.label_ar || 'السطر الأول (الاسم والصفة)',
-          p2: g?.part2?.label_ar || 'السطر الثاني (القسم)',
-          p3: g?.part3?.label_ar || 'السطر الثالث (الشركة)',
-        },
+        allow_custom_edit: mine?.allow_custom_edit ?? true,
+        department: mine?.department || 'قسم خدمة العملاء',
+        label_p1: g?.part1_label_ar || 'السطر الأول — الاسم والصفة',
+        label_p2: g?.part2_label_ar || 'السطر الثاني — القسم (يديره المشرف)',
       });
     } catch {
       toast({ title: 'تعذر تحميل التوقيع', kind: 'error' });
@@ -59,8 +57,7 @@ function MySignatureCard() {
           staff: [{
             id: user.id,
             custom_part1: sig.part1,
-            custom_part2: sig.part2,
-            custom_part3: sig.part3,
+            // ⛔ لا نرسل custom_part3 أبداً — يُضاف من النظام وقت الإرسال
             is_active: sig.is_active,
           }],
         }),
@@ -86,11 +83,12 @@ function MySignatureCard() {
   }
   if (!sig) return null;
 
-  const preview = [sig.part1, sig.part2, sig.part3].filter(Boolean).join(' — ');
+  // معاينة: Part1 — Part2 — واتساب [خط الإرسال المُختار تلقائياً]
+  const preview = [sig.part1, sig.part2].filter(Boolean).join(' — ') + ' — واتساب [خط الإرسال]';
 
   return (
-    <Card variant="subtle" className="p-6 border-slate-800/80">
-      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+    <Card variant="subtle" className="p-6 border-slate-800/80 space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
           <span className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
             <PenTool className="w-5 h-5" />
@@ -112,39 +110,78 @@ function MySignatureCard() {
       </div>
 
       <div className="space-y-3">
-        {([['part1', sig.labels.p1, sig.editable1], ['part2', sig.labels.p2, sig.editable2], ['part3', sig.labels.p3, sig.editable3]] as const).map(
-          ([key, label, editable]) => (
-            <div key={key}>
-              <label className="text-[11px] text-slate-400 mb-1 flex items-center gap-1.5">
-                {label}
-                {!editable && <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500">يديره المشرف</span>}
-              </label>
-              <input
-                type="text"
-                value={sig[key]}
-                disabled={!editable}
-                onChange={(e) => setSig({ ...sig, [key]: e.target.value })}
-                className="w-full bg-slate-900/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-[var(--text-main)] focus:outline-none focus:border-purple-500 disabled:opacity-50"
-              />
-            </div>
-          )
-        )}
+        {/* Part 1 — الاسم والصفة (قابل للتعديل إن أُذن) */}
+        <div>
+          <label className="text-[11px] text-slate-400 mb-1 flex items-center gap-1.5">
+            {sig.label_p1}
+            {!sig.allow_custom_edit && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" /> يديره المشرف
+              </span>
+            )}
+          </label>
+          <input
+            type="text"
+            dir="rtl"
+            value={sig.part1}
+            disabled={!sig.allow_custom_edit}
+            onChange={(e) => setSig({ ...sig, part1: e.target.value })}
+            className="w-full bg-slate-900/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-[var(--text-main)] focus:outline-none focus:border-purple-500 disabled:opacity-50 text-right"
+            placeholder="مثال: *محمد العمر* (خدمة العملاء)"
+          />
+        </div>
+
+        {/* Part 2 — القسم (قراءة فقط للموظف — يديره المشرف) */}
+        <div>
+          <label className="text-[11px] text-slate-400 mb-1 flex items-center gap-1.5">
+            {sig.label_p2}
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 flex items-center gap-1">
+              <Lock className="w-2.5 h-2.5" /> يديره المشرف
+            </span>
+          </label>
+          <input
+            type="text"
+            dir="rtl"
+            value={sig.part2}
+            disabled
+            className="w-full bg-slate-900/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 opacity-60 cursor-not-allowed text-right"
+          />
+        </div>
+
+        {/* Part 3 — خط الإرسال (محجوب — يُحقَن تلقائياً) */}
+        <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40">
+          <div className="flex items-center gap-2 text-emerald-400 mb-1">
+            <Phone className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-bold">الجزء الثالث: خط الإرسال — يُضاف تلقائياً</span>
+          </div>
+          <p className="text-[10px] text-emerald-300/70 leading-relaxed">
+            يُحدَّد تلقائياً من الخط المستخدم في كل رسالة صادرة ويظهر بالشكل:{' '}
+            <bdi dir="ltr" className="font-mono text-emerald-300">واتساب [اسم الخط]</bdi>
+            {' '}— لا يمكن تعديله يدوياً وهذا تصميم مقصود.
+          </p>
+        </div>
       </div>
 
       {/* معاينة حية */}
-      <div className="mt-4 p-3 rounded-xl bg-slate-900/70 border border-slate-800/60">
-        <div className="text-[10px] text-slate-500 mb-1">معاينة كما ستظهر للعميل:</div>
-        <div className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">{preview || '—'}</div>
+      <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/60">
+        <div className="text-[10px] text-slate-500 mb-1.5 flex items-center gap-1.5">
+          <Eye className="w-3 h-3" />
+          معاينة كما ستظهر للعميل (الجزء الثالث يتغير حسب الخط المُرسَل منه):
+        </div>
+        <div className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-mono bg-[#005c4b]/20 p-2 rounded-lg border border-emerald-900/30">
+          {preview || '—'}
+        </div>
       </div>
 
-      <div className="flex justify-end mt-4">
+      <div className="flex justify-end">
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !sig.allow_custom_edit}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white text-xs font-bold transition-colors"
+          title={!sig.allow_custom_edit ? 'التوقيع مقفل من المشرف — تواصل معه للتعديل' : ''}
         >
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          حفظ التوقيع
+          {sig.allow_custom_edit ? 'حفظ التوقيع' : 'التوقيع محكوم من المشرف'}
         </button>
       </div>
     </Card>
