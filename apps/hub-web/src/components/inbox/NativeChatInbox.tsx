@@ -762,8 +762,9 @@ export function NativeChatInbox() {
       // م3: دمج وسوم وحالات القاعدة في القائمة بعد جلبها
       mergeDbTagsAndStatus(allMerged);
       setActiveConvId((curr) => {
+        // لا نفتح أول محادثة تلقائياً — نحتفظ فقط بالمحادثة إذا كان المستخدم قد اختارها يدوياً
         if (curr && allMerged.some((c) => c.id === curr || curr === `unified__${c.chat_jid}`)) return curr;
-        return allMerged.length > 0 ? allMerged[0].id : '';
+        return '';
       });
     } catch (err) {
       console.error('Failed to load chats:', err);
@@ -1081,16 +1082,6 @@ export function NativeChatInbox() {
       list = list.filter((c) => (c.tags || []).includes(tagFilter));
     }
 
-    // قرار المالك: الموظف يرى المحادثات المسندة إليه فقط —
-    // المحادثات غير المسندة تظهر للمدير والمشرف حصراً (تجمع الإسناد)
-    if (!isManager && user?.id) {
-      list = list.filter((c) => {
-        const sid = (c as any).assigned_staff_id;
-        if (sid) return sid === user.id;
-        return c.assigned_staff_name === user.full_name;
-      });
-    }
-
     return list;
   }, [conversations, currentInbox, inboxesList, user, isManager, selectedInboxId, tagFilter]);
 
@@ -1151,8 +1142,8 @@ export function NativeChatInbox() {
         c.last_message_text.toLowerCase().includes(searchQuery.toLowerCase());
 
       if (!matchSearch) return false;
-      if (filterTab === 'mine') return c.assigned_staff_name === user?.full_name;
-      if (filterTab === 'unassigned') return !c.assigned_staff_name || c.assigned_staff_name === 'غير مسند';
+      if (filterTab === 'mine') return c.assigned_staff_name === user?.full_name || (c as any).assigned_staff_id === user?.id;
+      if (filterTab === 'unassigned') return !(c as any).assigned_staff_id && (!c.assigned_staff_name || c.assigned_staff_name === 'غير مسند');
       if (filterTab === 'unread') return c.unread_count > 0;
       if (filterTab === 'rescue') {
         const delay = now - (c.last_customer_message_timestamp || 0);
@@ -1167,6 +1158,7 @@ export function NativeChatInbox() {
 
   // Active conversation object (يبحث أولاً في القائمة المفلترة المدمجة)
   const activeConversation = useMemo(() => {
+    if (!activeConvId) return null; // لا نفتح أي محادثة تلقائياً — يجب أن يختار المستخدم
     const inFiltered = filteredConversations.find(
       (c) => c.id === activeConvId || c.chat_jid === activeConvId.replace('unified__', '')
     );
@@ -1175,7 +1167,7 @@ export function NativeChatInbox() {
       (c) => c.id === activeConvId || activeConvId === `unified__${c.chat_jid}`
     );
     if (inRaw) return inRaw;
-    return filteredConversations[0] || conversations[0] || null;
+    return null; // لا نعود إلى أول محادثة أبداً
   }, [filteredConversations, conversations, activeConvId]);
 
   // ─── التحقق الفوري هل المحادثة الحالية مسجلة في دليل جهات الاتصال (نقطة check دقيقة) ───
