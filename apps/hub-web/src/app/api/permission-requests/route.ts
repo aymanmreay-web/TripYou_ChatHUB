@@ -69,6 +69,79 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * إشعار المعتمدين بطلب جديد: مشرف الصندوق المحدد أولاً (hub.inboxes.supervisor_id)، وإلا كل المديرين والمشرفين.
+ * لا يرمي أخطاء أبداً — فشل الإشعار لا يُفشل الطلب، ويُسجَّل فقط (والنقر المتكرر يعيد المحاولة تلقائياً).
+ */
+async function notifyApprovers(p: {
+  requestId: string | undefined;
+  type: string;
+  staffId: string;
+  lineId: string | null;
+  chatJid: string | null;
+  inboxId: string | null;
+}): Promise<void> {
+  try {
+    // أسماء للإشعار (غير حرجة — الاسم الاحتياطي يكفي)
+    const meta = await q<{ staff_name: string; line_title: string; chat_name: string }>(
+      `select s.full_name as staff_name,
+              coalesce(l.title_ar, l.instance_name, '') as line_title,
+              coalesce(c.display_name, cv.title, $3::text) as chat_name
+       from hub.staff s
+       left join hub.lines l on l.id = $2::uuid
+       left join hub.contacts c on c.wa_jid = $3::text
+       left join hub.conversations cv on cv.chat_jid = $3::text
+       where s.id = $1::uuid
+       limit 1`,
+      [p.staffId, p.lineId, p.chatJid]
+    ).catch((e: Error) => {
+      console.warn('[permission-requests meta] non-critical:', e.message);
+      return [] as any[];
+    });
+    const staffName = meta[0]?.staff_name || 'موظف';
+    const lineTitle = meta[0]?.line_title || '';
+    const chatName = meta[0]?.chat_name || p.chatJid || 'محادثة';
+    const tLabel = TYPE_LABEL[p.type] || p.type;
+
+    // مشرف الصندوق المحدد (إن وُجد العمود/القيمة) وإلا نكمل للتوجيه العام
+    let supId: string | null = null;
+    if (p.inboxId) {
+      const rows = await q<{ supervisor_id: string | null }>(
+        `select supervisor_id from hub.inboxes where id = $1::uuid`,
+        [p.inboxId]
+      ).catch((e: Error) => {
+        console.warn('[permission-requests supervisor] non-critical:', e.message);
+        return [] as any[];
+      });
+      supId = rows[0]?.supervisor_id || null;
+    }
+
+    const notifLink = `/module/notifications?request_id=${p.requestId}&chat=${encodeURIComponent(p.chatJid || '')}`;
+    const params: any[] = [
+      `🔔 ${tLabel} — بانتظار الموافقة`,
+      `${staffName}: ${chatName}${lineTitle ? ` • ${lineTitle}` : ''} — انقر للموافقة أو الرفض في الإشعارات`,
+      notifLink,
+      p.chatJid,
+    ];
+    let notifySql: string;
+    if (supId) {
+      notifySql = `insert into public.notifications (staff_id, kind, title, body, link, chat_jid)
+                   select s.id, 'permission_request', $1, $2, $3, $4
+                   from hub.staff s where s.id = $5::uuid and s.status = 'active'`;
+      params.push(supId);
+    } else {
+      // المديرون (admin/manager/super_admin) والمشرفون (sales_lead)
+      notifySql = `insert into public.notifications (staff_id, kind, title, body, link, chat_jid)
+                   select s.id, 'permission_request', $1, $2, $3, $4
+                   from hub.staff s join hub.roles r on r.id = s.role_id
+                   where r.key in ('super_admin', 'admin', 'manager', 'sales_lead') and s.status = 'active'`;
+    }
+    await q(notifySql, params);
+  } catch (e: any) {
+    console.warn('[permission-requests notify] non-critical:', e?.message);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -113,6 +186,21 @@ export async function POST(req: NextRequest) {
         [staff_id, type, resolvedLineId || null, chat_jid || null]
       );
       if (dup.length > 0) {
+        // علاج ذاتي: إن لم يصل أي إشعار لهذا الطلب أصلاً (فشل سابق) أعد إرساله الآن مرة واحدة
+        const alreadyNotified = await q(
+          `select 1 from public.notifications where kind = 'permission_request' and link like $1 limit 1`,
+          [`%request_id=${dup[0].id}%`]
+        ).catch(() => [{}]);
+        if (alreadyNotified.length === 0) {
+          await notifyApprovers({
+            requestId: dup[0].id,
+            type,
+            staffId: staff_id,
+            lineId: resolvedLineId || null,
+            chatJid: chat_jid || null,
+            inboxId: inbox_id || null,
+          });
+        }
         return NextResponse.json({ success: true, already_pending: true, request_id: dup[0].id });
       }
 
@@ -122,54 +210,14 @@ export async function POST(req: NextRequest) {
         [staff_id, type, resolvedLineId || null, chat_jid || null, inbox_id || null, reason || null]
       );
 
-      // أسماء للإشعارات
-      const meta = await q<{ staff_name: string; line_title: string; inbox_name: string; chat_name: string }>(
-        `select s.full_name as staff_name,
-                coalesce(l.title_ar, l.instance_name, '') as line_title,
-                coalesce(i.name_ar, '') as inbox_name,
-                coalesce(c.display_name, cv.title, $3) as chat_name
-         from hub.staff s
-         left join hub.lines l on l.id = $2
-         left join hub.inboxes i on i.id = $5
-         left join hub.contacts c on c.wa_jid = $3
-         left join hub.conversations cv on cv.chat_jid = $3
-         where s.id = $1
-         limit 1`,
-        [staff_id, resolvedLineId || null, chat_jid || null, 0, inbox_id || null]
-      );
-      const staffName = meta[0]?.staff_name || 'موظف';
-      const lineTitle = meta[0]?.line_title || 'الخط';
-      const chatName = meta[0]?.chat_name || 'محادثة';
-      const tLabel = TYPE_LABEL[type] || type;
-
-      // التوجيه: مشرف الصندوق أولاً، وإلا كل المشرفين
-      const supervisorRows = inbox_id
-        ? await q<{ supervisor_id: string | null }>(`select supervisor_id from hub.inboxes where id = $1`, [inbox_id])
-        : [{ supervisor_id: null }];
-      const supId = supervisorRows[0]?.supervisor_id;
-
-      const notifLink = `/module/notifications?request_id=${ins[0]?.id}&chat=${encodeURIComponent(chat_jid || '')}`;
-      let notifySql: string;
-      const params: any[] = [
-        `🔔 ${tLabel} — بانتظار الموافقة`,
-        `${staffName}: ${chatName}${lineTitle ? ` • ${lineTitle}` : ''} — انقر للموافقة أو الرفض في الإشعارات`,
-        notifLink,
-        chat_jid || null,
-      ];
-      if (supId) {
-        notifySql = `insert into public.notifications (staff_id, kind, title, body, link, chat_jid)
-                     select s.id, 'permission_request', $1, $2, $3, $4
-                     from hub.staff s where s.id = $5::uuid and s.status = 'active'`;
-        params.push(supId);
-      } else {
-        notifySql = `insert into public.notifications (staff_id, kind, title, body, link, chat_jid)
-                     select s.id, 'permission_request', $1, $2, $3, $4
-                     from hub.staff s join hub.roles r on r.id = s.role_id
-                     where r.key in ('super_admin', 'sales_lead') and s.status = 'active'`;
-      }
-      await q(notifySql, params).catch((e: Error) =>
-        console.warn('[permission-requests notify] non-critical:', e.message)
-      );
+      await notifyApprovers({
+        requestId: ins[0]?.id,
+        type,
+        staffId: staff_id,
+        lineId: resolvedLineId || null,
+        chatJid: chat_jid || null,
+        inboxId: inbox_id || null,
+      });
 
       return NextResponse.json({ success: true, request_id: ins[0]?.id });
     }
