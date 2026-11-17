@@ -150,6 +150,22 @@ export function NativeChatInbox() {
   // تُرطَّب القائمة فوراً من localStorage عند فتح الصفحة — لا سبينر ولا وميض للمستخدم العائد،
   // ثم يُحدَّث الجديد بصمت في الخلفية. صلاحية الكاش 24 ساعة.
   const CHATS_CACHE_KEY = 'hub_chats_cache_v1';
+
+  // ─── دفتر أسماء المجموعات: آخر اسم حقيقي معروف لكل مجموعة (محفوظ محلياً، لا يتراجع أبداً) ───
+  // سبب الإضافة: طلب fetchAllGroups ثقيل ويفشل/يتأخر أحياناً، فكانت الأسماء تسقط إلى «مجموعة (123456)».
+  const GROUP_NAMES_KEY = 'hub_group_names_v1';
+  const groupNameBookRef = useRef<Map<string, { subject: string; pictureUrl?: string; size?: number }>>(new Map());
+  const groupNamesDbFetchedAtRef = useRef(0);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(GROUP_NAMES_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      Object.entries(obj || {}).forEach(([jid, v]: [string, any]) => {
+        if (v?.subject) groupNameBookRef.current.set(jid, v);
+      });
+    } catch { /* دفتر تالف — تجاهل بصمت */ }
+  }, []);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CHATS_CACHE_KEY);
@@ -650,11 +666,13 @@ export function NativeChatInbox() {
                 rawGroups.forEach((g: any) => {
                   const id = g.id || g.jid;
                   if (id) {
-                    groupMap.set(id, {
+                    const info = {
                       subject: g.subject || g.name || '',
                       size: g.size || (Array.isArray(g.participants) ? g.participants.length : undefined),
                       pictureUrl: g.pictureUrl,
-                    });
+                    };
+                    groupMap.set(id, info);
+                    if (info.subject) groupNameBookRef.current.set(id, info);
                   }
                 });
               }
@@ -679,7 +697,7 @@ export function NativeChatInbox() {
                 
                 let title = '';
                 if (isGroup) {
-                  title = groupInfo?.subject || c.subject || c.name || (cleanPhone ? `مجموعة (${cleanPhone.slice(-6)})` : 'مجموعة واتساب');
+                  title = groupInfo?.subject || c.subject || c.name || groupNameBookRef.current.get(jid)?.subject || (cleanPhone ? `مجموعة (${cleanPhone.slice(-6)})` : 'مجموعة واتساب');
                 } else {
                   title = c.pushName || c.name || (cleanPhone ? `+${cleanPhone}` : 'محادثة عميل');
                 }
@@ -727,11 +745,11 @@ export function NativeChatInbox() {
                   title: title,
                   phone_or_jid: isGroup ? jid : `+${cleanPhone}`,
                   avatar_letter: title.charAt(0) || '؟',
-                  avatar_url: groupInfo?.pictureUrl || c.profilePictureUrl || undefined,
+                  avatar_url: groupInfo?.pictureUrl || c.profilePictureUrl || (isGroup ? groupNameBookRef.current.get(jid)?.pictureUrl : undefined) || undefined,
                   avatar_color: isGroup ? 'from-indigo-600 to-purple-600' : 'from-emerald-600 to-teal-600',
                   unread_count: unread,
                   is_group: isGroup,
-                  participant_count: groupInfo?.size,
+                  participant_count: groupInfo?.size ?? (isGroup ? groupNameBookRef.current.get(jid)?.size : undefined),
                   line_id: instanceName,
                   line_title: instanceName === 'Master' ? 'الرقم الرئيسي (Master)' : instanceName === 'Sells_2' ? 'المبيعات 2 (Sells_2)' : instanceName,
                   last_message_text: lastText || 'بدء المحادثة',
@@ -756,6 +774,36 @@ export function NativeChatInbox() {
         }
       });
 
+      // ─── أسماء المجموعات: إن بقيت مجموعات بالاسم الاحتياطي، اقرأ أسماءها من القاعدة (مهلة 5 دقائق) ───
+      const isFallbackGroupTitle = (c: ConversationItem) => c.is_group && /^مجموعة (\(\d+\)|واتساب)$/.test(c.title || '');
+      if (allMerged.some(isFallbackGroupTitle) && Date.now() - groupNamesDbFetchedAtRef.current > 5 * 60 * 1000) {
+        groupNamesDbFetchedAtRef.current = Date.now();
+        try {
+          const r = await fetch('/api/groups');
+          if (r.ok) {
+            const j = await r.json();
+            (Array.isArray(j?.groups) ? j.groups : []).forEach((g: any) => {
+              const name = g?.display_name || g?.subject;
+              if (g?.group_jid && name && !groupNameBookRef.current.has(g.group_jid)) {
+                groupNameBookRef.current.set(g.group_jid, {
+                  subject: name,
+                  pictureUrl: g.picture_url || g.avatar_url || undefined,
+                  size: g.participant_count || undefined,
+                });
+              }
+            });
+          }
+        } catch { /* غير حرج */ }
+      }
+      allMerged = allMerged.map((c) => {
+        if (!isFallbackGroupTitle(c)) return c;
+        const name = groupNameBookRef.current.get(c.chat_jid)?.subject;
+        return name ? { ...c, title: name, avatar_letter: name.charAt(0) || '؟' } : c;
+      });
+      try {
+        localStorage.setItem(GROUP_NAMES_KEY, JSON.stringify(Object.fromEntries(groupNameBookRef.current)));
+      } catch { /* تجاوز حد التخزين — غير حرج */ }
+
       // نحتفظ ببيانات كل خط كاملة ومستقلة دون أي حذف أو استقطاع لتكون عدادات كل خط دقيقة 100%
       allMerged.sort((a, b) => (b.last_customer_message_timestamp || 0) - (a.last_customer_message_timestamp || 0));
 
@@ -767,8 +815,8 @@ export function NativeChatInbox() {
       // م8: دمج يحافظ على مرجع الكائنات غير المتغيرة — القائمة لا "تقفز" ولا تعيد رسمها إن لم يتغير شيء
       setConversations((prev) => {
         if (prev.length === allMerged.length) {
-          const prevSig = prev.map((c) => `${c.id}:${c.unread_count}:${c.last_message_text?.slice(0, 30)}:${c.status}`).join('|');
-          const newSig = allMerged.map((c) => `${c.id}:${c.unread_count}:${c.last_message_text?.slice(0, 30)}:${c.status}`).join('|');
+          const prevSig = prev.map((c) => `${c.id}:${c.title}:${c.unread_count}:${c.last_message_text?.slice(0, 30)}:${c.status}`).join('|');
+          const newSig = allMerged.map((c) => `${c.id}:${c.title}:${c.unread_count}:${c.last_message_text?.slice(0, 30)}:${c.status}`).join('|');
           if (prevSig === newSig) return prev;
         }
         return allMerged;
