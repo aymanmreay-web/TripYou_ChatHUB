@@ -8,6 +8,7 @@ import {
 import { insertNotification, getLineStaff } from '../../../../lib/webhookHandlers/notify';
 import { tryAutoAssign } from '../../../../lib/webhookHandlers/autoAssign';
 import { handleAfterHours } from '../../../../lib/webhookHandlers/afterHours';
+import { broadcastInboxNudge } from '../../../../lib/inboxNudge';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
           const { q } = await import('../../../../lib/pg');
           if (['delivered', 'read'].includes(status)) {
             await q(`update hub.messages set status = $2 where chat_jid = $3 and wa_message_id = $1 and direction = 'out'`, [id, status, d.key.remoteJid || '']);
+            if (d.key.remoteJid) void broadcastInboxNudge(d.key.remoteJid);
           }
         } catch { /* غير حرج */ }
       }
@@ -107,6 +109,8 @@ export async function POST(req: Request) {
 /** معالجة رسالة واردة واحدة: تخزين + إشعار + إسناد + رد خارج الدوام */
 async function processOneInbound(instance: string, msg: InboundMessage, originalEvent: any) {
   const stored = await storeMessageRecord(msg);
+  // تنبيه لحظي للواجهات المفتوحة على هذه المحادثة (بلا انتظار — الفشل غير حرج)
+  void broadcastInboxNudge(msg.chatJid);
   const displayName = msg.senderName || msg.chatJid.split('@')[0];
 
   // لا إشعارات/أتمتة لرسائلنا الصادرة

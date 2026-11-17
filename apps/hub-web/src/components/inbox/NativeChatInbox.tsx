@@ -66,6 +66,7 @@ import { useRouter } from 'next/navigation';
 import { ConversationItem, ChatMessage, ConversationStatus } from '../../types';
 import { Button } from '@tripyou/ui';
 import { supabase } from '../../lib/supabase';
+import { INBOX_NUDGE_CHANNEL, INBOX_NUDGE_EVENT, jidKey } from '../../lib/inboxNudge';
 import { fetchTags } from '../../lib/hubDb';
 import { toast } from '../common/Toaster';
 import { getProxiedUrl, getFileCardMeta, formatMessageWithLinks } from '../../lib/inbox/messages';
@@ -1449,46 +1450,79 @@ export function NativeChatInbox() {
   messagesRef.current = messages;
   const pollInFlightRef = useRef(false);
 
-  // استطلاع صامت للرسائل كل 6 ثوانٍ: طلب خفيف واحد للخط الأساسي؛ الجلب الكامل فقط عند وجود رسالة جديدة فعلاً.
-  // لا يعتمد على هوية activeConversation، فلا يُعاد إنشاء المؤقت عند كل تحديث للقائمة.
+  // فحص صامت للرسائل الجديدة في المحادثة المفتوحة: طلب خفيف واحد؛ الجلب الكامل فقط عند وجود رسالة جديدة فعلاً.
+  // يُستدعى من (1) تنبيه Realtime اللحظي القادم من الـ Webhook، و(2) الاستطلاع الاحتياطي أدناه.
+  const checkNewMessages = useCallback(() => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (pollInFlightRef.current) return;
+    const conv = activeConvRef.current;
+    if (!conv) return;
+    const targetJid = conv.chat_jid;
+    const targetLine = conv.line_id || selectedInstanceName;
+    if (!targetJid || !targetLine) return;
+    pollInFlightRef.current = true;
+    fetch(`/api/evolution/instances/${targetLine}/messages?chatId=${encodeURIComponent(targetJid)}&limit=20`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((rawMsgs) => {
+        if (!rawMsgs) return;
+        const list: any[] = Array.isArray(rawMsgs)
+          ? rawMsgs
+          : Array.isArray(rawMsgs?.messages?.records)
+          ? rawMsgs.messages.records
+          : Array.isArray(rawMsgs?.records)
+          ? rawMsgs.records
+          : Array.isArray(rawMsgs?.messages)
+          ? rawMsgs.messages
+          : [];
+        if (list.length === 0) return;
+        // تجاهل النتيجة إن تغيرت المحادثة المفتوحة أثناء الطلب
+        if (activeConvRef.current?.chat_jid !== targetJid) return;
+        const knownIds = new Set(messagesRef.current.map((m) => m.id));
+        const hasNew = list.some((m: any) => !knownIds.has(m.key?.id || m.id));
+        if (hasNew) {
+          const latest = activeConvRef.current;
+          fetchMessagesForChat(targetJid, targetLine, latest?.available_lines);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { pollInFlightRef.current = false; });
+  }, [selectedInstanceName, fetchMessagesForChat]);
+  const checkNewMessagesRef = useRef(checkNewMessages);
+  checkNewMessagesRef.current = checkNewMessages;
+
+  // ─── تنبيه لحظي (Supabase Realtime Broadcast) من الـ Webhook: بصمة قصيرة لـ chat_jid فقط ───
+  // عند وصول رسالة لمحادثتي المفتوحة نفحص فوراً (مؤجَّل 250ms لدمج الدفعات). لا نصوص ولا بيانات حساسة في الإشارة.
+  const realtimeOkRef = useRef(false);
   useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const channel = supabase
+      .channel(INBOX_NUDGE_CHANNEL)
+      .on('broadcast', { event: INBOX_NUDGE_EVENT }, (msg: any) => {
+        const jid = activeConvRef.current?.chat_jid;
+        if (!jid || msg?.payload?.k !== jidKey(jid)) return;
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(() => checkNewMessagesRef.current(), 250);
+      })
+      .subscribe((status) => {
+        realtimeOkRef.current = status === 'SUBSCRIBED';
+      });
+    return () => {
+      realtimeOkRef.current = false;
+      if (debounce) clearTimeout(debounce);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // استطلاع احتياطي: كل 6 ثوانٍ إن كانت قناة Realtime غير متصلة، وكل 30 ثانية فقط كشبكة أمان إن كانت تعمل.
+  useEffect(() => {
+    let ticks = 0;
     const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      if (pollInFlightRef.current) return;
-      const conv = activeConvRef.current;
-      if (!conv) return;
-      const targetJid = conv.chat_jid;
-      const targetLine = conv.line_id || selectedInstanceName;
-      if (!targetJid || !targetLine) return;
-      pollInFlightRef.current = true;
-      fetch(`/api/evolution/instances/${targetLine}/messages?chatId=${encodeURIComponent(targetJid)}&limit=20`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((rawMsgs) => {
-          if (!rawMsgs) return;
-          const list: any[] = Array.isArray(rawMsgs)
-            ? rawMsgs
-            : Array.isArray(rawMsgs?.messages?.records)
-            ? rawMsgs.messages.records
-            : Array.isArray(rawMsgs?.records)
-            ? rawMsgs.records
-            : Array.isArray(rawMsgs?.messages)
-            ? rawMsgs.messages
-            : [];
-          if (list.length === 0) return;
-          // تجاهل النتيجة إن تغيرت المحادثة المفتوحة أثناء الطلب
-          if (activeConvRef.current?.chat_jid !== targetJid) return;
-          const knownIds = new Set(messagesRef.current.map((m) => m.id));
-          const hasNew = list.some((m: any) => !knownIds.has(m.key?.id || m.id));
-          if (hasNew) {
-            const latest = activeConvRef.current;
-            fetchMessagesForChat(targetJid, targetLine, latest?.available_lines);
-          }
-        })
-        .catch(() => {})
-        .finally(() => { pollInFlightRef.current = false; });
+      ticks += 1;
+      if (realtimeOkRef.current && ticks % 5 !== 0) return;
+      checkNewMessagesRef.current();
     }, 6000);
     return () => clearInterval(interval);
-  }, [selectedInstanceName, fetchMessagesForChat]);
+  }, []);
 
   // ─── تحديث صامت لقائمة المحادثات (نمط وتساب ويب) ───
   // دوري كل 45 ثانية + فوري عند العودة إلى التبويب: يدمج الجديد فقط بلا دوّار ولا تفكيك للقائمة،
