@@ -71,6 +71,9 @@ import { toast } from '../common/Toaster';
 import { getProxiedUrl, getFileCardMeta, formatMessageWithLinks } from '../../lib/inbox/messages';
 import { AudioMessagePlayer } from './AudioMessagePlayer';
 import { SlaTimer } from './SlaTimer';
+import { ComposerInput, ComposerInputHandle } from './ComposerInput';
+import { RecordingClock } from './RecordingClock';
+import { MessageBubble, MessageBubbleActions } from './MessageBubble';
 import { ConversationRow } from './ConversationRow';
 import { ConversationInfoPanel } from './ConversationInfoPanel';
 import { Modal } from './Modal';
@@ -168,7 +171,18 @@ export function NativeChatInbox() {
   // UI & Input Controls
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterTab, setFilterTab] = useState<'all' | 'mine' | 'unassigned' | 'unread' | 'rescue' | 'direct' | 'groups' | 'escalated'>('all');
-  const [inputText, setInputText] = useState<string>('');
+  // نص الرسالة المكتوبة: يُحفظ داخل ComposerInput (معزول) — الأب يحتفظ بمرجع وبـ «هل يوجد نص؟» فقط
+  // حتى لا تُعاد رسم قائمة الرسائل كلها مع كل ضغطة مفتاح.
+  const inputTextRef = useRef<string>('');
+  const composerRef = useRef<ComposerInputHandle>(null);
+  const [hasText, setHasText] = useState<boolean>(false);
+  const handleComposerTextChange = useCallback((v: string) => {
+    inputTextRef.current = v;
+    setHasText(v.trim().length > 0);
+  }, []);
+  const setComposerText = useCallback((v: string) => {
+    composerRef.current?.setValue(v);
+  }, []);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [includeSignature, setIncludeSignature] = useState<boolean>(true);
   const [showMobileChat, setShowMobileChat] = useState<boolean>(false);
@@ -330,7 +344,6 @@ export function NativeChatInbox() {
 
   // ─── تسجيل الصوت الحي (Live Voice Note Recorder) ───
   const [isRecordingVoice, setIsRecordingVoice] = useState<boolean>(false);
-  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -818,6 +831,7 @@ export function NativeChatInbox() {
   // 3. Fetch real messages when active conversation changes (يدعم جلب الرسائل من كافة الخطوط المشتركة ودمجها)
   // م8: التحديث الدوري لنفس المحادثة صامت بلا وميض لودر ولا قفزة سكرول
   const currentMsgChatRef = useRef<string>('');
+  const activeChatJidRef = useRef<string>(''); // المحادثة المفتوحة حالياً — لتجاهل ردود الجلب المتأخرة لمحادثة سابقة
 
   const fetchMessagesForChat = useCallback(async (chatJid: string, instanceName: string, additionalLines?: string[]) => {
     if (!chatJid || !instanceName) return;
@@ -866,7 +880,7 @@ export function NativeChatInbox() {
       // ترتيب الرسائل زمنياً تصاعدياً
       uniqueRawMsgs.sort((a, b) => (a.messageTimestamp || 0) - (b.messageTimestamp || 0));
 
-      const mapped: ChatMessage[] = uniqueRawMsgs.map((m: any) => {
+      const mapped: ChatMessage[] = uniqueRawMsgs.map((m: any, msgIdx: number) => {
         const fromMe = m.key?.fromMe ?? false;
         let text = ``;
         let mediaType: any = `text`;
@@ -923,7 +937,7 @@ export function NativeChatInbox() {
         }
 
         return {
-          id: msgKeyId || m.id || ('msg-' + Date.now() + '-' + Math.random()),
+          id: msgKeyId || m.id || `msg-${chatJid}-${m.messageTimestamp || 0}-${msgIdx}`, // معرّف ثابت — العشوائي كان يغيّر البصمة فيُعاد الرسم
           msg_key_id: msgKeyId,
           key_from_me: fromMe,
           key_participant: m.key?.participant || undefined,
@@ -942,14 +956,22 @@ export function NativeChatInbox() {
         };
       });
 
-      // م8: لا نستبدل المصفوفة إلا عند تغير فعلي — يمنع إعادة الرسم والسكرول المزعج كل 6 ثوانٍ
+      // رد متأخر لمحادثة لم تعد مفتوحة — تجاهله (يمنع ظهور رسائل محادثة في أخرى)
+      if (activeChatJidRef.current && activeChatJidRef.current !== chatJid) return;
+
+      // م8: لا نستبدل المصفوفة إلا عند تغير فعلي (المعرّف أو الحالة) — يمنع إعادة الرسم والسكرول المزعج
       setMessages((prev) => {
         if (prev.length === mapped.length) {
-          const prevSig = prev.map((m) => m.id).join('|');
-          const newSig = mapped.map((m) => m.id).join('|');
+          const prevSig = prev.map((m) => `${m.id}:${m.status}`).join('|');
+          const newSig = mapped.map((m) => `${m.id}:${m.status}`).join('|');
           if (prevSig === newSig) return prev;
         }
-        return mapped;
+        // أعد استخدام كائنات الرسائل غير المتغيرة — فلا تُعاد رسم فقاعاتها (React.memo)
+        const prevById = new Map(prev.map((m) => [m.id, m]));
+        return mapped.map((m) => {
+          const old = prevById.get(m.id);
+          return old && old.status === m.status && old.body === m.body ? old : m;
+        });
       });
       currentMsgChatRef.current = chatJid;
     } catch (err) {
@@ -1420,46 +1442,53 @@ export function NativeChatInbox() {
     return firstAllowed?.name || '';
   }, [sendingLineInstance, sendLineStatus, isSuperAdmin, lastIncomingLine, activeConversation, allowedSendInstances]);
 
-  // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
+  // ─── مراجع مستقرة: تجعل المؤقتات والـ effects لا تعتمد على هوية كائنات تتغير مع كل تحديث للقائمة ───
+  const activeConvRef = useRef<typeof activeConversation>(null);
+  activeConvRef.current = activeConversation;
+  const messagesRef = useRef<any[]>([]);
+  messagesRef.current = messages;
+  const pollInFlightRef = useRef(false);
+
+  // استطلاع صامت للرسائل كل 6 ثوانٍ: طلب خفيف واحد للخط الأساسي؛ الجلب الكامل فقط عند وجود رسالة جديدة فعلاً.
+  // لا يعتمد على هوية activeConversation، فلا يُعاد إنشاء المؤقت عند كل تحديث للقائمة.
   useEffect(() => {
     const interval = setInterval(() => {
-      // تجنب استهلاك الموارد والبطء عند تصغير المتصفح أو الانتقال لتبويب آخر
       if (typeof document !== 'undefined' && document.hidden) return;
-
-      // 1. تحديث الرسائل للمحادثة المفتوحة بصمت
-      if (activeConversation) {
-        const targetJid = activeConversation.chat_jid;
-        const targetLine = activeConversation.line_id || selectedInstanceName;
-        if (targetJid && targetLine) {
-          fetch(`/api/evolution/instances/${targetLine}/messages?chatId=${encodeURIComponent(targetJid)}&limit=50`)
-            .then((res) => (res.ok ? res.json() : null))
-            .then((rawMsgs) => {
-              if (!rawMsgs) return;
-              const list: any[] = Array.isArray(rawMsgs)
-                ? rawMsgs
-                : Array.isArray(rawMsgs?.messages?.records)
-                ? rawMsgs.messages.records
-                : Array.isArray(rawMsgs?.records)
-                ? rawMsgs.records
-                : Array.isArray(rawMsgs?.messages)
-                ? rawMsgs.messages
-                : [];
-              if (list.length > 0) {
-                setMessages((prev) => {
-                  const prevIds = new Set(prev.map((m) => m.id));
-                  const hasNew = list.some((m: any) => !prevIds.has(m.key?.id || m.id));
-                  if (!hasNew) return prev;
-                  fetchMessagesForChat(targetJid, targetLine, activeConversation.available_lines);
-                  return prev;
-                });
-              }
-            })
-            .catch(() => {});
-        }
-      }
+      if (pollInFlightRef.current) return;
+      const conv = activeConvRef.current;
+      if (!conv) return;
+      const targetJid = conv.chat_jid;
+      const targetLine = conv.line_id || selectedInstanceName;
+      if (!targetJid || !targetLine) return;
+      pollInFlightRef.current = true;
+      fetch(`/api/evolution/instances/${targetLine}/messages?chatId=${encodeURIComponent(targetJid)}&limit=20`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((rawMsgs) => {
+          if (!rawMsgs) return;
+          const list: any[] = Array.isArray(rawMsgs)
+            ? rawMsgs
+            : Array.isArray(rawMsgs?.messages?.records)
+            ? rawMsgs.messages.records
+            : Array.isArray(rawMsgs?.records)
+            ? rawMsgs.records
+            : Array.isArray(rawMsgs?.messages)
+            ? rawMsgs.messages
+            : [];
+          if (list.length === 0) return;
+          // تجاهل النتيجة إن تغيرت المحادثة المفتوحة أثناء الطلب
+          if (activeConvRef.current?.chat_jid !== targetJid) return;
+          const knownIds = new Set(messagesRef.current.map((m) => m.id));
+          const hasNew = list.some((m: any) => !knownIds.has(m.key?.id || m.id));
+          if (hasNew) {
+            const latest = activeConvRef.current;
+            fetchMessagesForChat(targetJid, targetLine, latest?.available_lines);
+          }
+        })
+        .catch(() => {})
+        .finally(() => { pollInFlightRef.current = false; });
     }, 6000);
     return () => clearInterval(interval);
-  }, [activeConversation?.id, activeConversation?.line_id, activeConversation?.chat_jid, activeConversation?.available_lines, selectedInstanceName, fetchMessagesForChat]);
+  }, [selectedInstanceName, fetchMessagesForChat]);
 
   // ─── تحديث صامت لقائمة المحادثات (نمط وتساب ويب) ───
   // دوري كل 45 ثانية + فوري عند العودة إلى التبويب: يدمج الجديد فقط بلا دوّار ولا تفكيك للقائمة،
@@ -1479,19 +1508,34 @@ export function NativeChatInbox() {
     };
   }, [fetchChats]);
 
+  // تحميل رسائل المحادثة: يُنفَّذ فقط عند تغيير المحادثة المفتوحة (أو صلاحية المحتوى)،
+  // وليس عند كل تحديث لقائمة المحادثات — هذا ما كان يفرّغ الرسائل ويسبب الرجفان وقفزة السكرول.
   useEffect(() => {
-    // طبقات الرؤية: المحادثة المرسلة لزميله بلا منح قراءة = هيكل فقط بلا محتوى
-    if (activeConversation && contentAccess === 'full') {
-      const targetJid = activeConversation.chat_jid;
-      const targetLine = activeConversation.line_id || selectedInstanceName;
+    const conv = activeConvRef.current;
+    activeChatJidRef.current = conv?.chat_jid || '';
+    currentMsgChatRef.current = ''; // محادثة جديدة → اعرض اللودر بدل الوميض الصامت
+    setMessages([]);
+    if (conv && contentAccess === 'full') {
+      const targetJid = conv.chat_jid;
+      const targetLine = conv.line_id || selectedInstanceName;
       if (targetJid && targetLine) {
-        fetchMessagesForChat(targetJid, targetLine, activeConversation.available_lines);
-        setMessages([]);
-        return;
+        fetchMessagesForChat(targetJid, targetLine, conv.available_lines);
       }
     }
-    setMessages([]);
-  }, [activeConversation?.id, activeConversation?.available_lines, fetchMessagesForChat, contentAccess]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.id, contentAccess, fetchMessagesForChat]);
+
+  // تغيّر مجموعة الخطوط المشتركة للمحادثة المفتوحة (نادر): جلب صامت بلا تفريغ للرسائل
+  const activeLinesKey = (activeConversation?.available_lines || []).join('|');
+  useEffect(() => {
+    const conv = activeConvRef.current;
+    if (!conv || contentAccess !== 'full' || !currentMsgChatRef.current) return;
+    const targetLine = conv.line_id || selectedInstanceName;
+    if (conv.chat_jid && targetLine) {
+      fetchMessagesForChat(conv.chat_jid, targetLine, conv.available_lines);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLinesKey]);
 
   // Current selected instance info
   const currentInstance = useMemo(() => {
@@ -1983,7 +2027,7 @@ export function NativeChatInbox() {
           )
         );
 
-        setInputText('');
+        setComposerText('');
         setShowEmojiPicker(false);
       } else {
         const errData = await res.json();
@@ -2039,13 +2083,16 @@ export function NativeChatInbox() {
 
   /** إدراج رد جاهز في صندوق الإرسال مع استبدال المتغيرات + عدّاد الاستخدام */
   const handleInsertCanned = async (item: CannedQuick) => {
-    setInputText((prev) => {
+    {
       // استبدال الاختصار المكتوب "/" أو الإلحاق في النهاية
+      const prev = inputTextRef.current;
       const slashIdx = prev.lastIndexOf('/');
-      return slashIdx >= 0 && prev.slice(slashIdx).trim() === prev.slice(slashIdx).trim() && prev.slice(slashIdx).startsWith('/')
-        ? prev.slice(0, slashIdx) + expandCannedBody(item.body)
-        : (prev ? prev + ' ' : '') + expandCannedBody(item.body);
-    });
+      setComposerText(
+        slashIdx >= 0 && prev.slice(slashIdx).startsWith('/')
+          ? prev.slice(0, slashIdx) + expandCannedBody(item.body)
+          : (prev ? prev + ' ' : '') + expandCannedBody(item.body)
+      );
+    }
     setCannedOpen(false);
     setCannedSearch('');
     try {
@@ -2059,7 +2106,7 @@ export function NativeChatInbox() {
 
   // اختصار "/" يفتح المنتقي عندما يكون صندوق الإرسال فارغاً تقريباً
   const handleComposerKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === '/' && !cannedOpen && (inputText === '' || inputText === '/')) {
+    if (e.key === '/' && !cannedOpen && (inputTextRef.current === '' || inputTextRef.current === '/')) {
       e.preventDefault();
       setCannedOpen(true);
     }
@@ -2068,7 +2115,7 @@ export function NativeChatInbox() {
   // فحص حارس المخاطر قبل الإرسال (ساعات الهدوء وقاطع الدائرة)
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const trimmed = inputText.trim();
+    const trimmed = inputTextRef.current.trim();
     if (!trimmed || !activeConversation || isSending) return;
 
     if (isBreakerTripped) {
@@ -2627,7 +2674,7 @@ export function NativeChatInbox() {
 
   // ─── إدراج إيموجي في مربع النص ───
   const handleInsertEmoji = (emoji: string) => {
-    setInputText((prev) => prev + emoji);
+    setComposerText(inputTextRef.current + emoji);
     setShowEmojiPicker(false);
   };
 
@@ -2651,11 +2698,6 @@ export function NativeChatInbox() {
 
       mr.start(200);
       setIsRecordingVoice(true);
-      setRecordingSeconds(0);
-
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
     } catch (err: any) {
       toast({ title: `تعذر الوصول إلى الميكروفون: ${err.message || 'يرجى تفعيل صلاحية الميكروفون في المتصفح'}`, kind: 'error' });
     }
@@ -2671,7 +2713,6 @@ export function NativeChatInbox() {
       } catch (e) {}
     }
     setIsRecordingVoice(false);
-    setRecordingSeconds(0);
     audioChunksRef.current = [];
   };
 
@@ -2751,7 +2792,6 @@ export function NativeChatInbox() {
 
     mr.stop();
     setIsRecordingVoice(false);
-    setRecordingSeconds(0);
   };
 
   // أدوات المحادثة الكاملة — تعيش داخل سلايد التفاصيل (واجهة ترويسة نظيفة)
@@ -2994,6 +3034,24 @@ export function NativeChatInbox() {
                   })()}
     </>
   ) : null;
+
+  // ─── فقاعات الرسائل: كائن إجراءات ثابت الهوية (يقرأ آخر نسخة من الدوال عبر مرجع) + مجموعة معرّفات المفضلة ───
+  const bubbleHandlersRef = useRef({ handleToggleFavorite, toggleMsgSelection, handleVotePoll });
+  bubbleHandlersRef.current = { handleToggleFavorite, toggleMsgSelection, handleVotePoll };
+  const bubbleActions = useMemo<MessageBubbleActions>(
+    () => ({
+      setReplyingToMessage,
+      setForwardModalMsg,
+      setPinModalMsg,
+      setSenderMenu,
+      setLightboxMedia,
+      handleToggleFavorite: (...args: any[]) => (bubbleHandlersRef.current.handleToggleFavorite as any)(...args),
+      toggleMsgSelection: (id: string) => bubbleHandlersRef.current.toggleMsgSelection(id),
+      handleVotePoll: (msgId: string, optionId: string) => bubbleHandlersRef.current.handleVotePoll(msgId, optionId),
+    }),
+    []
+  );
+  const favoriteMsgIds = useMemo(() => new Set(favoritesList.map((f) => f.id)), [favoritesList]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] rounded-3xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl relative transition-colors duration-200">
@@ -3652,404 +3710,20 @@ export function NativeChatInbox() {
                     <span>لا توجد رسائل سابقة في هذه المحادثة</span>
                   </div>
                 ) : (
-                  messages.map((msg) => {
-                    const isOut = msg.direction === 'out';
-                    const isImage = msg.media_type === 'image';
-                    const isDoc = msg.media_type === 'document';
-                    const isAudio = msg.media_type === 'audio';
-                    const isVideo = msg.media_type === 'video';
-
-                    return (
-                      <div
-                        key={msg.id}
-                        id={`msg-${msg.id}`}
-                        className={`flex flex-col ${isOut ? 'items-end' : 'items-start'} group/msg relative`}
-                      >
-                        {/* ⚡ شريط إجراءات الرسالة عند التمرير: تحويل - تثبيت - مفضلة - رد - نسخ */}
-                        <div
-                          className={`absolute -top-3 ${
-                            isOut ? 'left-2' : 'right-2'
-                          } hidden group-hover/msg:flex items-center gap-1 bg-[var(--card-bg)] border border-purple-500/40 rounded-xl px-2 py-0.5 shadow-2xl z-30 backdrop-blur-md transition-all`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setReplyingToMessage(msg)}
-                            className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
-                            title="رد باقتباس (Reply)"
-                          >
-                            <Reply className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setForwardModalMsg(msg)}
-                            className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
-                            title="تحويل الرسالة إلى محادثة أخرى (Forward)"
-                          >
-                            <Share2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPinModalMsg(msg)}
-                            className="p-1 rounded-lg hover:bg-amber-600/30 text-slate-300 hover:text-amber-300 transition-colors"
-                            title="تثبيت الرسالة (Pin حتى 5 رسائل)"
-                          >
-                            <Pin className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleToggleFavorite(
-                                {
-                                  id: msg.id,
-                                  title: msg.body || msg.file_name || 'رسالة وسائط',
-                                  subtitle: `${msg.sender_name} • ${activeConversation?.title}`,
-                                  meta: { chat_jid: msg.chat_jid, instance_name: activeConversation?.line_id || selectedInstanceName, mediaType: msg.media_type },
-                                },
-                                msg.media_type === 'image' || msg.media_type === 'video'
-                                  ? 'media'
-                                  : msg.media_type === 'document'
-                                  ? 'file'
-                                  : 'message'
-                              )
-                            }
-                            className="p-1 rounded-lg hover:bg-amber-600/30 text-slate-300 hover:text-amber-400 transition-colors"
-                            title="إضافة للمفضلة"
-                          >
-                            <Star
-                              className={`w-3.5 h-3.5 ${
-                                favoritesList.some((f) => f.id === msg.id)
-                                  ? 'fill-amber-400 text-amber-400'
-                                  : ''
-                              }`}
-                            />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(msg.body || '');
-                              toast({ title: 'تم نسخ النص إلى الحافظة بنجاح', kind: 'success' });
-                            }}
-                            className="p-1 rounded-lg hover:bg-purple-600/30 text-slate-300 hover:text-white transition-colors"
-                            title="نسخ النص"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        <div
-                          className={`max-w-[85%] sm:max-w-xl px-4 py-2.5 text-sm transition-all ${
-                            isOut
-                              ? 'bubble-user'
-                              : 'bubble-peer'
-                          }`}
-                        >
-                          {msgSelectionMode && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); toggleMsgSelection(msg.id); }}
-                              className={`absolute top-1 right-1 z-10 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${selectedMsgIds.has(msg.id) ? 'bg-[var(--accent-soft)] border-[var(--border-glow)] text-[var(--primary)]' : 'bg-black/30 border-white/20 text-transparent hover:text-white'}`}
-                              title="تحديد الرسالة"
-                            >
-                              <CheckSquare className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {msg.reply_to && (
-                            <div className="mb-2 p-2 rounded-xl bg-black/30 border-r-2 border-purple-400 text-xs">
-                              <div className="font-semibold text-purple-300 text-[11px]">{msg.reply_to.sender_name}</div>
-                              <div className="text-slate-300 truncate text-[10px]">{msg.reply_to.body}</div>
-                            </div>
-                          )}
-                          {!isOut && activeConversation.is_group && (
-                            <div className="text-[11px] font-bold text-purple-300 mb-1">
-                              {/* طلب المالك: قائمة لكل مرسل — جهة اتصال / نسخ المعرف */}
-                              <button
-                                onClick={(e) => {
-                                  const rct = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                  setSenderMenu({ msgId: msg.id, name: msg.sender_name, jid: msg.key_participant || msg.key_participant_alt || '', x: rct.left, y: rct.bottom });
-                                }}
-                                className="hover:underline flex items-center gap-1"
-                                title="خيارات المرسل"
-                              >
-                                {msg.sender_name}
-                                <ChevronDown className="w-3 h-3 inline" />
-                              </button>
-                            </div>
-                          )}
-
-                          {/* ════════════════════════════════════════
-                              🎨 ملصق (Sticker) — عرض شفاف بدون إطار رمادي
-                             ════════════════════════════════════════ */}
-                          {msg.media_type === 'sticker' && (() => {
-                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            const proxied = msg.msg_key_id
-                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, 'sticker.webp') ?? null)
-                              : (msg.media_url || null);
-                            return (
-                              <div className="my-1 flex items-center justify-center">
-                                {proxied ? (
-                                  <img
-                                    src={proxied}
-                                    alt="ملصق واتساب"
-                                    className="w-36 h-36 object-contain hover:scale-105 transition-transform drop-shadow-md"
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <div className="flex items-center gap-2 p-2 bg-purple-900/20 rounded-xl text-xs text-purple-200">
-                                    <Smile className="w-5 h-5 text-amber-400" />
-                                    <span>ملصق واتساب</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* ════════════════════════════════════════
-                              📷 صورة — ثابتة الحجم + lightbox عند الضغط
-                             ════════════════════════════════════════ */}
-                          {isImage && (() => {
-                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            // ✅ نستخدم msg_key_id (المعرّف الحقيقي لواتساب) لبناء رابط الوكيل
-                            // وللرسائل الصادرة المؤقتة (blob:) نستخدم media_url مباشرةً
-                            const proxied = msg.msg_key_id
-                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, msg.body || 'image.jpg') ?? null)
-                              : (msg.media_url || null);
-                            return (
-                              <div className="mb-1">
-                                {proxied ? (
-                                  <div
-                                    className="rounded-2xl overflow-hidden cursor-pointer border border-white/10 hover:opacity-95 transition-opacity w-72 h-48 bg-black/30"
-                                    onClick={() => setLightboxMedia({ type: 'image', src: proxied, caption: msg.body })}
-                                    title="اضغط لتكبير الصورة بكامل دقتها"
-                                  >
-                                    <img
-                                      src={proxied}
-                                      alt="صورة"
-                                      className="w-full h-full object-cover rounded-2xl"
-                                      loading="lazy"
-                                      onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = 'none';
-                                      }}
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
-                                    <ImageIcon className="w-5 h-5" />
-                                    <span>صورة</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* ════════════════════════════════════════
-                              📄 مستند — بطاقات احترافية مميزة للأكسل والـ PDF والوورد والضغط
-                             ════════════════════════════════════════ */}
-                          {isDoc && (() => {
-                            const rawFileName = msg.file_name || msg.body || 'document.pdf';
-                            const meta = getFileCardMeta(rawFileName);
-                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            const proxied = msg.msg_key_id
-                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, rawFileName, true) ?? null)
-                              : (msg.media_url || null);
-
-                            return (
-                              <div className={`flex items-center gap-3 mb-2 p-3 rounded-2xl border transition-all ${meta.cardBg}`}>
-                                <div className={`p-2.5 rounded-xl bg-white/5 border border-white/10 shrink-0 ${meta.iconColor}`}>
-                                  {meta.isSheet ? (
-                                    <FileSpreadsheet className="w-6 h-6" />
-                                  ) : meta.isArchive ? (
-                                    <Archive className="w-6 h-6" />
-                                  ) : (
-                                    <FileText className="w-6 h-6" />
-                                  )}
-                                </div>
-
-                                <div className="flex-1 min-w-0 text-right">
-                                  <div className="font-bold text-[var(--text-main)] text-xs truncate dir-ltr text-right" title={rawFileName}>
-                                    {rawFileName}
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <span className={`text-[10px] px-2 py-0.2 rounded-full border font-bold uppercase ${meta.badge}`}>
-                                      {meta.ext}
-                                    </span>
-                                    {msg.file_size && (
-                                      <span className="text-[10px] text-slate-400 font-mono">{msg.file_size}</span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <a
-                                  href={proxied || '#'}
-                                  download={rawFileName}
-                                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[var(--text-main)] shrink-0 shadow transition-colors flex items-center justify-center"
-                                  title={`تحميل الملف باسمه الأصلي: ${rawFileName}`}
-                                >
-                                  <Download className="w-4 h-4" />
-                                </a>
-                              </div>
-                            );
-                          })()}
-
-                          {/* ════════════════════════════════════════
-                              🎵 صوت — مشغّل صوتي مخصص مع شريط الترددات القابل للضغط
-                             ════════════════════════════════════════ */}
-                          {isAudio && (() => {
-                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            // للرسائل الواردة: نبني رابط الوكيل من msg_key_id
-                            // للرسائل الصادرة المؤقتة: نستخدم media_url مباشرةً (blob: أو proxy URL بعد الإرسال)
-                            const proxied = msg.msg_key_id
-                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, 'voice_note.ogg') ?? null)
-                              : (msg.media_url || null);
-                            return (
-                              <div className="mb-1">
-                                {proxied ? (
-                                  <AudioMessagePlayer
-                                    src={proxied}
-                                    msgId={msg.id}
-                                    isOut={isOut}
-                                  />
-                                ) : (
-                                  <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
-                                    <Music className="w-5 h-5" />
-                                    <span>تسجيل صوتي</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* ════════════════════════════════════════
-                              🎥 فيديو — صورة مصغّرة + lightbox للتشغيل الكامل
-                             ════════════════════════════════════════ */}
-                          {isVideo && (() => {
-                            const effectiveInstance = msg.line_id || activeConversation.line_id || selectedInstanceName;
-                            const proxied = msg.msg_key_id
-                              ? (getProxiedUrl(undefined, effectiveInstance, msg.msg_key_id, msg.body || 'video.mp4') ?? null)
-                              : (msg.media_url || null);
-                            return (
-                              <div className="mb-1">
-                                {proxied ? (
-                                  <div
-                                    className="relative rounded-2xl overflow-hidden cursor-pointer bg-black border border-white/10 hover:opacity-95 transition-opacity w-72 h-48 flex items-center justify-center group"
-                                    onClick={() => setLightboxMedia({ type: 'video', src: proxied, caption: msg.body })}
-                                    title="اضغط لتشغيل مقطع الفيديو بشاشة كاملة"
-                                  >
-                                    {/* صورة مصغّرة: نستخدم #t=0.001 لإجبار المتصفح على تحميل الإطار الأول */}
-                                    <video
-                                      src={`${proxied}#t=0.001`}
-                                      className="w-full h-full object-cover rounded-2xl bg-black"
-                                      preload="metadata"
-                                      muted
-                                    />
-                                    {/* زر تشغيل أنيق فوق الفيديو */}
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 group-hover:bg-black/20 transition-colors">
-                                      <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                                        <svg
-                                          className="w-6 h-6 text-purple-700 ml-1"
-                                          fill="currentColor"
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <polygon points="5,3 19,12 5,21" />
-                                        </svg>
-                                      </div>
-                                    </div>
-                                    {/* مدة الفيديو */}
-                                    <span className="absolute bottom-2 right-2 text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded-md font-mono">
-                                      🎥 فيديو
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 p-3 bg-purple-900/30 rounded-xl text-xs text-purple-200">
-                                    <Video className="w-5 h-5" />
-                                    <span>مقطع فيديو</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* ════════════════════════════════════════
-                              📊 استطلاع رأي تفاعلي حي (Interactive Poll)
-                             ════════════════════════════════════════ */}
-                          {msg.media_type === 'poll' && (() => {
-                            const poll = msg.poll_data || {
-                              question: msg.body || 'استطلاع رأي تفاعلي',
-                              options: [
-                                { id: '1', text: '🤩 نعم، حاضر وجاهز!', votes: 5 },
-                                { id: '2', text: 'أحتاج مراجعة المواد أولاً', votes: 2 },
-                                { id: '3', text: 'سأنضم لاحقاً اليوم', votes: 1 }
-                              ],
-                              totalVotes: 8
-                            };
-                            const total = poll.options.reduce((sum, o) => sum + o.votes, 0) || 1;
-
-                            return (
-                              <div className="p-3.5 rounded-2xl bg-purple-950/50 border border-purple-500/40 text-xs space-y-3 min-w-[260px] max-w-sm shadow-xl">
-                                <div className="flex items-center gap-2 text-purple-200 font-bold text-sm">
-                                  <span className="p-1 rounded-lg bg-purple-500/20 text-purple-300">📊</span>
-                                  <span>{poll.question}</span>
-                                </div>
-                                <div className="space-y-2 pt-1">
-                                  {poll.options.map((opt) => (
-                                    <button
-                                      key={opt.id}
-                                      type="button"
-                                      onClick={() => handleVotePoll(msg.id, opt.id)}
-                                      className="w-full text-right p-2.5 rounded-xl border border-white/10 hover:border-purple-500/50 bg-black/30 hover:bg-purple-900/30 transition-all flex flex-col gap-1.5"
-                                    >
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span className={`font-semibold ${opt.userVoted ? 'text-emerald-300 font-bold' : 'text-[var(--text-main)]'}`}>
-                                          {opt.userVoted ? '✓ ' : ''}{opt.text}
-                                        </span>
-                                        <span className="text-purple-300 font-mono text-[11px]">{opt.votes} صوت</span>
-                                      </div>
-                                      <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                                        <div
-                                          className="bg-gradient-to-r from-purple-500 to-emerald-400 h-full rounded-full transition-all duration-300"
-                                          style={{ width: `${(opt.votes / total) * 100}%` }}
-                                        />
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/5">
-                                  <span>إجمالي الأصوات: {poll.totalVotes || total}</span>
-                                  <span className="text-emerald-400 font-medium">تصويت فوري مباشر</span>
-                                </div>
-                              </div>
-                            );
-                          })()}
-
-                          {/* النص الفعلي للرسالة — يظهر فقط إذا كان هناك نص حقيقي ولم يكن تسجيلاً صوتياً أو تصويتاً أو ملصقاً مع دعم فتح الروابط */}
-                          {msg.body && !isDoc && !isAudio && msg.media_type !== 'poll' && msg.media_type !== 'sticker' && (
-                            <p className="whitespace-pre-wrap leading-relaxed mt-1">{formatMessageWithLinks(msg.body)}</p>
-                          )}
-
-                          {msg.signature && (
-                            <div className="mt-2 pt-1.5 border-t border-white/20 text-[11px] opacity-90 flex items-center gap-1 font-mono">
-                              <Sparkles className="w-3 h-3 text-purple-300" />
-                              <span>{msg.signature}</span>
-                            </div>
-                          )}
-
-                          <div
-                            className="flex items-center justify-end gap-1.5 text-[10px] mt-1.5 opacity-75 tabular-nums"
-                          >
-                            <span>{msg.created_at}</span>
-                            {isOut && (
-                              <span>
-                                {msg.status === 'read' ? (
-                                  <CheckCheck className="w-3.5 h-3.5 text-cyan-200" />
-                                ) : (
-                                  <CheckCheck className="w-3.5 h-3.5 text-[var(--text-main)]/80" />
-                                )}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
+                  messages.map((msg) => (
+                    <MessageBubble
+                      key={msg.id}
+                      msg={msg}
+                      convTitle={activeConversation?.title}
+                      convLineId={activeConversation?.line_id}
+                      convIsGroup={!!activeConversation?.is_group}
+                      fallbackInstance={selectedInstanceName}
+                      isFavorite={favoriteMsgIds.has(msg.id)}
+                      selectionMode={msgSelectionMode}
+                      isSelected={selectedMsgIds.has(msg.id)}
+                      actions={bubbleActions}
+                    />
+                  ))
                 )}
                 <div ref={messagesEndRef} />
               </div>
@@ -4244,9 +3918,7 @@ export function NativeChatInbox() {
                   <div className="flex items-center justify-between gap-3 bg-rose-950/40 border border-rose-500/40 rounded-2xl p-2.5 text-white">
                     <div className="flex items-center gap-2.5">
                       <div className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-ping" />
-                      <span className="font-mono text-sm font-bold text-rose-300">
-                        {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}
-                      </span>
+                      <RecordingClock className="font-mono text-sm font-bold text-rose-300" />
                       <span className="text-xs text-rose-200/80 mr-2">جاري تسجيل البصمة الصوتية...</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -4446,17 +4118,16 @@ export function NativeChatInbox() {
                       )}
                     </div>
 
-                    <input
-                      type="text"
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
+                    <ComposerInput
+                      ref={composerRef}
+                      onTextChange={handleComposerTextChange}
                       onKeyDown={handleComposerKeyDown}
                       placeholder="اكتب رسالتك... ( / للردود الجاهزة، Enter للإرسال)"
                       disabled={isSending || isBreakerTripped}
                       className="flex-1 bg-[var(--card-elevated)] text-sm text-[var(--text-main)] px-4 py-2.5 rounded-2xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)] disabled:opacity-50"
                     />
 
-                    {!inputText.trim() ? (
+                    {!hasText ? (
                       <button
                         type="button"
                         onClick={handleStartVoiceRecording}
@@ -4470,7 +4141,7 @@ export function NativeChatInbox() {
                       <Button
                         type="submit"
                         variant="primary"
-                        disabled={!inputText.trim() || isSending || isBreakerTripped}
+                        disabled={!hasText || isSending || isBreakerTripped}
                         className="h-10 px-5 rounded-2xl flex items-center gap-2 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-semibold disabled:opacity-40 shadow-sm shrink-0"
                       >
                         {isSending ? (
