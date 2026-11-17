@@ -9,7 +9,7 @@ import {
   Users2, UserCheck, Shield, PenTool, Contact, Share2,
   FileSpreadsheet, History, Settings, Activity, Megaphone,
   Search, ChevronLeft, ChevronRight, Layers, Sparkles,
-  Tags, Star, Building2, MessageSquareQuote, Palette, Sun, Moon
+  Tags, Star, Building2, MessageSquareQuote, Palette, Sun, Moon, Zap
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ModuleContract } from '../../types';
@@ -24,6 +24,7 @@ interface SidebarProps {
 
 const MODULE_ICONS: Record<string, React.ElementType> = {
   inbox: MessageSquare,
+  quick_chats: Zap,
   contacts: Users,
   favorites: Star,
   tasks: CheckSquare,
@@ -152,6 +153,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
 
   const getModuleHref = (m: ModuleContract) => {
     if (m.key === 'inbox') return '/inbox';
+    if (m.key === 'quick_chats') return '/quick-chats';
     if (m.key === 'favorites') return '/module/favorites';
     if (m.key === 'profile') return '/profile';
     if (m.key === 'admin_dashboard') return '/admin_dashboard';

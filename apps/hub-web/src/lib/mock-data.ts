@@ -5,6 +5,7 @@ import { ModuleContract, StaffMe, WhatsAppLine, RoadmapInfo, ConversationItem, C
  */
 export const RAW_MODULES: ModuleContract[] = [
   { key: 'inbox', area: 'user', title_ar: 'المحادثات', status: 'live', required_permission: 'inbox.view', sort: 10 },
+  { key: 'quick_chats', area: 'user', title_ar: 'المحادثات السريعة', status: 'live', required_permission: 'inbox.view', sort: 11 },
   { key: 'contacts', area: 'user', title_ar: 'جهات الاتصال', status: 'live', required_permission: 'contacts.view', sort: 20 },
   { key: 'favorites', area: 'user', title_ar: 'المفضلة', status: 'live', required_permission: null, sort: 25 },
   { key: 'tasks', area: 'user', title_ar: 'المهام', status: 'coming_soon', required_permission: 'tasks.view', sort: 30 },

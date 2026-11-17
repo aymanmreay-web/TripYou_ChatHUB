@@ -29,6 +29,42 @@ export async function GET(req: Request, { params }: { params: { name: string } }
       return NextResponse.json({ error: `Evolution API error: ${res.status}`, detail: text }, { status: res.status });
     }
     const data = await res.json();
+
+    // جلب التواقيع وأسماء الموظفين المحفوظة للرسائل الصادرة من قاعدة البيانات
+    try {
+      const { q } = await import('../../../../../../lib/pg');
+      const dbRows = await q(
+        `select wa_message_id, signature, sent_by,
+                (select full_name from hub.staff where id = m.sent_by) as staff_name
+         from hub.messages m
+         where chat_jid = $1 and direction = 'out' and wa_message_id is not null`,
+        [chatId]
+      );
+      if (Array.isArray(dbRows) && dbRows.length > 0) {
+        const metaMap = new Map(dbRows.map((r: any) => [r.wa_message_id, r]));
+        const rawList = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.messages?.records)
+          ? data.messages.records
+          : Array.isArray(data?.records)
+          ? data.records
+          : Array.isArray(data?.messages)
+          ? data.messages
+          : [];
+
+        rawList.forEach((m: any) => {
+          const keyId = m.key?.id;
+          if (keyId && metaMap.has(keyId)) {
+            const extra = metaMap.get(keyId);
+            m._dbSignature = extra.signature || null;
+            m._dbStaffName = extra.staff_name || null;
+          }
+        });
+      }
+    } catch {
+      // الصمت عند فشل الاتصال بقاعدة البيانات لتجنب تعطل جلب الرسائل
+    }
+
     return NextResponse.json(data);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
