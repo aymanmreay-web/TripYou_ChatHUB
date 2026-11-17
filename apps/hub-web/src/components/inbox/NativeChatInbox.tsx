@@ -1363,11 +1363,19 @@ export function NativeChatInbox() {
     setMsgSelectionMode(false);
     setSelectedMsgIds(new Set());
   };
-  useEffect(() => { setReqSentType(''); }, [activeConversation?.id]);
+  useEffect(() => {
+    setReqSentType('');
+    if (activeConversation?.line_id) {
+      setSendingLineInstance(activeConversation.line_id);
+    } else {
+      setSendingLineInstance('');
+    }
+  }, [activeConversation?.id]);
 
   const submitPermissionRequest = async (type: 'assignment' | 'read' | 'read_write' | 'line_reply' | 'group_join', lineName?: string) => {
     if (!user?.id || !activeConversation) return;
-    const lineId = lineName ? lineIdMap[lineName] : null;
+    const targetLineName = lineName || activeConversation.available_lines?.[0] || activeConversation.line_id;
+    const lineId = targetLineName ? (lineIdMap[targetLineName] || null) : null;
     setReqSentType(type + '-sending');
     try {
       const res = await fetch('/api/permission-requests', {
@@ -1382,24 +1390,35 @@ export function NativeChatInbox() {
         toast({ title: json.already_pending ? 'طلبك معلق بالفعل — تم إشعار المشرف سابقاً' : 'أُرسل الطلب للمشرف — سيُصعَّد للمدير بعد 10 دقائق بلا رد', kind: 'success' });
         refreshGrants();
       } else {
-        toast({ title: json.error || 'فشل إرسال الطلب', kind: 'error' });
+        toast({ title: json.error || 'تعذر إرسال الطلب، يرجى المحاولة لاحقاً', kind: 'error' });
         setReqSentType('');
       }
-    } catch { setReqSentType(''); }
+    } catch {
+      toast({ title: 'خطأ في الاتصال بالخادم، يرجى المحاولة لاحقاً', kind: 'error' });
+      setReqSentType('');
+    }
   };
 
   const effectiveSendInstance = useMemo(() => {
-    // الافتراضي: آخر خط ورد منه العميل إن كان متاحًا
-    const incoming = lastIncomingLine || activeConversation?.line_id || '';
-    if (incoming && sendLineStatus.get(incoming)?.allowed) return incoming;
-    // يدوي صريح متاح؟
-    if (sendingLineInstance && sendLineStatus.get(sendingLineInstance)?.allowed) {
-      return sendingLineInstance;
+    // 1. اختيار المستخدم الصريح له الأولوية القصوى
+    if (sendingLineInstance) {
+      const st = sendLineStatus.get(sendingLineInstance);
+      if (isSuperAdmin || st?.allowed) {
+        return sendingLineInstance;
+      }
     }
-    // أول متاح
-    const firstAllowed = allowedSendInstances.find((i) => sendLineStatus.get(i.name)?.allowed);
+    // 2. إذا لم يختر يدوياً: نستخدم خط الوارد الأخير إن كان متاحاً
+    const incoming = lastIncomingLine || activeConversation?.line_id || '';
+    if (incoming) {
+      const st = sendLineStatus.get(incoming);
+      if (isSuperAdmin || st?.allowed) {
+        return incoming;
+      }
+    }
+    // 3. أول خط متاح
+    const firstAllowed = allowedSendInstances.find((i) => isSuperAdmin || sendLineStatus.get(i.name)?.allowed);
     return firstAllowed?.name || '';
-  }, [sendLineStatus, lastIncomingLine, sendingLineInstance, activeConversation, allowedSendInstances]);
+  }, [sendingLineInstance, sendLineStatus, isSuperAdmin, lastIncomingLine, activeConversation, allowedSendInstances]);
 
   // Auto-refresh silent poller every 6 seconds for real-time messages & chats list
   useEffect(() => {
@@ -1877,7 +1896,7 @@ export function NativeChatInbox() {
   const handleChooseSendLine = (lineName: string) => {
     setSendLineMenuOpen(false);
     const st = sendLineStatus.get(lineName);
-    if (st && !st.allowed) {
+    if (!isSuperAdmin && st && !st.allowed) {
       setLineBlockModal({ line: lineName, reason: st.reason });
       return;
     }
@@ -1890,7 +1909,7 @@ export function NativeChatInbox() {
     if (!activeConversation || isSending) return;
 
     // C4: حارس خط الإرسال — لا إرسال من خط غير مصرح (خط الوارد فقط أو بمنح مدير)
-    if (sendLineStatus.get(effectiveSendInstance)?.allowed === false) {
+    if (!isSuperAdmin && sendLineStatus.get(effectiveSendInstance)?.allowed === false) {
       toast({
         title: '⛔ الإرسال من هذا الخط محظور — يلزم إذن المدير',
         body: 'استخدم خط الوارد، أو اطلب إذناً من المدير عبر التنبيه أعلى صندوق الإرسال',

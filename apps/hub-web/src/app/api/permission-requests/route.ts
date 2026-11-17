@@ -76,15 +76,41 @@ export async function POST(req: NextRequest) {
     if (body.action === 'request') {
       const { type, staff_id, line_id, chat_jid, inbox_id, reason } = body;
       if (!type || !TYPE_LABEL[type] || !staff_id) {
-        return NextResponse.json({ error: 'type and staff_id required' }, { status: 400 });
+        return NextResponse.json({ error: 'نوع الطلب ومعرف الموظف مطلوبان' }, { status: 400 });
+      }
+
+      // حل معرف الخط إن لم يُمرر صراحة
+      let resolvedLineId = line_id || null;
+      if (!resolvedLineId && chat_jid) {
+        const cLine = await q<{ line_id: string }>(
+          `select line_id from hub.conversations where chat_jid = $1 limit 1`,
+          [chat_jid]
+        );
+        if (cLine[0]?.line_id) {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cLine[0].line_id);
+          if (isUuid) {
+            resolvedLineId = cLine[0].line_id;
+          } else {
+            const lRow = await q<{ id: string }>(
+              `select id from hub.lines where instance_name = $1 or title_ar = $1 limit 1`,
+              [cLine[0].line_id]
+            );
+            if (lRow[0]?.id) resolvedLineId = lRow[0].id;
+          }
+        }
+      }
+      // إن تعذر إيجاده وكان هناك خطوط في النظام، نأخذ أول خط كاحتياط
+      if (!resolvedLineId) {
+        const fallbackLine = await q<{ id: string }>(`select id from hub.lines order by created_at asc limit 1`);
+        if (fallbackLine[0]?.id) resolvedLineId = fallbackLine[0].id;
       }
 
       // طلب معلق مطابق؟ لا تكرر
       const dup = await q<{ id: string }>(
         `select id from hub.line_send_requests
          where staff_id = $1 and type = $2 and coalesce(line_id::text,'') = coalesce($3::text,'')
-           and coalesce(chat_jid,'') = coalesce($4,'') and status = 'pending' limit 1`,
-        [staff_id, type, line_id || null, chat_jid || null]
+            and coalesce(chat_jid,'') = coalesce($4,'') and status = 'pending' limit 1`,
+        [staff_id, type, resolvedLineId || null, chat_jid || null]
       );
       if (dup.length > 0) {
         return NextResponse.json({ success: true, already_pending: true, request_id: dup[0].id });
@@ -93,7 +119,7 @@ export async function POST(req: NextRequest) {
       const ins = await q<{ id: string }>(
         `insert into hub.line_send_requests (staff_id, type, line_id, chat_jid, inbox_id, reason)
          values ($1, $2, $3, $4, $5, $6) returning id`,
-        [staff_id, type, line_id || null, chat_jid || null, inbox_id || null, reason || null]
+        [staff_id, type, resolvedLineId || null, chat_jid || null, inbox_id || null, reason || null]
       );
 
       // أسماء للإشعارات
@@ -109,7 +135,7 @@ export async function POST(req: NextRequest) {
          left join hub.conversations cv on cv.chat_jid = $3
          where s.id = $1
          limit 1`,
-        [staff_id, line_id || null, chat_jid || null, 0, inbox_id || null]
+        [staff_id, resolvedLineId || null, chat_jid || null, 0, inbox_id || null]
       );
       const staffName = meta[0]?.staff_name || 'موظف';
       const lineTitle = meta[0]?.line_title || 'الخط';
@@ -122,11 +148,12 @@ export async function POST(req: NextRequest) {
         : [{ supervisor_id: null }];
       const supId = supervisorRows[0]?.supervisor_id;
 
+      const notifLink = `/module/notifications?request_id=${ins[0]?.id}&chat=${encodeURIComponent(chat_jid || '')}`;
       let notifySql: string;
       const params: any[] = [
         `🔔 ${tLabel} — بانتظار الموافقة`,
-        `${staffName}: ${chatName}${lineTitle ? ` • ${lineTitle}` : ''} — راجع الطلبات في لوحة الإدارة`,
-        `/admin_dashboard?approvals=1`,
+        `${staffName}: ${chatName}${lineTitle ? ` • ${lineTitle}` : ''} — انقر للموافقة أو الرفض في الإشعارات`,
+        notifLink,
         chat_jid || null,
       ];
       if (supId) {
