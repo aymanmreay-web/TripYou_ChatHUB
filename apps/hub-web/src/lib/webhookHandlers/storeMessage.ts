@@ -118,13 +118,29 @@ export async function storeMessageRecord(msg: InboundMessage): Promise<StoredMes
   const rows = await q<any>(
     `with line as (
        select id from hub.lines where instance_name = $1 limit 1
+     ), contact as (
+       insert into hub.contacts (display_name, full_name, wa_jid, entity_type, primary_phone_e164, source)
+       values (
+         $3,
+         $3,
+         $2,
+         case when $4 then 'group' else 'individual' end,
+         case when not $4 and $2 not like '%@lid' then split_part($2, '@', 1) else null end,
+         'evolution'
+       )
+       on conflict (wa_jid) do update set
+         display_name = coalesce(nullif(hub.contacts.display_name, ''), excluded.display_name),
+         full_name = coalesce(nullif(hub.contacts.full_name, ''), excluded.full_name),
+         updated_at = now()
+       returning id
      ), conv as (
        insert into hub.conversations
-         (chat_jid, line_id, title, is_group, last_message_text, last_message_at, last_customer_message_at, unread_count)
-       values ($2, (select id from line), $3, $4, $5, now(),
+         (chat_jid, line_id, contact_id, title, is_group, last_message_text, last_message_at, last_customer_message_at, unread_count)
+       values ($2, (select id from line), (select id from contact), $3, $4, $5, now(),
                case when $6 then now() else null end,
                case when $6 then 1 else 0 end)
        on conflict (chat_jid, line_id) do update set
+         contact_id = coalesce(hub.conversations.contact_id, (select id from contact)),
          last_message_text = excluded.last_message_text,
          last_message_at = excluded.last_message_at,
          last_customer_message_at = case when $6 then now() else hub.conversations.last_customer_message_at end,

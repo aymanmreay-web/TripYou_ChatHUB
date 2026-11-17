@@ -47,6 +47,40 @@ export async function POST(req: Request) {
       for (const msg of messages) {
         await processOneInbound(instance, msg, event);
       }
+    } else if ((eventName === 'contacts.update' || eventName === 'contacts.upsert') && instance && event?.data) {
+      // ─── م8: تحديث فوري لبيانات وصورة جهة الاتصال عند تغييرها في واتساب ───
+      const contactsList = Array.isArray(event.data) ? event.data : [event.data];
+      const { q } = await import('../../../../lib/pg');
+      for (const c of contactsList) {
+        const jid = c?.id || c?.remoteJid || c?.jid;
+        if (!jid) continue;
+        const pushName = c?.pushName || c?.name || c?.verifiedName || null;
+        const profilePicUrl = c?.profilePictureUrl || c?.profilePicUrl || null;
+        
+        try {
+          if (profilePicUrl) {
+            await q(
+              `update hub.contacts 
+               set avatar_url = $2, 
+                   display_name = coalesce(nullif(display_name, ''), $3),
+                   updated_at = now() 
+               where wa_jid = $1`,
+              [jid, profilePicUrl, pushName]
+            );
+            if (jid.endsWith('@g.us')) {
+              await q(`update hub.whatsapp_groups set picture_url = $2, updated_at = now() where group_jid = $1`, [jid, profilePicUrl]);
+            }
+          } else if (pushName) {
+            await q(
+              `update hub.contacts 
+               set display_name = coalesce(nullif(display_name, ''), $2),
+                   updated_at = now() 
+               where wa_jid = $1`,
+              [jid, pushName]
+            );
+          }
+        } catch { /* غير حرج */ }
+      }
     } else if (eventName === 'messages.update' && instance && Array.isArray(event?.data)) {
       // تحديث حالات التسليم (delivered/read) — تحسين بسيط لدقة المؤشرات
       for (const d of event.data) {

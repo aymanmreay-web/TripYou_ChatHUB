@@ -39,13 +39,34 @@ export function ConversationRow({ conv, isSelected, onSelect, getLineDisplayTitl
             : 'bg-[var(--card-surface)] text-[var(--text-main)] border-[var(--border-subtle)]'
         }`}
       >
-        {conv.avatar_url ? (
-          <img src={conv.avatar_url} alt={conv.title} className="w-full h-full object-cover" />
-        ) : conv.is_group ? (
-          <Users className="w-5 h-5" />
-        ) : (
-          initialsOrLetter(conv.title, conv.avatar_letter)
-        )}
+        {conv.avatar_url || conv.chat_jid ? (
+          <img
+            src={conv.avatar_url || `/api/avatars/${encodeURIComponent(conv.chat_jid)}?instance=${encodeURIComponent(conv.line_id || 'Master')}`}
+            alt={conv.title}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={(e) => {
+              const target = e.currentTarget;
+              // إذا فشل الرابط المباشر، جرب نقطة النهاية المحلية
+              const fallback = `/api/avatars/${encodeURIComponent(conv.chat_jid)}?instance=${encodeURIComponent(conv.line_id || 'Master')}`;
+              if (target.src !== fallback && !target.src.endsWith(fallback)) {
+                target.src = fallback;
+              } else {
+                target.style.display = 'none';
+                if (target.nextElementSibling) {
+                  (target.nextElementSibling as HTMLElement).style.display = 'flex';
+                }
+              }
+            }}
+          />
+        ) : null}
+        <div style={{ display: conv.avatar_url ? 'none' : 'flex' }} className="w-full h-full items-center justify-center">
+          {conv.is_group ? (
+            <Users className="w-5 h-5" />
+          ) : (
+            initialsOrLetter(conv.title, conv.avatar_letter)
+          )}
+        </div>
       </div>
 
       <div className="flex-1 min-w-0">

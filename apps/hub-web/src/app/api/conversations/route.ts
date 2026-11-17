@@ -60,7 +60,16 @@ export async function GET(req: NextRequest) {
       }
       const items = await q(
         `select c.chat_jid, c.status, s.full_name as assigned_staff_name, c.assigned_staff_id,
-                coalesce(k.avatar_url, g.picture_url) as avatar_url,
+                coalesce(nullif(k.display_name, ''), nullif(k.full_name, ''), nullif(g.subject, ''), c.title) as resolved_title,
+                coalesce(
+                  case 
+                    when k.wa_jid is not null and (k.avatar_url is not null and k.avatar_url <> '') then '/api/avatars/' || replace(replace(replace(k.wa_jid, '@', '%40'), ':', '%3A'), '+', '%2B')
+                    when g.group_jid is not null and (g.picture_url is not null and g.picture_url <> '') then '/api/avatars/' || replace(replace(replace(g.group_jid, '@', '%40'), ':', '%3A'), '+', '%2B')
+                    else null
+                  end,
+                  k.avatar_url,
+                  g.picture_url
+                ) as avatar_url,
                 coalesce(
                   json_agg(json_build_object('id', t.id, 'name', t.name_ar, 'color', t.color)
                     order by t.sort_order nulls last, t.name_ar)
@@ -69,12 +78,12 @@ export async function GET(req: NextRequest) {
          from hub.conversations c
          join hub.lines l on l.id = c.line_id
          left join hub.staff s on s.id = c.assigned_staff_id
-         left join hub.contacts k on k.wa_jid = c.chat_jid
-         left join hub.whatsapp_groups g on g.group_jid = c.chat_jid
+         left join hub.contacts k on (k.id = c.contact_id or k.wa_jid = c.chat_jid)
+         left join hub.whatsapp_groups g on (g.group_jid = c.chat_jid or g.id = c.group_id)
          left join hub.conversation_tags ct on ct.conversation_id = c.id
          left join hub.hub_tags t on t.id = ct.tag_id
          where c.chat_jid = any($1::text[]) and l.instance_name = any($2::text[])
-         group by c.id, c.chat_jid, c.status, s.full_name, c.assigned_staff_id, k.avatar_url, g.picture_url`,
+         group by c.id, c.chat_jid, c.status, s.full_name, c.assigned_staff_id, k.display_name, k.full_name, g.subject, k.wa_jid, g.group_jid, k.avatar_url, g.picture_url`,
         [jids, instances]
       );
       return NextResponse.json({ items });

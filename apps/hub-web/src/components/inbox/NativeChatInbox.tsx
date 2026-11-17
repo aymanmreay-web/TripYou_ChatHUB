@@ -1630,7 +1630,15 @@ export function NativeChatInbox() {
       );
       if (!res.ok) return;
       const data = await res.json();
-      const items: { chat_jid: string; status?: string; assigned_staff_name?: string; assigned_staff_id?: string; avatar_url?: string | null; tags?: { id: string; name: string; color: string }[] }[] = data.items || [];
+      const items: {
+        chat_jid: string;
+        status?: string;
+        assigned_staff_name?: string;
+        assigned_staff_id?: string;
+        resolved_title?: string | null;
+        avatar_url?: string | null;
+        tags?: { id: string; name: string; color: string }[];
+      }[] = data.items || [];
       const byJid = new Map(items.map((x) => [x.chat_jid, x]));
       setConversations((prev) => {
         let changed = false;
@@ -1644,18 +1652,28 @@ export function NativeChatInbox() {
           const newAssigneeId = db.assigned_staff_id || (c as any).assigned_staff_id;
           // الصورة الحقيقية للجهة (شخص أو مجموعة) من hub.contacts — الخلية المحفوظة أولاً
           const newAvatar = db.avatar_url || c.avatar_url || undefined;
+          const newTitle = db.resolved_title || c.title;
           // تجاهل الصف إن لم يتغير فعلاً — منع إعادة الرسم المزعجة للقائمة
           if (
             mergedTags.length === (c.tags || []).length &&
             newStatus === c.status &&
             newAssignee === c.assigned_staff_name &&
             newAssigneeId === (c as any).assigned_staff_id &&
-            newAvatar === c.avatar_url
+            newAvatar === c.avatar_url &&
+            newTitle === c.title
           ) {
             return c;
           }
           changed = true;
-          return { ...c, tags: mergedTags, status: newStatus, assigned_staff_name: newAssignee, assigned_staff_id: newAssigneeId, avatar_url: newAvatar } as ConversationItem;
+          return {
+            ...c,
+            title: newTitle,
+            tags: mergedTags,
+            status: newStatus,
+            assigned_staff_name: newAssignee,
+            assigned_staff_id: newAssigneeId,
+            avatar_url: newAvatar,
+          } as ConversationItem;
         });
         return changed ? next : prev;
       });
