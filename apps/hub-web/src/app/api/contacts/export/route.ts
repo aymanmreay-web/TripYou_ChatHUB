@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     const source = searchParams.get('source');
     const line = searchParams.get('line');
     const origin = searchParams.get('origin');
+    const showLids = searchParams.get('show_lids') === 'true';
     const tagFilter = searchParams.get('tag') || '';
     const countryCode = searchParams.get('country_code');
     const city = searchParams.get('city');
@@ -32,6 +33,11 @@ export async function GET(req: NextRequest) {
 
     const where: string[] = ['1=1'];
     const params: any[] = [];
+
+    // استبعاد المشفرين تلقائياً إلا إذا تم تفعيل خيار إظهارهم
+    if (!showLids && origin !== 'group_member' && entityType !== 'lid') {
+      where.push(`NOT (c.primary_phone_e164 IS NULL AND c.wa_jid LIKE '%@lid')`);
+    }
 
     // تصفية الخط
     if (line && line !== 'all') {
@@ -89,8 +95,15 @@ export async function GET(req: NextRequest) {
     }
 
     if (role && role !== 'all') {
-      params.push(role);
-      where.push(`c.commercial_role = $${params.length}`);
+      if (role === 'b2c') {
+        where.push(`(
+          (c.display_name ilike '%عميل%' or c.display_name ilike '%زبون%' or c.display_name ilike '%عميلة%')
+          or (c.commercial_role = 'b2c' and c.primary_phone_e164 is not null and not (c.display_name like 'حساب مشفر%'))
+        )`);
+      } else {
+        params.push(role);
+        where.push(`c.commercial_role = $${params.length}`);
+      }
     }
 
     if (source && source !== 'all') {
@@ -131,7 +144,10 @@ export async function GET(req: NextRequest) {
          c.is_favorite, c.created_at, c.last_activity_at
        from hub.contacts c
        where ${where.join(' and ')}
-       order by c.last_activity_at desc nulls last, c.created_at desc
+       order by 
+         case when c.primary_phone_e164 is not null then 0 else 1 end asc,
+         c.last_activity_at desc nulls last,
+         c.created_at desc
        limit $${params.length}`,
       params
     );

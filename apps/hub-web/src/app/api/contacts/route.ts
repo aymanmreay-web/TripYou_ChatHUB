@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
     const source = searchParams.get('source');           // evolution | excel_import | contacts_file | system | manual
     const line = searchParams.get('line');               // Master | Sells_2 | Sells_1 | shared
     const origin = searchParams.get('origin');           // saved_phone | group_member | groups | newsletters
+    const showLids = searchParams.get('show_lids') === 'true'; // إظهار المشفرين (افتراضياً: false)
     const countryCode = searchParams.get('country_code'); // SA, AE, EG, etc.
     const city = searchParams.get('city');
     const isFavorite = searchParams.get('favorite');
@@ -71,6 +72,11 @@ export async function GET(req: NextRequest) {
 
     const where: string[] = ['1=1'];
     const params: any[] = [];
+
+    // استبعاد الحسابات المشفرة تلقائياً ما لم يتم تفعيل خيار إظهارها صراحة
+    if (!showLids && origin !== 'group_member' && entityType !== 'lid') {
+      where.push(`NOT (c.primary_phone_e164 IS NULL AND c.wa_jid LIKE '%@lid')`);
+    }
 
     // تصفية خط الواتساب (Master, Sells_2, Sells_1, shared)
     if (line && line !== 'all') {
@@ -116,8 +122,16 @@ export async function GET(req: NextRequest) {
     }
 
     if (role && role !== 'all') {
-      params.push(role);
-      where.push(`c.commercial_role = $${params.length}`);
+      if (role === 'b2c') {
+        // عميل B2C صارم: لا يجلب أي مشفرين ولا جهات عشوائية
+        where.push(`(
+          (c.display_name ilike '%عميل%' or c.display_name ilike '%زبون%' or c.display_name ilike '%عميلة%')
+          or (c.commercial_role = 'b2c' and c.primary_phone_e164 is not null and not (c.display_name like 'حساب مشفر%'))
+        )`);
+      } else {
+        params.push(role);
+        where.push(`c.commercial_role = $${params.length}`);
+      }
     }
 
     if (source && source !== 'all') {
@@ -171,14 +185,33 @@ export async function GET(req: NextRequest) {
 
     const whereClause = where.join(' and ');
 
-    // جلب الإجمالي
-    const countRes = await q<{ count: number }>(
-      `select count(*)::int as count from hub.contacts c where ${whereClause}`,
+    // جلب الإجمالي والإحصاءات الديناميكية للفلاتر المطبقة حالياً
+    const statsRes = await q<{
+      total: number;
+      individuals: number;
+      groups: number;
+      orgs: number;
+      lids: number;
+      from_master: number;
+      from_sells_2: number;
+      from_sells_1: number;
+    }>(
+      `select 
+         count(*)::int as total,
+         count(*) filter (where c.entity_type = 'individual' and c.primary_phone_e164 is not null)::int as individuals,
+         count(*) filter (where c.entity_type = 'group' and (c.wa_jid like '%@g.us' or c.wa_jid is null))::int as groups,
+         count(*) filter (where c.entity_type = 'organization')::int as orgs,
+         count(*) filter (where c.primary_phone_e164 is null and c.wa_jid like '%@lid')::int as lids,
+         count(*) filter (where c.source_detail ilike '%Master%' or c.source_detail like '%الرئيسي%')::int as from_master,
+         count(*) filter (where c.source_detail ilike '%Sells_2%' or c.source_detail like '%المبيعات 2%')::int as from_sells_2,
+         count(*) filter (where c.source_detail ilike '%Sells_1%' or c.source_detail like '%المبيعات 1%')::int as from_sells_1
+       from hub.contacts c
+       where ${whereClause}`,
       params
     );
-    const total = countRes[0]?.count || 0;
+    const total = statsRes[0]?.total || 0;
 
-    // جلب البيانات مع الترقيم
+    // جلب البيانات مع الترقيم والترتيب الذكي (الأرقام الحقيقية أولاً والمشفرين دائماً في الأخير)
     params.push(limit);
     const limitIdx = params.length;
     params.push(offset);
@@ -211,7 +244,10 @@ export async function GET(req: NextRequest) {
         c.last_activity_at
       from hub.contacts c
       where ${whereClause}
-      order by c.last_activity_at desc nulls last, c.created_at desc
+      order by 
+        case when c.primary_phone_e164 is not null then 0 else 1 end asc,
+        c.last_activity_at desc nulls last,
+        c.created_at desc
       limit $${limitIdx} offset $${offsetIdx}`,
       params
     );
@@ -221,6 +257,7 @@ export async function GET(req: NextRequest) {
       total,
       limit,
       offset,
+      filtered_stats: statsRes[0] || null,
     });
   } catch (err: any) {
     console.error('[API /api/contacts GET Error]:', err);

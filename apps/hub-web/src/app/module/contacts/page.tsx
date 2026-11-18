@@ -35,6 +35,7 @@ import {
   Tag,
   Check,
   Tags,
+  Copy,
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { ContactsStats } from '../../../components/contacts/ContactsStats';
@@ -185,10 +186,81 @@ interface Contact {
   last_activity_at?: string;
 }
 
-// دالة تنسيق معرف المجموعة أو الحساب المشفر بالاتجاه الصحيح من اليسار لليمين
+// خريطة مفاتيح الاتصال الدولية
+const COUNTRY_DIAL_CODES: Record<string, string> = {
+  SA: '+966',
+  SY: '+963',
+  EG: '+20',
+  AE: '+971',
+  KW: '+965',
+  QA: '+974',
+  OM: '+968',
+  BH: '+973',
+  JO: '+962',
+  IQ: '+964',
+  YE: '+967',
+  TR: '+90',
+  US: '+1',
+  GB: '+44',
+  SD: '+249',
+  MA: '+212',
+  INTL: '+',
+  XX: '+',
+};
+
+// كشف كود الدولة الذكي من بادئة الرقم
+function detectCountryCodeFromPhone(phone: string, fallback = 'SA'): string {
+  if (!phone) return fallback;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('966') || (phone.startsWith('05') && digits.length === 10) || (phone.startsWith('5') && digits.length === 9)) return 'SA';
+  if (digits.startsWith('963')) return 'SY';
+  if (digits.startsWith('20')) return 'EG';
+  if (digits.startsWith('971')) return 'AE';
+  if (digits.startsWith('965')) return 'KW';
+  if (digits.startsWith('974')) return 'QA';
+  if (digits.startsWith('968')) return 'OM';
+  if (digits.startsWith('973')) return 'BH';
+  if (digits.startsWith('962')) return 'JO';
+  if (digits.startsWith('964')) return 'IQ';
+  if (digits.startsWith('967')) return 'YE';
+  if (digits.startsWith('90')) return 'TR';
+  if (digits.startsWith('1')) return 'US';
+  if (digits.startsWith('44')) return 'GB';
+  if (digits.startsWith('249')) return 'SD';
+  if (digits.startsWith('212')) return 'MA';
+  return fallback;
+}
+
+// تنسيق رقم الهاتف مقطعاً من اليسار لليمين بأجزاء مقروءة
+function formatPhoneNumberParts(phone?: string | null): string {
+  if (!phone) return '';
+  const clean = phone.trim();
+  if (clean.includes('@')) return clean;
+
+  const saMatch = clean.match(/^\+?966(\d{2})(\d{3})(\d{4})$/);
+  if (saMatch) return `+966 ${saMatch[1]} ${saMatch[2]} ${saMatch[3]}`;
+
+  const syMatch = clean.match(/^\+?963(\d{2})(\d{3})(\d{4})$/);
+  if (syMatch) return `+963 ${syMatch[1]} ${syMatch[2]} ${syMatch[3]}`;
+
+  const egMatch = clean.match(/^\+?20(\d{2})(\d{4})(\d{4})$/);
+  if (egMatch) return `+20 ${egMatch[1]} ${egMatch[2]} ${egMatch[3]}`;
+
+  const aeMatch = clean.match(/^\+?971(\d{2})(\d{3})(\d{4})$/);
+  if (aeMatch) return `+971 ${aeMatch[1]} ${aeMatch[2]} ${aeMatch[3]}`;
+
+  const kwMatch = clean.match(/^\+?965(\d{4})(\d{4})$/);
+  if (kwMatch) return `+965 ${kwMatch[1]} ${kwMatch[2]}`;
+
+  const intlMatch = clean.match(/^(\+\d{1,3})(\d{3})(\d{3})(\d{3,4})$/);
+  if (intlMatch) return `${intlMatch[1]} ${intlMatch[2]} ${intlMatch[3]} ${intlMatch[4]}`;
+
+  return clean;
+}
+
+// دالة تنسيق معرف المجموعة القديم: 966548469204-1574527263@g.us -> +966 54 846 9204  --  1574527263@g.us
 function formatJidDisplay(jid?: string | null): string {
   if (!jid) return '';
-  // تنسيق معرف المجموعة القديم: 966548469204-1574527263@g.us -> +966 54 846 9204  --  1574527263@g.us
   const m = jid.match(/^(\d{8,15})-(\d+@g\.us)$/);
   if (m) {
     const raw = m[1];
@@ -223,6 +295,7 @@ export default function ContactsPage() {
   const [countryFilter, setCountryFilter] = useState<string>('all');
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [showLids, setShowLids] = useState<boolean>(false); // زر إظهار المشفرين (افتراضياً: false غير مفعل)
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [availableTags, setAvailableTags] = useState<{ id: string; key: string; name_ar: string; color: string }[]>([]);
 
@@ -329,6 +402,7 @@ export default function ContactsPage() {
       if (countryFilter !== 'all') params.set('country_code', countryFilter);
       if (cityFilter !== 'all') params.set('city', cityFilter);
       if (onlyFavorites) params.set('favorite', 'true');
+      if (showLids) params.set('show_lids', 'true');
       params.set('limit', String(targetPageSize));
       params.set('offset', String((targetPage - 1) * targetPageSize));
 
@@ -337,6 +411,16 @@ export default function ContactsPage() {
         const data = await res.json();
         setContacts(data.contacts || []);
         setTotalCount(data.total || 0);
+        if (data.filtered_stats) {
+          setGlobalStats((prev) => ({
+            ...prev,
+            total: data.total || 0,
+            individuals: data.filtered_stats.individuals ?? prev.individuals,
+            groups: data.filtered_stats.groups ?? prev.groups,
+            orgs: data.filtered_stats.orgs ?? prev.orgs,
+            lids: data.filtered_stats.lids ?? prev.lids,
+          }));
+        }
       }
     } catch (err) {
       console.error('Failed to load contacts:', err);
@@ -363,6 +447,7 @@ export default function ContactsPage() {
     countryFilter,
     cityFilter,
     onlyFavorites,
+    showLids,
     pageSize,
   ]);
 
@@ -406,9 +491,11 @@ export default function ContactsPage() {
   // فتح نافذة التعديل
   const openEditModal = (contact: Contact) => {
     setEditContact(contact);
+    const rawPhone = contact.primary_phone || contact.primary_phone_e164 || '';
+    const detectedCountry = detectCountryCodeFromPhone(rawPhone, contact.country_code || 'SA');
     setFormData({
       display_name: contact.display_name,
-      primary_phone: contact.primary_phone || contact.primary_phone_e164 || '',
+      primary_phone: rawPhone,
       email: contact.email || '',
       company: contact.company || '',
       facility_name: contact.facility_name || '',
@@ -416,7 +503,7 @@ export default function ContactsPage() {
       commercial_role: contact.commercial_role,
       source: contact.source,
       source_detail: contact.source_detail || '',
-      country_code: contact.country_code || 'SA',
+      country_code: detectedCountry,
       city: contact.city || '',
       district: contact.district || '',
       notes: contact.notes || '',
@@ -575,10 +662,11 @@ export default function ContactsPage() {
     }
   };
 
-  // شارات الكيان
+  // شارات الكيان (فحص صارم: أي جهة تملك رقماً حقيقياً هي فرد وليست مشفرة أبداً)
   const getEntityBadge = (contact: Contact) => {
-    const isLid = contact.wa_jid && contact.wa_jid.includes('@lid');
-    const isNewsletter = contact.wa_jid && (contact.wa_jid.includes('@newsletter') || contact.wa_jid.includes('@broadcast'));
+    const hasPhone = Boolean(contact.primary_phone_e164 || (contact.primary_phone && !contact.primary_phone.includes('@')));
+    const isLid = !hasPhone && Boolean(contact.wa_jid && contact.wa_jid.includes('@lid'));
+    const isNewsletter = !hasPhone && Boolean(contact.wa_jid && (contact.wa_jid.includes('@newsletter') || contact.wa_jid.includes('@broadcast')));
 
     if (isLid) {
       return (
@@ -620,6 +708,13 @@ export default function ContactsPage() {
             <span>مجموعة</span>
           </span>
         );
+      default:
+        return (
+          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+            <User className="w-3 h-3 text-blue-400" />
+            <span>فرد</span>
+          </span>
+        );
     }
   };
 
@@ -651,10 +746,14 @@ export default function ContactsPage() {
     }
   };
 
-  // شارة الدولة
+  // شارة الدولة (استبدال غير محدد بـ عام 🌐)
   const getCountryBadge = (code?: string) => {
     if (!code || code === 'XX') {
-      return <span className="text-[10px] text-slate-500 font-mono">غير محدد</span>;
+      return (
+        <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold" dir="rtl">
+          <span>عام 🌐</span>
+        </span>
+      );
     }
     const flags: Record<string, string> = {
       SA: '🇸🇦 السعودية',
@@ -684,16 +783,29 @@ export default function ContactsPage() {
     );
   };
 
-  // وسام المصدر واسم الخط العربي في السيستم داخلياً
-  const getSourceBadge = (source: Contact['source'], detail?: string) => {
+  // وسام المصدر وفصل كل خط واتساب في وسام مستقل بدلاً من دمجهما
+  const getSourceBadges = (source: Contact['source'], detail?: string): React.ReactNode => {
     const cleanDetail = (detail || '').trim();
     const arabicLines: string[] = [];
     if (/sells_2|المبيعات 2/i.test(cleanDetail)) arabicLines.push('المبيعات 2');
     if (/master|الرئيسي/i.test(cleanDetail)) arabicLines.push('الرئيسي');
     if (/sells_1|المبيعات 1/i.test(cleanDetail)) arabicLines.push('المبيعات 1');
 
-    if (source === 'evolution' || arabicLines.length > 0) {
-      const lineName = arabicLines.length > 0 ? arabicLines.join(' • ') : cleanDetail.replace(/evolution:/g, '').trim() || 'خط واتساب';
+    if (arabicLines.length > 0) {
+      return arabicLines.map((line) => (
+        <span
+          key={line}
+          className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-sm"
+          dir="rtl"
+        >
+          <Smartphone className="w-3 h-3 text-emerald-400 shrink-0" />
+          <span>{line}</span>
+        </span>
+      ));
+    }
+
+    if (source === 'evolution') {
+      const lineName = cleanDetail.replace(/evolution:/g, '').trim() || 'خط واتساب';
       return (
         <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-sm" dir="rtl">
           <Smartphone className="w-3 h-3 text-emerald-400 shrink-0" />
@@ -857,6 +969,25 @@ export default function ContactsPage() {
 
             <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
               <button
+                type="button"
+                onClick={() => setShowLids((prev) => !prev)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                  showLids
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                    : 'bg-[var(--card-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-white'
+                }`}
+                title="إظهار جهات الاتصال المشفرة (تظهر في أسفل القائمة)"
+              >
+                <Lock className={`w-3.5 h-3.5 ${showLids ? 'text-amber-400' : 'text-slate-400'}`} />
+                <span>إظهار المشفرين</span>
+                {globalStats.lids > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/40 text-amber-300 font-mono">
+                    <bdi dir="ltr">{globalStats.lids}</bdi>
+                  </span>
+                )}
+              </button>
+
+              <button
                 onClick={() => setOnlyFavorites((prev) => !prev)}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
                   onlyFavorites
@@ -920,7 +1051,7 @@ export default function ContactsPage() {
               </select>
             </div>
 
-            {/* فلتر الوسوم */}
+            {/* فلتر الوسوم المصنف بمجموعات */}
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-[var(--text-muted)] font-medium">الوسم:</span>
               <select
@@ -929,11 +1060,46 @@ export default function ContactsPage() {
                 className="bg-[var(--card-elevated)] text-purple-300 border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل الوسوم</option>
-                {availableTags.map((t) => (
-                  <option key={t.id} value={t.name_ar || t.key}>
-                    🏷️ {t.name_ar || t.key}
-                  </option>
-                ))}
+                <optgroup label="خطوط الواتساب">
+                  <option value="Master">📱 الرئيسي (Master)</option>
+                  <option value="Sells_2">📱 المبيعات 2 (Sells_2)</option>
+                  <option value="Sells_1">📱 المبيعات 1 (Sells_1)</option>
+                </optgroup>
+                <optgroup label="نوع جهة الاتصال">
+                  <option value="individual">👤 فرد</option>
+                  <option value="organization">🏢 منشأة / شركة</option>
+                  <option value="group">👥 مجموعة</option>
+                </optgroup>
+                <optgroup label="الحالات الخاصة">
+                  <option value="lid">🔒 مشفر (LID)</option>
+                  <option value="newsletter">📢 قنوات وبث</option>
+                </optgroup>
+                <optgroup label="الدول">
+                  <option value="SA">🇸🇦 السعودية</option>
+                  <option value="SY">🇸🇾 سوريا</option>
+                  <option value="EG">🇪🇬 مصر</option>
+                  <option value="AE">🇦🇪 الإمارات</option>
+                  <option value="KW">🇰🇼 الكويت</option>
+                  <option value="QA">🇶🇦 قطر</option>
+                  <option value="OM">🇴🇲 عمان</option>
+                  <option value="BH">🇧🇭 البحرين</option>
+                  <option value="XX">🌐 عام</option>
+                </optgroup>
+                <optgroup label="أصل ومصدر السجل">
+                  <option value="saved_phone">📱 دفتر الجوال</option>
+                  <option value="group_member">👥 عضو مجموعة</option>
+                  <option value="excel_import">📊 استيراد إكسل</option>
+                  <option value="contacts_file">📁 ملف جهات (VCF)</option>
+                </optgroup>
+                {availableTags.length > 0 && (
+                  <optgroup label="وسوم مخصصة">
+                    {availableTags.map((t) => (
+                      <option key={t.id} value={t.name_ar || t.key}>
+                        🏷️ {t.name_ar || t.key}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
@@ -976,7 +1142,7 @@ export default function ContactsPage() {
                 <option value="SY">🇸🇾 سوريا</option>
                 <option value="TR">🇹🇷 تركيا</option>
                 <option value="INTL">🌍 دولي / أخرى</option>
-                <option value="XX">غير محدد</option>
+                <option value="XX">🌐 عام</option>
               </select>
             </div>
 
@@ -1107,7 +1273,7 @@ export default function ContactsPage() {
                     {getEntityBadge(contact)}
                     {getCountryBadge(contact.country_code)}
                     {getRoleBadge(contact)}
-                    {getSourceBadge(contact.source, contact.source_detail)}
+                    {getSourceBadges(contact.source, contact.source_detail)}
                   </div>
 
                   {/* معلومات الاتصال والموقع */}
@@ -1116,7 +1282,7 @@ export default function ContactsPage() {
                       <div className="flex items-center gap-2">
                         <Phone className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                         <span className="font-mono text-[11px] text-white">
-                          <bdi dir="ltr">{contact.primary_phone_e164 || contact.primary_phone}</bdi>
+                          <bdi dir="ltr">{formatPhoneNumberParts(contact.primary_phone_e164 || contact.primary_phone)}</bdi>
                         </span>
                       </div>
                     )}
@@ -1225,12 +1391,12 @@ export default function ContactsPage() {
                         </div>
                       </td>
                       <td className="p-3 font-mono text-[var(--text-secondary)]">
-                        <bdi dir="ltr">{contact.primary_phone_e164 || contact.primary_phone || (contact.wa_jid ? formatJidDisplay(contact.wa_jid) : '—')}</bdi>
+                        <bdi dir="ltr">{formatPhoneNumberParts(contact.primary_phone_e164 || contact.primary_phone) || (contact.wa_jid ? formatJidDisplay(contact.wa_jid) : '—')}</bdi>
                       </td>
                       <td className="p-3">{getCountryBadge(contact.country_code)}</td>
                       <td className="p-3">{getEntityBadge(contact)}</td>
                       <td className="p-3">{getRoleBadge(contact)}</td>
-                      <td className="p-3">{getSourceBadge(contact.source, contact.source_detail)}</td>
+                      <td className="p-3"><div className="flex flex-wrap gap-1">{getSourceBadges(contact.source, contact.source_detail)}</div></td>
                       <td className="p-3 text-[var(--text-secondary)]">{contact.city || '—'}</td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
@@ -1374,15 +1540,41 @@ export default function ContactsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">رقم الهاتف (واتساب) *</label>
-                    <input
-                      type="text"
-                      dir="ltr"
-                      value={formData.primary_phone}
-                      onChange={(e) => setFormData({ ...formData, primary_phone: e.target.value })}
-                      placeholder="+9665xxxxxxxx أو 05xxxxxxxx"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-left font-mono"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] text-slate-300 font-medium">رقم الهاتف (واتساب) *</label>
+                      {formData.primary_phone && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(formData.primary_phone);
+                            setActionAlert({ type: 'success', message: 'تم نسخ رقم الهاتف بنجاح' });
+                            setTimeout(() => setActionAlert(null), 3000);
+                          }}
+                          className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300 font-medium px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20"
+                          title="نسخ الرقم كاملاً إلى الحافظة"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>نسخ الرقم</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5" dir="ltr">
+                      <div className="px-2.5 py-2 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-slate-300 font-mono text-xs shrink-0 select-none">
+                        {COUNTRY_DIAL_CODES[formData.country_code] || '+'}
+                      </div>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={formData.primary_phone}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const autoCountry = detectCountryCodeFromPhone(val, formData.country_code);
+                          setFormData({ ...formData, primary_phone: val, country_code: autoCountry });
+                        }}
+                        placeholder="+9665xxxxxxxx أو 05xxxxxxxx"
+                        className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-left font-mono"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1395,16 +1587,21 @@ export default function ContactsPage() {
                       className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-right"
                     >
                       <option value="SA">🇸🇦 السعودية</option>
+                      <option value="SY">🇸🇾 سوريا</option>
+                      <option value="EG">🇪🇬 مصر</option>
                       <option value="AE">🇦🇪 الإمارات</option>
                       <option value="KW">🇰🇼 الكويت</option>
                       <option value="QA">🇶🇦 قطر</option>
                       <option value="OM">🇴🇲 عمان</option>
                       <option value="BH">🇧🇭 البحرين</option>
-                      <option value="EG">🇪🇬 مصر</option>
                       <option value="JO">🇯🇴 الأردن</option>
                       <option value="IQ">🇮🇶 العراق</option>
                       <option value="YE">🇾🇪 اليمن</option>
+                      <option value="TR">🇹🇷 تركيا</option>
+                      <option value="SD">🇸🇩 السودان</option>
+                      <option value="MA">🇲🇦 المغرب</option>
                       <option value="INTL">🌍 أخرى / دولي</option>
+                      <option value="XX">🌐 عام</option>
                     </select>
                   </div>
 
