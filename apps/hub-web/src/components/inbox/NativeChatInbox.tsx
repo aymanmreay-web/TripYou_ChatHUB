@@ -162,7 +162,10 @@ export function NativeChatInbox() {
       if (!raw) return;
       const obj = JSON.parse(raw);
       Object.entries(obj || {}).forEach(([jid, v]: [string, any]) => {
-        if (v?.subject) groupNameBookRef.current.set(jid, v);
+        // لا تُحمّل الأسماء الرقمية الاحتياطية — تُنظَّف هنا تلقائياً
+        if (v?.subject && !/^مجموعة (\(\d+\)|واتساب)$/.test(v.subject)) {
+          groupNameBookRef.current.set(jid, v);
+        }
       });
     } catch { /* دفتر تالف — تجاهل بصمت */ }
   }, []);
@@ -776,7 +779,7 @@ export function NativeChatInbox() {
 
       // ─── أسماء المجموعات: إن بقيت مجموعات بالاسم الاحتياطي، اقرأ أسماءها من القاعدة (مهلة 5 دقائق) ───
       const isFallbackGroupTitle = (c: ConversationItem) => c.is_group && /^مجموعة (\(\d+\)|واتساب)$/.test(c.title || '');
-      if (allMerged.some(isFallbackGroupTitle) && Date.now() - groupNamesDbFetchedAtRef.current > 5 * 60 * 1000) {
+      if (allMerged.some(isFallbackGroupTitle) && Date.now() - groupNamesDbFetchedAtRef.current > 60 * 1000) {
         groupNamesDbFetchedAtRef.current = Date.now();
         try {
           const r = await fetch('/api/groups');
@@ -784,7 +787,8 @@ export function NativeChatInbox() {
             const j = await r.json();
             (Array.isArray(j?.groups) ? j.groups : []).forEach((g: any) => {
               const name = g?.display_name || g?.subject;
-              if (g?.group_jid && name && !groupNameBookRef.current.has(g.group_jid)) {
+              // دائماً حدّث الاسم من القاعدة حتى لو كان محفوظاً محلياً — يمنع بقاء الاسم الرقمي الخاطئ
+              if (g?.group_jid && name) {
                 groupNameBookRef.current.set(g.group_jid, {
                   subject: name,
                   pictureUrl: g.picture_url || g.avatar_url || undefined,
@@ -801,7 +805,13 @@ export function NativeChatInbox() {
         return name ? { ...c, title: name, avatar_letter: name.charAt(0) || '؟' } : c;
       });
       try {
-        localStorage.setItem(GROUP_NAMES_KEY, JSON.stringify(Object.fromEntries(groupNameBookRef.current)));
+        // احفظ فقط الأسماء الحقيقية — لا تحفظ الأسماء الرقمية الاحتياطية حتى لا تتجمد في الكاش
+        const realNamesOnly = Object.fromEntries(
+          Array.from(groupNameBookRef.current.entries()).filter(
+            ([, v]) => v.subject && !/^مجموعة (\(\d+\)|واتساب)$/.test(v.subject)
+          )
+        );
+        localStorage.setItem(GROUP_NAMES_KEY, JSON.stringify(realNamesOnly));
       } catch { /* تجاوز حد التخزين — غير حرج */ }
 
       // نحتفظ ببيانات كل خط كاملة ومستقلة دون أي حذف أو استقطاع لتكون عدادات كل خط دقيقة 100%
