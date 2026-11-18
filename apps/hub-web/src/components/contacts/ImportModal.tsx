@@ -98,14 +98,28 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onSuc
         const data = await res.json();
 
         if (res.ok && data.success) {
+          const parts: string[] = [];
+          if (data.total_saved_phone_contacts > 0) {
+            parts.push(`${data.total_saved_phone_contacts} اسم جهة مخزنة بالجوال`);
+          }
+          parts.push(`${data.total_individuals} فرد`);
+          parts.push(`${data.total_groups} مجموعة`);
+          if (data.total_lids > 0) {
+            parts.push(`${data.total_lids} حساب مشفر (استخلص ${data.total_extracted_from_lids} رقم منهم)`);
+          }
+          if (data.total_newsletters > 0) {
+            parts.push(`${data.total_newsletters} قناة`);
+          }
+          const changeDetail = `(أضيف ${data.total_inserted || 0} جديد، ودُمج ${data.total_updated || 0} قائم)`;
           setStatusMessage({
             type: 'success',
-            text: `✅ اكتمل بنجاح: ${data.total_individuals} فرد، ${data.total_groups} مجموعة، ${data.total_lids} حساب مشفر (تم استخلاص ${data.total_extracted_from_lids} رقم منهم)، ${data.total_newsletters} قناة.`,
+            text: `✅ اكتمل السحب بنجاح: تم سحب ${parts.join('، ')}. ${changeDetail}`,
           });
           onSuccess();
-          setTimeout(() => { handleClose(); }, 3500);
+          setTimeout(() => { handleClose(); }, 4000);
         } else {
-          setStatusMessage({ type: 'error', text: `❌ فشل السحب: ${data.error || 'تعذر الاتصال بالخطوط'}` });
+          const errorMsg = data.errors?.length ? data.errors.join(' | ') : data.error || 'تعذر الاتصال بالخطوط';
+          setStatusMessage({ type: 'error', text: `❌ فشل السحب: ${errorMsg}` });
         }
         return;
       }
@@ -315,13 +329,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onSuc
               <div className="p-3.5 rounded-2xl bg-purple-950/40 border border-purple-500/30 text-xs text-purple-200 leading-relaxed space-y-1">
                 <p className="font-bold text-[var(--text-main)] flex items-center gap-1.5">
                   <Smartphone className="w-4 h-4 text-emerald-400" />
-                  السحب الذكي والشامل من واتساب:
+                  السحب الذكي والشامل من خطوط واتساب:
                 </p>
-                <ul className="text-[11px] text-slate-300 list-disc list-inside space-y-0.5">
-                  <li>استيراد جهات الاتصال والأسماء الحقيقية للمجموعات.</li>
-                  <li>فك تشفير الحسابات <bdi dir="ltr">LID</bdi> واستخلاص أرقامها من الشات.</li>
-                  <li>وسم تلقائي للحسابات المشفرة والقنوات والمجموعات.</li>
-                  <li>كشف الدولة تلقائياً وربط المحادثات بجهات الاتصال فوراً.</li>
+                <ul className="text-[11px] text-slate-300 list-disc list-inside space-y-1">
+                  <li className="text-emerald-300 font-semibold">
+                    استيراد وحفظ الأسماء المرتبطة بكل رقم كجهات اتصال مخزنة في دفتر عناوين الجوال.
+                  </li>
+                  <li>استيراد جهات الاتصال والأفراد والمجموعات بالأسماء الحقيقية.</li>
+                  <li>فك تشفير الحسابات المشفرة (<bdi dir="ltr">LID</bdi>) واستخلاص أرقامها الحقيقية من الشات.</li>
+                  <li>إسناد أوسمة تلقائية للحسابات المشفرة والقنوات والمجموعات لتسهيل الفرز.</li>
+                  <li>كشف الدولة وتحديث جهات الاتصال المشتركة تلقائياً بين كافة الخطوط دون أي تعارض.</li>
                 </ul>
               </div>
             </div>

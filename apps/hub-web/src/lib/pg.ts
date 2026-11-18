@@ -34,3 +34,14 @@ export async function q<T = any>(sql: string, params: any[] = []): Promise<T[]> 
   const res = await pool.query(sql, params);
   return res.rows as T[];
 }
+
+/** تنفيذ عمليات معقدة أو معاملات (Transactions) عبر عميل مخصص */
+export async function withClient<T>(fn: (client: any) => Promise<T>): Promise<T> {
+  const pool = await getPool();
+  const client = await pool.connect();
+  try {
+    return await fn(client);
+  } finally {
+    client.release();
+  }
+}
