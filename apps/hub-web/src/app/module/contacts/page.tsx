@@ -36,6 +36,9 @@ import {
   Check,
   Tags,
   Copy,
+  CheckSquare,
+  Square,
+  ListPlus,
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { ContactsStats } from '../../../components/contacts/ContactsStats';
@@ -277,6 +280,265 @@ function formatJidDisplay(jid?: string | null): string {
   return jid;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   مكوّن الوسم الجماعي
+   ═══════════════════════════════════════════════════════════ */
+interface BulkTagModalProps {
+  selectedCount: number;
+  selectedIds: string[];
+  availableTags: { id: string; key: string; name_ar: string; color: string }[];
+  onClose: () => void;
+  onDone: (message: string) => void;
+}
+
+function BulkTagModal({ selectedCount, selectedIds, availableTags, onClose, onDone }: BulkTagModalProps) {
+  const [selectedTagId, setSelectedTagId] = useState('');
+  const [tagAction, setTagAction] = useState<'add' | 'remove'>('add');
+  const [loading, setLoading] = useState(false);
+
+  const handleApply = async () => {
+    if (!selectedTagId) {
+      alert('يرجى اختيار وسم أولاً');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/contacts/bulk-tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact_ids: selectedIds,
+          tag_id: selectedTagId,
+          action: tagAction,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onDone(data.message);
+      } else {
+        alert(data.error || 'حدث خطأ أثناء تعيين الوسوم');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+      <div dir="rtl" className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-right">
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+          <div>
+            <h3 className="font-bold text-base text-[var(--text-main)]">🏷️ تعيين وسم جماعي</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              ستُطبق العملية على{' '}
+              <bdi className="font-mono font-bold text-indigo-300">{selectedCount}</bdi>{' '}
+              جهة اتصال محددة
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* اختيار العملية */}
+          <div>
+            <label className="block text-xs text-slate-300 font-medium mb-2">العملية</label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setTagAction('add')}
+                className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                  tagAction === 'add'
+                    ? 'bg-purple-600/30 text-purple-200 border-purple-500/50'
+                    : 'bg-[var(--card-elevated)] text-slate-400 border-[var(--border-subtle)]'
+                }`}
+              >
+                ➕ إضافة وسم
+              </button>
+              <button
+                onClick={() => setTagAction('remove')}
+                className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                  tagAction === 'remove'
+                    ? 'bg-rose-600/30 text-rose-200 border-rose-500/50'
+                    : 'bg-[var(--card-elevated)] text-slate-400 border-[var(--border-subtle)]'
+                }`}
+              >
+                ➖ إزالة وسم
+              </button>
+            </div>
+          </div>
+
+          {/* اختيار الوسم */}
+          <div>
+            <label className="block text-xs text-slate-300 font-medium mb-2">اختر الوسم</label>
+            {availableTags.length === 0 ? (
+              <p className="text-xs text-slate-500 p-3 bg-[var(--card-elevated)] rounded-xl">
+                لا توجد وسوم متاحة. أنشئها أولاً من صفحة إدارة الوسوم.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => setSelectedTagId(tag.id)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border text-right transition-all ${
+                      selectedTagId === tag.id
+                        ? 'border-purple-500/60 bg-purple-600/20 text-purple-200'
+                        : 'border-[var(--border-subtle)] bg-[var(--card-elevated)] text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ background: tag.color || '#8b5cf6' }}
+                    />
+                    <span className="truncate">{tag.name_ar}</span>
+                    {selectedTagId === tag.id && <Check className="w-3 h-3 text-purple-400 shrink-0 mr-auto" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-semibold transition-all"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={handleApply}
+            disabled={loading || !selectedTagId}
+            className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-lg disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {loading ? (
+              <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>جاري التطبيق...</span></>
+            ) : (
+              <><Check className="w-3.5 h-3.5" /><span>تطبيق الوسم</span></>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   مكوّن إنشاء قائمة حملات
+   ═══════════════════════════════════════════════════════════ */
+interface CreateCampaignListModalProps {
+  selectedCount: number;
+  selectedIds: string[];
+  onClose: () => void;
+  onDone: (message: string) => void;
+}
+
+function CreateCampaignListModal({ selectedCount, selectedIds, onClose, onDone }: CreateCampaignListModalProps) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleCreate = async () => {
+    if (!title.trim()) {
+      alert('يرجى إدخال اسم للقائمة');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/contacts/lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim() || null,
+          contact_ids: selectedIds,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onDone(data.message);
+      } else {
+        alert(data.error || 'فشل إنشاء القائمة');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+      <div dir="rtl" className="bg-[var(--card-bg)] border border-emerald-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-right">
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+          <div>
+            <h3 className="font-bold text-base text-[var(--text-main)]">📋 إنشاء قائمة حملات</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              ستُضاف{' '}
+              <bdi className="font-mono font-bold text-emerald-300">{selectedCount}</bdi>{' '}
+              جهة اتصال إلى القائمة الجديدة
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-slate-300 font-medium mb-1.5">اسم القائمة *</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="مثال: عملاء مكة رمضان 2025"
+              className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-emerald-500 outline-none text-right text-sm"
+              dir="rtl"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-300 font-medium mb-1.5">وصف اختياري</label>
+            <textarea
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="وصف مختصر للقائمة وهدف الحملة..."
+              className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-emerald-500 outline-none resize-none text-right text-xs"
+              dir="rtl"
+            />
+          </div>
+          <div className="p-3 bg-emerald-950/40 border border-emerald-500/20 rounded-xl text-xs text-emerald-200/80">
+            ✅ ستظهر القائمة فور إنشائها في قسم <strong>إدارة الحملات</strong> وتكون جاهزة للاستخدام الفوري.
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-semibold transition-all"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={loading || !title.trim()}
+            className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-lg disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {loading ? (
+              <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>جاري الإنشاء...</span></>
+            ) : (
+              <><ListPlus className="w-3.5 h-3.5" /><span>إنشاء القائمة</span></>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -295,9 +557,14 @@ export default function ContactsPage() {
   const [countryFilter, setCountryFilter] = useState<string>('all');
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
-  const [showLids, setShowLids] = useState<boolean>(false); // زر إظهار المشفرين (افتراضياً: false غير مفعل)
+  const [showLids, setShowLids] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [availableTags, setAvailableTags] = useState<{ id: string; key: string; name_ar: string; color: string }[]>([]);
+
+  // ===== التحديد الجماعي =====
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkTagModalOpen, setBulkTagModalOpen] = useState(false);
+  const [createListModalOpen, setCreateListModalOpen] = useState(false);
 
   // إحصائيات النظام الشاملة
   const [globalStats, setGlobalStats] = useState({
@@ -597,6 +864,20 @@ export default function ContactsPage() {
     }
   };
 
+  // ===== منطق التحديد الجماعي =====
+  const toggleSelectContact = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIds(new Set(contacts.map((c) => c.id)));
+  const clearSelection = () => setSelectedIds(new Set());
+  const isAllSelected = contacts.length > 0 && contacts.every((c) => selectedIds.has(c.id));
+
   // مسح كافة جهات الاتصال نهائياً
   const handleClearAllContacts = async () => {
     try {
@@ -639,6 +920,7 @@ export default function ContactsPage() {
       if (countryFilter !== 'all') params.set('country_code', countryFilter);
       if (cityFilter !== 'all') params.set('city', cityFilter);
       if (onlyFavorites) params.set('favorite', 'true');
+      if (showLids) params.set('show_lids', 'true');
       params.set('limit', '50000');
 
       const res = await fetch(`/api/contacts/export?${params.toString()}`);
@@ -931,6 +1213,55 @@ export default function ContactsPage() {
         {/* إحصائيات الدليل المتطورة */}
         <ContactsStats stats={globalStats} />
 
+        {/* ===== شريط التحديد الجماعي — يظهر فقط عند وجود تحديد ===== */}
+        {selectedIds.size > 0 && (
+          <div
+            dir="rtl"
+            className="sticky top-2 z-30 p-3 rounded-2xl bg-indigo-950/90 border border-indigo-500/50 backdrop-blur-md flex flex-wrap items-center gap-3 shadow-xl"
+          >
+            <div className="flex items-center gap-2 text-sm font-bold text-indigo-200 shrink-0">
+              <CheckSquare className="w-4 h-4 text-indigo-400" />
+              <span>
+                تم تحديد{' '}
+                <bdi className="font-mono text-white">{selectedIds.size}</bdi>{' '}
+                جهة اتصال
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setBulkTagModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-semibold transition-all"
+              >
+                <Tags className="w-3.5 h-3.5" />
+                <span>تعيين وسم جماعي</span>
+              </button>
+              <button
+                onClick={() => setCreateListModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-500/40 text-xs font-semibold transition-all"
+              >
+                <ListPlus className="w-3.5 h-3.5" />
+                <span>إنشاء قائمة حملات</span>
+              </button>
+              {!isAllSelected && (
+                <button
+                  onClick={selectAll}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-700/60 hover:bg-slate-600 text-slate-300 hover:text-white border border-slate-500/40 text-xs font-semibold transition-all"
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  <span>تحديد الكل ({contacts.length})</span>
+                </button>
+              )}
+              <button
+                onClick={clearSelection}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>إلغاء التحديد</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* شريط الفلاتر والبحث الشامل */}
         <div className="p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] space-y-3 shadow-md">
           <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
@@ -1218,15 +1549,47 @@ export default function ContactsPage() {
           </div>
         ) : viewMode === 'cards' ? (
           /* عرض البطاقات */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="space-y-3">
+            {/* رأس القائمة: تحديد الكل */}
+            <div className="flex items-center gap-3 px-1" dir="rtl">
+              <button
+                onClick={isAllSelected ? clearSelection : selectAll}
+                className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
+              >
+                {isAllSelected ? (
+                  <CheckSquare className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+                <span>{isAllSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'}</span>
+              </button>
+              <span className="text-xs text-slate-500 font-mono">({contacts.length} في الصفحة)</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {contacts.map((contact) => (
               <div
                 key={contact.id}
-                className="p-4 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] hover:border-purple-500/40 transition-all shadow-lg flex flex-col justify-between group relative"
+                className={`p-4 rounded-3xl bg-[var(--card-bg)] border transition-all shadow-lg flex flex-col justify-between group relative ${
+                  selectedIds.has(contact.id)
+                    ? 'border-indigo-500/60 bg-indigo-950/20'
+                    : 'border-[var(--border-subtle)] hover:border-purple-500/40'
+                }`}
               >
                 <div>
                   <div className="flex items-start justify-between gap-3 mb-2.5">
-                    <div className="flex items-center gap-3 min-w-0">
+                    {/* Checkbox التحديد + الأفاتار + الاسم */}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        onClick={() => toggleSelectContact(contact.id)}
+                        className="shrink-0 p-0.5 rounded-lg hover:bg-indigo-500/20 transition-colors"
+                        title={selectedIds.has(contact.id) ? 'إلغاء التحديد' : 'تحديد'}
+                      >
+                        {selectedIds.has(contact.id) ? (
+                          <CheckSquare className="w-4 h-4 text-indigo-400" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-500 group-hover:text-slate-400" />
+                        )}
+                      </button>
                       <div
                         className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-base shrink-0 shadow-md ${
                           contact.entity_type === 'organization'
@@ -1261,7 +1624,7 @@ export default function ContactsPage() {
 
                     <button
                       onClick={() => handleToggleFavorite(contact)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-amber-400 transition-colors"
+                      className="p-1 rounded-lg text-slate-400 hover:text-amber-400 transition-colors shrink-0"
                       title={contact.is_favorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}
                     >
                       <Star className={`w-4 h-4 ${contact.is_favorite ? 'fill-amber-400 text-amber-400' : ''}`} />
@@ -1358,6 +1721,7 @@ export default function ContactsPage() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         ) : (
           /* عرض الجدول التفصيلي */
@@ -1366,6 +1730,15 @@ export default function ContactsPage() {
               <table className="w-full text-right text-xs">
                 <thead className="bg-[var(--card-elevated)] text-[var(--text-muted)] border-b border-[var(--border-subtle)]">
                   <tr>
+                    <th className="p-3 w-10">
+                      <button onClick={isAllSelected ? clearSelection : selectAll} className="p-0.5">
+                        {isAllSelected ? (
+                          <CheckSquare className="w-4 h-4 text-indigo-400" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </th>
                     <th className="p-3 font-semibold">الجهة / الاسم</th>
                     <th className="p-3 font-semibold">رقم الهاتف / المعرف</th>
                     <th className="p-3 font-semibold">الدولة</th>
@@ -1378,7 +1751,19 @@ export default function ContactsPage() {
                 </thead>
                 <tbody className="divide-y divide-[var(--border-subtle)]/50">
                   {contacts.map((contact) => (
-                    <tr key={contact.id} className="hover:bg-purple-950/20 transition-colors">
+                    <tr
+                      key={contact.id}
+                      className={`transition-colors ${selectedIds.has(contact.id) ? 'bg-indigo-950/30' : 'hover:bg-purple-950/20'}`}
+                    >
+                      <td className="p-3">
+                        <button onClick={() => toggleSelectContact(contact.id)} className="p-0.5">
+                          {selectedIds.has(contact.id) ? (
+                            <CheckSquare className="w-4 h-4 text-indigo-400" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-500" />
+                          )}
+                        </button>
+                      </td>
                       <td className="p-3">
                         <div className="flex items-center gap-2">
                           <button onClick={() => handleToggleFavorite(contact)}>
@@ -1776,6 +2161,36 @@ export default function ContactsPage() {
           </div>
         )}
       </div>
+
+      {/* ===== نافذة الوسم الجماعي ===== */}
+      {bulkTagModalOpen && (
+        <BulkTagModal
+          selectedCount={selectedIds.size}
+          selectedIds={Array.from(selectedIds)}
+          availableTags={availableTags}
+          onClose={() => setBulkTagModalOpen(false)}
+          onDone={(msg) => {
+            setBulkTagModalOpen(false);
+            setActionAlert({ type: 'success', message: msg });
+            setTimeout(() => setActionAlert(null), 5000);
+          }}
+        />
+      )}
+
+      {/* ===== نافذة إنشاء قائمة حملات ===== */}
+      {createListModalOpen && (
+        <CreateCampaignListModal
+          selectedCount={selectedIds.size}
+          selectedIds={Array.from(selectedIds)}
+          onClose={() => setCreateListModalOpen(false)}
+          onDone={(msg) => {
+            setCreateListModalOpen(false);
+            clearSelection();
+            setActionAlert({ type: 'success', message: msg });
+            setTimeout(() => setActionAlert(null), 7000);
+          }}
+        />
+      )}
     </AppShell>
   );
 }
