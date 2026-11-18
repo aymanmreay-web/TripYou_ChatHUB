@@ -212,7 +212,15 @@ function MessageBubbleImpl({
                               <button
                                 onClick={(e) => {
                                   const rct = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                  setSenderMenu({ msgId: msg.id, name: msg.sender_name, jid: msg.key_participant || msg.key_participant_alt || '', x: rct.left, y: rct.bottom });
+                                  setSenderMenu({
+                                    msgId: msg.id,
+                                    name: msg.sender_name,
+                                    jid: msg.key_participant_alt || msg.key_participant || '',
+                                    rawLid: msg.key_participant || '',
+                                    altJid: msg.key_participant_alt || '',
+                                    x: rct.left,
+                                    y: rct.bottom
+                                  });
                                 }}
                                 className="hover:underline flex items-center gap-1"
                                 title="خيارات المرسل"

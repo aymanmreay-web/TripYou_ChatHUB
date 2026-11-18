@@ -269,7 +269,7 @@ export function NativeChatInbox() {
   // نافذة اختيار وجهة التحويل الجماعي للرسائل المحددة
   const [forwardBulkTargetOpen, setForwardBulkTargetOpen] = useState(false);
   // طلب المالك: قائمة خيارات لكل مرسل داخل المجموعة
-  const [senderMenu, setSenderMenu] = useState<{ msgId: string; name: string; jid: string; x: number; y: number } | null>(null);
+  const [senderMenu, setSenderMenu] = useState<{ msgId: string; name: string; jid: string; rawLid?: string; altJid?: string; x: number; y: number } | null>(null);
 
   // ─── C4: قواعد الرد عبر الخطوط ───
   // منح المدير: خطوط يُسمح للموظف الرد منها رغم أنها ليست خط الوارد (بعد موافقة صريحة)
@@ -4935,42 +4935,68 @@ export function NativeChatInbox() {
               {senderMenu.name}
             </div>
             {(() => {
-              // أولوية الرقم الحقيقي (participantAlt) ثم معرف LID — مرسلون بلا رقم لا يمكن حفظهم كجهة
-              const digits = senderMenu.jid.replace(/@.*$/, '').replace(/\D/g, '');
-              const isPhone = senderMenu.jid.endsWith('@s.whatsapp.net') && digits.length >= 10;
+              // أولوية الرقم الحقيقي (participantAlt) أو المعرف الرقمي، مع استخلاص الرقم من أعضاء المجموعة إن كان LID
+              const cleanPhoneJid = senderMenu.altJid?.endsWith('@s.whatsapp.net')
+                ? senderMenu.altJid
+                : (senderMenu.jid?.endsWith('@s.whatsapp.net') ? senderMenu.jid : '');
+              let digits = cleanPhoneJid.replace(/@.*$/, '').replace(/\D/g, '');
+
               return (
                 <>
                   <button
                     onClick={async () => {
-                      if (!isPhone) {
-                        toast({ title: 'معرّف هذا المرسل من نوع LID مخفي الرقم — لا يمكن حفظه كجهة اتصال حتى يراسلك من رقمه مباشرة', kind: 'info', durationMs: 6000 });
-                        setSenderMenu(null);
-                        return;
+                      let resolvedPhone = digits ? '+' + digits : '';
+                      const lidId = senderMenu.rawLid || senderMenu.jid || '';
+
+                      // إن كان المعرف LID مشفراً ولم نجد الهاتف بعد، نحاول استخلاصه لحظياً من أعضاء المجموعة
+                      if (!resolvedPhone && activeConversation?.chat_jid?.includes('@g.us')) {
+                        try {
+                          const inst = activeConversation.line_id || 'Sells_2';
+                          const gRes = await fetch(`/api/evolution/instances/${inst}/group-members?jid=${encodeURIComponent(activeConversation.chat_jid)}`);
+                          if (gRes.ok) {
+                            const gData = await gRes.json();
+                            if (gData.mapping && gData.mapping[lidId]?.phone) {
+                              resolvedPhone = gData.mapping[lidId].phone;
+                            }
+                          }
+                        } catch (err) {
+                          console.warn('[resolve phone]', err);
+                        }
                       }
+
                       try {
                         const res = await fetch('/api/contacts', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             display_name: senderMenu.name,
-                            primary_phone: '+' + digits,
-                            wa_jid: senderMenu.jid,
+                            primary_phone: resolvedPhone || undefined,
+                            wa_jid: lidId,
                             entity_type: 'individual',
                             commercial_role: 'b2c',
                             source: 'manual',
-                            source_detail: 'من محادثة مجموعة',
+                            source_detail: `من محادثة مجموعة: ${activeConversation?.title || ''}`,
+                            tags: !resolvedPhone ? ['tag_lid'] : [],
                           }),
                         });
-                        if (res.ok) toast({ title: 'تم حفظ ' + senderMenu.name + ' كجهة اتصال', kind: 'success' });
-                        else {
+                        if (res.ok) {
+                          toast({
+                            title: resolvedPhone
+                              ? `تم استخلاص الرقم وحفظ ${senderMenu.name} كجهة اتصال (${resolvedPhone})`
+                              : `تم حفظ ${senderMenu.name} كجهة اتصال مشفرة (LID)`,
+                            kind: 'success',
+                          });
+                        } else {
                           const err = await res.json().catch(() => ({}));
                           toast({ title: err.error || 'فشل الحفظ — قد يكون مسجلاً مسبقاً', kind: 'info' });
                         }
-                      } catch { toast({ title: 'فشل الاتصال', kind: 'error' }); }
+                      } catch {
+                        toast({ title: 'فشل الاتصال', kind: 'error' });
+                      }
                       setSenderMenu(null);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)] transition-colors"
-                    title={isPhone ? 'إضافة إلى دليل جهات الاتصال' : 'المعرف من نوع LID — لا يحتوي رقماً هاتفياً'}
+                    title="إضافة وحفظ في دليل جهات الاتصال"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
                     إضافة كجهة اتصال

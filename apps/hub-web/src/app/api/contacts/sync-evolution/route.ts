@@ -74,33 +74,43 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const onlyInstance = searchParams.get('instance');
 
+    // التحقق من حالة الخطوط المفتوحة فعلياً في سيرفر Evolution
+    let openInstanceMap = new Map<string, string>();
+    try {
+      const instRes = await fetch(`${EVOLUTION_URL}/instance/fetchInstances`, {
+        headers: { apikey: EVOLUTION_API_KEY },
+        cache: 'no-store',
+      });
+      if (instRes.ok) {
+        const instList = await instRes.json();
+        (Array.isArray(instList) ? instList : []).forEach((i: any) => {
+          if (i.name) openInstanceMap.set(i.name, i.connectionStatus);
+        });
+      }
+    } catch {}
+
+    if (onlyInstance) {
+      const status = openInstanceMap.get(onlyInstance);
+      if (status && status !== 'open') {
+        return NextResponse.json(
+          { error: `خط واتساب "${onlyInstance}" غير متصل حالياً (حالته: ${status}) — يرجى فتح الخط ومسح رمز الـ QR من قسم الخطوط أولاً.` },
+          { status: 400 }
+        );
+      }
+    }
+
     let lines = onlyInstance
       ? [{ instance_name: onlyInstance }]
-      : await q<{ instance_name: string }>(`select instance_name from hub.lines where status = 'connected' order by instance_name`);
+      : Array.from(openInstanceMap.entries())
+          .filter(([, st]) => st === 'open')
+          .map(([name]) => ({ instance_name: name }));
 
-    if (!onlyInstance && lines.length === 0) {
-      try {
-        const instRes = await fetch(`${EVOLUTION_URL}/instance/fetchInstances`, {
-          headers: { apikey: EVOLUTION_API_KEY },
-          cache: 'no-store',
-        });
-        if (instRes.ok) {
-          const instList = await instRes.json();
-          const openNames = (Array.isArray(instList) ? instList : [])
-            .filter((i: any) => i.connectionStatus === 'open' && i.name)
-            .map((i: any) => ({ instance_name: i.name as string }));
-          if (openNames.length > 0) {
-            lines = openNames;
-            for (const l of openNames) {
-              await q(`update hub.lines set status = 'connected', updated_at = now() where instance_name = $1 and status <> 'connected'`, [l.instance_name]).catch(() => {});
-            }
-          }
-        }
-      } catch {}
+    if (lines.length === 0) {
+      lines = await q<{ instance_name: string }>(`select instance_name from hub.lines where status = 'connected' order by instance_name`);
     }
 
     if (lines.length === 0) {
-      return NextResponse.json({ error: 'لا يوجد خطوط متصلة حالياً — افتح خطاً واحداً على الأقل في قسم الخطوط' }, { status: 400 });
+      return NextResponse.json({ error: 'لا يوجد خطوط واتساب متصلة حالياً — تأكد من ربط خط واحد على الأقل في قسم الخطوط' }, { status: 400 });
     }
 
     // الأوسمة المطلوبة
@@ -259,6 +269,11 @@ export async function POST(req: NextRequest) {
                full_name = coalesce(nullif(hub.contacts.full_name, ''), excluded.full_name),
                wa_jid = coalesce(hub.contacts.wa_jid, excluded.wa_jid),
                avatar_url = coalesce(excluded.avatar_url, hub.contacts.avatar_url),
+               source_detail = case 
+                 when hub.contacts.source_detail is null then excluded.source_detail
+                 when hub.contacts.source_detail not like '%' || excluded.source_detail || '%' then hub.contacts.source_detail || ' • ' || excluded.source_detail
+                 else hub.contacts.source_detail
+               end,
                country_code = coalesce(excluded.country_code, hub.contacts.country_code),
                last_activity_at = now(),
                updated_at = now()`,
