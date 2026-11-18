@@ -352,33 +352,40 @@ export default function ContactsPage() {
     }
   };
 
-  // تصدير CSV
-  const handleExportCSV = () => {
-    if (contacts.length === 0) {
-      alert('لا توجد بيانات للتصدير');
-      return;
+  // تصدير CSV كامل (كل جهات الاتصال بالفلاتر الحالية — ليس فقط الصفحة)
+  const handleExportCSV = async () => {
+    try {
+      setActionAlert(null);
+      const params = new URLSearchParams();
+      params.set('format', 'csv');
+      if (searchQuery) params.set('q', searchQuery);
+      if (entityFilter !== 'all') params.set('entity_type', entityFilter);
+      if (roleFilter !== 'all') params.set('commercial_role', roleFilter);
+      if (sourceFilter !== 'all') params.set('source', sourceFilter);
+      if (countryFilter !== 'all') params.set('country_code', countryFilter);
+      if (cityFilter !== 'all') params.set('city', cityFilter);
+      if (onlyFavorites) params.set('favorite', 'true');
+      params.set('limit', '50000');
+
+      const res = await fetch(`/api/contacts/export?${params.toString()}`);
+      if (!res.ok) {
+        const err = await res.json();
+        setActionAlert({ type: 'error', message: `فشل التصدير: ${err.error || 'خطأ غير معروف'}` });
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contacts_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setActionAlert({ type: 'error', message: `خطأ في التصدير: ${err.message}` });
     }
-    const headers = ['الاسم', 'الرقم', 'الدولة', 'الكيان', 'الدور', 'المصدر', 'تفاصيل المصدر', 'الشركة', 'المدينة', 'الملاحظات'];
-    const rows = contacts.map((c) => [
-      `"${c.display_name.replace(/"/g, '""')}"`,
-      `"${c.primary_phone || c.primary_phone_e164 || ''}"`,
-      `"${c.country_code || ''}"`,
-      `"${c.entity_type}"`,
-      `"${c.commercial_role}"`,
-      `"${c.source}"`,
-      `"${(c.source_detail || '').replace(/"/g, '""')}"`,
-      `"${(c.company || '').replace(/"/g, '""')}"`,
-      `"${c.city || ''}"`,
-      `"${(c.notes || '').replace(/"/g, '""')}"`,
-    ]);
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `contacts_export_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   // شارات الكيان
