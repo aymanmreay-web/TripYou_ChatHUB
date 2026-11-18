@@ -425,9 +425,27 @@ export async function POST(req: NextRequest) {
                     THEN COALESCE(NULLIF(s.name, ''), c.full_name)
                   ELSE c.full_name
                 END,
-                primary_phone_e164 = COALESCE(c.primary_phone_e164, s.phone),
-                primary_phone = COALESCE(c.primary_phone, s.phone),
-                wa_jid = COALESCE(c.wa_jid, s.wa_jid),
+                primary_phone_e164 = CASE
+                  WHEN c.primary_phone_e164 IS NOT NULL THEN c.primary_phone_e164
+                  WHEN s.phone IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM hub.contacts ex WHERE ex.primary_phone_e164 = s.phone AND ex.id <> c.id
+                  ) THEN s.phone
+                  ELSE c.primary_phone_e164
+                END,
+                primary_phone = CASE
+                  WHEN c.primary_phone IS NOT NULL THEN c.primary_phone
+                  WHEN s.phone IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM hub.contacts ex WHERE ex.primary_phone_e164 = s.phone AND ex.id <> c.id
+                  ) THEN s.phone
+                  ELSE c.primary_phone
+                END,
+                wa_jid = CASE
+                  WHEN c.wa_jid IS NOT NULL THEN c.wa_jid
+                  WHEN s.wa_jid IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM hub.contacts ex WHERE ex.wa_jid = s.wa_jid AND ex.id <> c.id
+                  ) THEN s.wa_jid
+                  ELSE c.wa_jid
+                END,
                 avatar_url = COALESCE(s.avatar, c.avatar_url),
                 country_code = CASE WHEN c.country_code IS NULL OR c.country_code = 'XX' THEN s.country ELSE c.country_code END,
                 source_detail = CASE
@@ -457,7 +475,8 @@ export async function POST(req: NextRequest) {
                 SELECT 1 FROM hub.contacts c
                 WHERE (s.wa_jid IS NOT NULL AND c.wa_jid = s.wa_jid)
                    OR (s.phone IS NOT NULL AND c.primary_phone_e164 = s.phone)
-              );
+              )
+              ON CONFLICT (primary_phone_e164) DO NOTHING;
             `);
             insertedCount = insRes.rowCount || 0;
 
