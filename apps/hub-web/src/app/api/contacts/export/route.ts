@@ -22,6 +22,9 @@ export async function GET(req: NextRequest) {
     const entityType = searchParams.get('entity_type');
     const role = searchParams.get('commercial_role');
     const source = searchParams.get('source');
+    const line = searchParams.get('line');
+    const origin = searchParams.get('origin');
+    const tagFilter = searchParams.get('tag') || '';
     const countryCode = searchParams.get('country_code');
     const city = searchParams.get('city');
     const isFavorite = searchParams.get('favorite');
@@ -29,6 +32,45 @@ export async function GET(req: NextRequest) {
 
     const where: string[] = ['1=1'];
     const params: any[] = [];
+
+    // تصفية الخط
+    if (line && line !== 'all') {
+      if (line === 'Master') {
+        where.push(`(c.source_detail ilike '%Master%' or c.source_detail like '%الرئيسي%')`);
+      } else if (line === 'Sells_2') {
+        where.push(`(c.source_detail ilike '%Sells_2%' or c.source_detail like '%المبيعات 2%')`);
+      } else if (line === 'Sells_1') {
+        where.push(`(c.source_detail ilike '%Sells_1%' or c.source_detail like '%المبيعات 1%')`);
+      } else if (line === 'shared') {
+        where.push(`(c.source_detail like '%•%' or (c.source_detail ilike '%Master%' and c.source_detail ilike '%Sells%') or (c.source_detail like '%الرئيسي%' and c.source_detail like '%المبيعات%'))`);
+      }
+    }
+
+    // تصفية أصل جهة الاتصال
+    if (origin && origin !== 'all') {
+      if (origin === 'saved_phone') {
+        where.push(`(c.primary_phone_e164 is not null and c.entity_type = 'individual')`);
+      } else if (origin === 'group_member') {
+        where.push(`((c.primary_phone_e164 is null or c.wa_jid like '%@lid') and c.entity_type = 'individual')`);
+      } else if (origin === 'groups') {
+        where.push(`(c.entity_type = 'group' and c.wa_jid like '%@g.us')`);
+      } else if (origin === 'newsletters') {
+        where.push(`(c.entity_type = 'group' and (c.wa_jid like '%@newsletter%' or c.wa_jid like '%@broadcast%'))`);
+      }
+    }
+
+    if (tagFilter.trim() && tagFilter !== 'all') {
+      params.push(tagFilter.trim());
+      const pIdx = params.length;
+      where.push(`(
+        exists (
+          select 1 from hub.contact_tags ct
+          join hub.hub_tags t on t.id = ct.tag_id
+          where ct.contact_id = c.id and (t.name_ar = $${pIdx} or t.key = $${pIdx} or t.id::text = $${pIdx})
+        )
+        or ($${pIdx} = any(c.tags))
+      )`);
+    }
 
     if (entityType && entityType !== 'all') {
       if (entityType === 'lid') {

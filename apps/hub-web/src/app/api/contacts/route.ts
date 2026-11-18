@@ -60,6 +60,8 @@ export async function GET(req: NextRequest) {
     const entityType = searchParams.get('entity_type'); // individual | organization | group | lid | newsletter
     const role = searchParams.get('commercial_role');   // b2c | b2b | vendor | partner | staff
     const source = searchParams.get('source');           // evolution | excel_import | contacts_file | system | manual
+    const line = searchParams.get('line');               // Master | Sells_2 | Sells_1 | shared
+    const origin = searchParams.get('origin');           // saved_phone | group_member | groups | newsletters
     const countryCode = searchParams.get('country_code'); // SA, AE, EG, etc.
     const city = searchParams.get('city');
     const isFavorite = searchParams.get('favorite');
@@ -69,6 +71,32 @@ export async function GET(req: NextRequest) {
 
     const where: string[] = ['1=1'];
     const params: any[] = [];
+
+    // تصفية خط الواتساب (Master, Sells_2, Sells_1, shared)
+    if (line && line !== 'all') {
+      if (line === 'Master') {
+        where.push(`(c.source_detail ilike '%Master%' or c.source_detail like '%الرئيسي%')`);
+      } else if (line === 'Sells_2') {
+        where.push(`(c.source_detail ilike '%Sells_2%' or c.source_detail like '%المبيعات 2%')`);
+      } else if (line === 'Sells_1') {
+        where.push(`(c.source_detail ilike '%Sells_1%' or c.source_detail like '%المبيعات 1%')`);
+      } else if (line === 'shared') {
+        where.push(`(c.source_detail like '%•%' or (c.source_detail ilike '%Master%' and c.source_detail ilike '%Sells%') or (c.source_detail like '%الرئيسي%' and c.source_detail like '%المبيعات%'))`);
+      }
+    }
+
+    // تصفية أصل جهة الاتصال (أرقام محفوظة، أعضاء مجموعات مشفرين، مجموعات، قنوات)
+    if (origin && origin !== 'all') {
+      if (origin === 'saved_phone') {
+        where.push(`(c.primary_phone_e164 is not null and c.entity_type = 'individual')`);
+      } else if (origin === 'group_member') {
+        where.push(`((c.primary_phone_e164 is null or c.wa_jid like '%@lid') and c.entity_type = 'individual')`);
+      } else if (origin === 'groups') {
+        where.push(`(c.entity_type = 'group' and c.wa_jid like '%@g.us')`);
+      } else if (origin === 'newsletters') {
+        where.push(`(c.entity_type = 'group' and (c.wa_jid like '%@newsletter%' or c.wa_jid like '%@broadcast%'))`);
+      }
+    }
 
     // استبعاد النشرات أو الـ LID افتراضياً أو الفرز بها
     if (entityType && entityType !== 'all') {
@@ -128,12 +156,16 @@ export async function GET(req: NextRequest) {
       )`);
     }
 
-    if (tagFilter.trim()) {
+    if (tagFilter.trim() && tagFilter !== 'all') {
       params.push(tagFilter.trim());
-      where.push(`exists (
-        select 1 from hub.contact_tags ct
-        join hub.hub_tags t on t.id = ct.tag_id
-        where ct.contact_id = c.id and (t.name_ar = $${params.length} or t.key = $${params.length})
+      const pIdx = params.length;
+      where.push(`(
+        exists (
+          select 1 from hub.contact_tags ct
+          join hub.hub_tags t on t.id = ct.tag_id
+          where ct.contact_id = c.id and (t.name_ar = $${pIdx} or t.key = $${pIdx} or t.id::text = $${pIdx})
+        )
+        or ($${pIdx} = any(c.tags))
       )`);
     }
 

@@ -161,18 +161,24 @@ export interface TagRow {
 }
 
 export async function fetchTags(): Promise<TagRow[]> {
-  const [tg, ct, ctt] = await Promise.all([
+  const [tg, ct] = await Promise.all([
     supabase.from('hub_tags').select('*').neq('kind', 'whatsapp').order('sort_order').order('created_at'),
     supabase.from('conversation_tags').select('tag_id'),
-    supabase.from('contact_tags').select('tag_id'),
   ]);
   const tags = check(tg) as any[];
-  const usedConv = check(ct) as any[];
-  const usedContact = check(ctt) as any[];
+  const usedConv = (ct.data ?? []) as any[]; // صامت إن لم يكن الجدول موجوداً
+
+  // جلب contact_tags بشكل مستقل (قد لا يكون الجدول موجوداً حتى تُنفَّذ migration)
+  let usedContact: any[] = [];
+  try {
+    const ctt = await supabase.from('contact_tags').select('tag_id');
+    usedContact = (ctt.data ?? []) as any[];
+  } catch { /* contact_tags غير موجود بعد — يُعاد بعد المايقريشن */ }
+
   return (tags ?? []).map((t) => ({
     id: t.id,
-    name: t.name_ar,
-    hex_color: t.color || '#8b5cf6',
+    name: t.name_ar || t.name || t.key || '',
+    hex_color: t.color || t.hex_color || '#8b5cf6',
     scope: (t.scope as TagRow['scope']) || 'both',
     count:
       (usedConv ?? []).filter((u) => u.tag_id === t.id).length +
@@ -226,17 +232,18 @@ export interface StatusRow {
 }
 
 export async function fetchStatuses(): Promise<StatusRow[]> {
-  const rows = check(await supabase.from('status_definitions').select('*').order('sort_order')) as any[];
+  const rows = check(await supabase.from('status_definitions').select('*').order('sort_order').order('ordinal').order('created_at')) as any[];
   return (rows ?? []).map((s) => ({
-    key: String(s.code).toLowerCase(),
-    title_ar: s.title_ar,
-    title_en: s.code,
-    description_ar: s.description || '',
-    hex_color: s.color || '#64748b',
-    sla_max_minutes: s.sla_minutes ?? 0,
-    ordinal: s.sort_order,
-    is_custom: !s.is_system,
-  }));
+    // دعم كلا البنيتين: القديمة (key/ordinal) والجديدة (code/sort_order/is_system)
+    key: String(s.code || s.key || '').toLowerCase(),
+    title_ar: s.title_ar || '',
+    title_en: s.code || s.title_en || s.key || '',
+    description_ar: s.description || s.description_ar || '',
+    hex_color: s.color || s.hex_color || '#64748b',
+    sla_max_minutes: s.sla_minutes ?? s.sla_max_minutes ?? 0,
+    ordinal: s.sort_order ?? s.ordinal ?? 0,
+    is_custom: s.is_system === false || s.is_custom === true,
+  })).filter((s) => s.key); // استبعاد الصفوف الفارغة
 }
 
 export async function saveStatus(s: StatusRow, isNew: boolean): Promise<void> {
@@ -249,12 +256,25 @@ export async function saveStatus(s: StatusRow, isNew: boolean): Promise<void> {
     sort_order: s.ordinal,
   };
   if (isNew) {
-    check(await supabase.from('status_definitions').insert({ ...payload, code, is_system: false }).select('id'));
+    // إنشاء حالة مخصصة جديدة
+    const res = await supabase.from('status_definitions').insert({
+      ...payload,
+      code,
+      is_system: false,
+    }).select('id');
+    // إذا فشل بسبب عمود code غير موجود، جرّب بدونه
+    if (res.error && res.error.message?.includes('code')) {
+      check(await supabase.from('status_definitions').insert({ ...payload, key: s.key, is_custom: true }).select('id'));
+    } else {
+      check(res);
+    }
   } else {
-    const rows = check(
-      await supabase.from('status_definitions').update(payload).eq('code', code).select('id')
-    ) as any[];
-    if (!rows || rows.length === 0) throw new Error('الحالة غير موجودة');
+    // تحديث موجود — جرب بـ code أولاً ثم key
+    let rows = (await supabase.from('status_definitions').update(payload).eq('code', code).select('id')).data as any[];
+    if (!rows || rows.length === 0) {
+      rows = (await supabase.from('status_definitions').update(payload).eq('key', s.key).select('id')).data as any[];
+    }
+    if (!rows || rows.length === 0) throw new Error('الحالة غير موجودة أو لا توجد صلاحية للتعديل');
   }
 }
 

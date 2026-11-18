@@ -327,6 +327,9 @@ export async function POST(req: NextRequest) {
             countIndividuals++;
           }
 
+          const isB2B = /فندق|شركة|مؤسسة|طواف|مجموعة|سياحة|وكالة|عقارات|أبراج|حجوزات|سفريات/i.test(name);
+          const commercial_role: 'b2c' | 'b2b' = isB2B ? 'b2b' : 'b2c';
+
           stagedList.push({
             jid,
             phone,
@@ -335,8 +338,8 @@ export async function POST(req: NextRequest) {
             avatar: c.profilePicUrl || null,
             country,
             entity_type: 'individual',
-            commercial_role: 'b2c',
-            kind: 'individual',
+            commercial_role,
+            kind: isB2B ? 'business' : 'individual',
             is_lid: isLid && !phone,
             is_newsletter: false,
             is_group: false,
@@ -371,6 +374,13 @@ export async function POST(req: NextRequest) {
         let updatedCount = 0;
         let insertedCount = 0;
 
+        const LINE_TITLES_AR: Record<string, string> = {
+          Master: 'الرئيسي',
+          Sells_2: 'المبيعات 2',
+          Sells_1: 'المبيعات 1',
+        };
+        const lineTitleAr = LINE_TITLES_AR[instance] || instance;
+
         if (stagedList.length > 0) {
           await withClient(async (client) => {
             await client.query('BEGIN');
@@ -386,17 +396,19 @@ export async function POST(req: NextRequest) {
                 entity_type text,
                 commercial_role text,
                 kind text,
-                instance text
+                instance text,
+                line_title text
               ) ON COMMIT DROP;
             `);
             await client.query('TRUNCATE staging_evo;');
 
             // إدراج الدفعة في الجدول المؤقت
             await client.query(`
-              INSERT INTO staging_evo (wa_jid, phone, name, disp_name, avatar, country, entity_type, commercial_role, kind, instance)
+              INSERT INTO staging_evo (wa_jid, phone, name, disp_name, avatar, country, entity_type, commercial_role, kind, instance, line_title)
               SELECT * FROM unnest(
                 $1::text[], $2::text[], $3::text[], $4::text[], $5::text[],
-                $6::text[], $7::text[], $8::text[], $9::text[], $10::text[]
+                $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+                $11::text[]
               )
             `, [
               stagedList.map((s) => s.jid),
@@ -409,6 +421,7 @@ export async function POST(req: NextRequest) {
               stagedList.map((s) => s.commercial_role),
               stagedList.map((s) => s.kind),
               stagedList.map(() => instance),
+              stagedList.map(() => lineTitleAr),
             ]);
 
             // تحديث السجلات الموجودة مسبقاً (مطابقة بـ wa_jid أو primary_phone_e164)
@@ -449,8 +462,8 @@ export async function POST(req: NextRequest) {
                 avatar_url = COALESCE(s.avatar, c.avatar_url),
                 country_code = CASE WHEN c.country_code IS NULL OR c.country_code = 'XX' THEN s.country ELSE c.country_code END,
                 source_detail = CASE
-                  WHEN c.source_detail IS NULL THEN 'evolution:' || s.instance
-                  WHEN c.source_detail NOT LIKE '%' || s.instance || '%' THEN c.source_detail || ' • evolution:' || s.instance
+                  WHEN c.source_detail IS NULL THEN s.line_title
+                  WHEN c.source_detail NOT LIKE '%' || s.line_title || '%' THEN c.source_detail || ' • ' || s.line_title
                   ELSE c.source_detail
                 END,
                 last_activity_at = now(),
@@ -461,7 +474,27 @@ export async function POST(req: NextRequest) {
             `);
             updatedCount = updRes.rowCount || 0;
 
-            // إدراج السجلات الجديدة بالكامل
+            // دمج الحسابات المشفرة الواردة مع جهات الاتصال المسجلة برقم حقيقي إن كانت متطابقة بالصورة أو بالاسم
+            await client.query(`
+              UPDATE hub.contacts c
+              SET
+                source_detail = CASE
+                  WHEN c.source_detail IS NULL THEN s.line_title
+                  WHEN c.source_detail NOT LIKE '%' || s.line_title || '%' THEN c.source_detail || ' • ' || s.line_title
+                  ELSE c.source_detail
+                END,
+                avatar_url = COALESCE(c.avatar_url, s.avatar),
+                updated_at = now()
+              FROM staging_evo s
+              WHERE s.phone IS NULL AND s.wa_jid LIKE '%@lid'
+                AND c.primary_phone_e164 IS NOT NULL
+                AND (
+                  (s.avatar IS NOT NULL AND c.avatar_url IS NOT NULL AND split_part(split_part(s.avatar, '?', 1), '/', -1) = split_part(split_part(c.avatar_url, '?', 1), '/', -1))
+                  OR (s.disp_name IS NOT NULL AND LENGTH(s.disp_name) >= 4 AND LOWER(TRIM(c.display_name)) = LOWER(TRIM(s.disp_name)))
+                );
+            `);
+
+            // إدراج السجلات الجديدة بالكامل مع استبعاد الحسابات المشفرة التي لها أرقام حقيقية موجودة مسبقاً
             const insRes = await client.query(`
               INSERT INTO hub.contacts (
                 display_name, full_name, primary_phone, primary_phone_e164, wa_jid, entity_type,
@@ -469,12 +502,20 @@ export async function POST(req: NextRequest) {
               )
               SELECT
                 s.disp_name, s.name, s.phone, s.phone, s.wa_jid, s.entity_type,
-                s.commercial_role, 'evolution', 'evolution:' || s.instance, s.avatar, s.country, s.kind, now(), now(), now()
+                s.commercial_role, 'evolution', s.line_title, s.avatar, s.country, s.kind, now(), now(), now()
               FROM staging_evo s
               WHERE NOT EXISTS (
                 SELECT 1 FROM hub.contacts c
                 WHERE (s.wa_jid IS NOT NULL AND c.wa_jid = s.wa_jid)
                    OR (s.phone IS NOT NULL AND c.primary_phone_e164 = s.phone)
+                   OR (
+                     s.phone IS NULL AND s.wa_jid LIKE '%@lid'
+                     AND c.primary_phone_e164 IS NOT NULL
+                     AND (
+                       (s.avatar IS NOT NULL AND c.avatar_url IS NOT NULL AND split_part(split_part(s.avatar, '?', 1), '/', -1) = split_part(split_part(c.avatar_url, '?', 1), '/', -1))
+                       OR (s.disp_name IS NOT NULL AND LENGTH(s.disp_name) >= 4 AND LOWER(TRIM(c.display_name)) = LOWER(TRIM(s.disp_name)))
+                     )
+                   )
               )
               ON CONFLICT (primary_phone_e164) DO NOTHING;
             `);

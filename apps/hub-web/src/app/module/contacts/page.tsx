@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Users,
   User,
@@ -32,11 +32,134 @@ import {
   Lock,
   Radio,
   Globe2,
+  Tag,
+  Check,
+  Tags,
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { ContactsStats } from '../../../components/contacts/ContactsStats';
 import { ImportModal } from '../../../components/contacts/ImportModal';
 import { MergePreviewModal } from '../../../components/contacts/MergePreviewModal';
+
+/* ═══════════════════════════════════════════════════════════
+   مكوّن محرر وسوم جهة الاتصال — قابل للاستدعاء من البطاقة
+   ═══════════════════════════════════════════════════════════ */
+interface TagPickerProps {
+  contactId: string;
+  allTags: { id: string; key: string; name_ar: string; color: string }[];
+  onTagsChanged?: (newTags: { id: string; name_ar: string; color: string }[]) => void;
+}
+
+function ContactTagPicker({ contactId, allTags, onTagsChanged }: TagPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  // جلب وسوم جهة الاتصال عند الفتح
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch(`/api/contacts/${contactId}/tags`)
+      .then((r) => r.json())
+      .then((d) => {
+        const ids = (d.tags || []).map((t: any) => t.id);
+        setActiveTags(ids);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [open, contactId]);
+
+  // إغلاق عند النقر خارج
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const toggle = async (tagId: string) => {
+    const has = activeTags.includes(tagId);
+    const next = has ? activeTags.filter((x) => x !== tagId) : [...activeTags, tagId];
+    setActiveTags(next);
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag_id: tagId, action: has ? 'remove' : 'add' }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (onTagsChanged) onTagsChanged(d.tags || []);
+      }
+    } catch {}
+  };
+
+  const activeCount = activeTags.length;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+          activeCount > 0
+            ? 'bg-purple-600/20 text-purple-300 border-purple-500/40'
+            : 'bg-[var(--card-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-purple-300'
+        }`}
+        title="وسوم جهة الاتصال"
+      >
+        <Tags className="w-3.5 h-3.5" />
+        <span>{activeCount > 0 ? `وسوم (${activeCount})` : 'وسم'}</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-50 bottom-full mb-2 right-0 w-56 bg-[var(--card-bg)] border border-purple-500/30 rounded-2xl shadow-2xl p-2"
+          dir="rtl"
+        >
+          <div className="px-2 py-1.5 text-[10px] font-bold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1">
+            وسوم جهة الاتصال
+          </div>
+          {loading ? (
+            <div className="p-3 text-center text-xs text-slate-400">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin mx-auto" />
+            </div>
+          ) : allTags.filter(t => t).length === 0 ? (
+            <div className="p-3 text-center text-xs text-slate-400">
+              لا وسوم متاحة — أضفها من صفحة الوسوم
+            </div>
+          ) : (
+            allTags.map((t) => {
+              const on = activeTags.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => toggle(t.id)}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                    on
+                      ? 'bg-purple-600/20 text-purple-200'
+                      : 'text-[var(--text-muted)] hover:bg-[var(--card-elevated)] hover:text-[var(--text-main)]'
+                  }`}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ background: t.color || '#8b5cf6' }}
+                  />
+                  <span className="flex-1 text-right">{t.name_ar}</span>
+                  {on && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Contact {
   id: string;
@@ -62,6 +185,26 @@ interface Contact {
   last_activity_at?: string;
 }
 
+// دالة تنسيق معرف المجموعة أو الحساب المشفر بالاتجاه الصحيح من اليسار لليمين
+function formatJidDisplay(jid?: string | null): string {
+  if (!jid) return '';
+  // تنسيق معرف المجموعة القديم: 966548469204-1574527263@g.us -> +966 54 846 9204  --  1574527263@g.us
+  const m = jid.match(/^(\d{8,15})-(\d+@g\.us)$/);
+  if (m) {
+    const raw = m[1];
+    let phonePart = '+' + raw;
+    if (raw.startsWith('966') && raw.length === 12) {
+      phonePart = `+${raw.slice(0, 3)} ${raw.slice(3, 5)} ${raw.slice(5, 8)} ${raw.slice(8)}`;
+    } else if (raw.startsWith('20') && raw.length === 12) {
+      phonePart = `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4, 8)} ${raw.slice(8)}`;
+    } else if (raw.length >= 10) {
+      phonePart = `+${raw.slice(0, 3)} ${raw.slice(3, 6)} ${raw.slice(6)}`;
+    }
+    return `${phonePart}  --  ${m[2]}`;
+  }
+  return jid;
+}
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -74,10 +217,14 @@ export default function ContactsPage() {
   const [entityFilter, setEntityFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [lineFilter, setLineFilter] = useState<string>('all');
+  const [originFilter, setOriginFilter] = useState<string>('all');
+  const [tagFilter, setTagFilter] = useState<string>('all');
   const [countryFilter, setCountryFilter] = useState<string>('all');
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [availableTags, setAvailableTags] = useState<{ id: string; key: string; name_ar: string; color: string }[]>([]);
 
   // إحصائيات النظام الشاملة
   const [globalStats, setGlobalStats] = useState({
@@ -121,6 +268,27 @@ export default function ContactsPage() {
     tags: '',
   });
 
+  // جلب الوسوم المتاحة (من API الموحد الجديد مع دعم scope)
+  const fetchTags = async () => {
+    try {
+      // استخدام API الجديد الذي يدعم scope + عداد الاستخدام
+      const res = await fetch('/api/tags?scope=contact');
+      if (res.ok) {
+        const data = await res.json();
+        const allList: { id: string; key: string; name_ar: string; color: string }[] =
+          (data.tags || []).map((t: any) => ({
+            id: t.id,
+            key: t.key,
+            name_ar: t.name_ar,
+            color: t.color || '#8b5cf6',
+          }));
+        setAvailableTags(allList);
+      }
+    } catch (e) {
+      console.error('Failed to load tags:', e);
+    }
+  };
+
   // جلب إحصائيات النظام الشاملة
   const fetchGlobalStats = async () => {
     try {
@@ -146,14 +314,18 @@ export default function ContactsPage() {
   };
 
   // جلب جهات الاتصال بالترقيم والتصفية
-  const fetchContacts = async (targetPage = page, targetPageSize = pageSize) => {
+  const fetchContacts = async (targetPage = page, targetPageSize = pageSize, queryOverride?: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (searchQuery) params.set('q', searchQuery);
+      const qVal = typeof queryOverride === 'string' ? queryOverride : searchQuery;
+      if (qVal) params.set('q', qVal);
       if (entityFilter !== 'all') params.set('entity_type', entityFilter);
       if (roleFilter !== 'all') params.set('commercial_role', roleFilter);
       if (sourceFilter !== 'all') params.set('source', sourceFilter);
+      if (lineFilter !== 'all') params.set('line', lineFilter);
+      if (originFilter !== 'all') params.set('origin', originFilter);
+      if (tagFilter !== 'all') params.set('tag', tagFilter);
       if (countryFilter !== 'all') params.set('country_code', countryFilter);
       if (cityFilter !== 'all') params.set('city', cityFilter);
       if (onlyFavorites) params.set('favorite', 'true');
@@ -175,12 +347,24 @@ export default function ContactsPage() {
 
   useEffect(() => {
     fetchGlobalStats();
+    fetchTags();
   }, []);
 
   useEffect(() => {
     setPage(1);
     fetchContacts(1, pageSize);
-  }, [entityFilter, roleFilter, sourceFilter, countryFilter, cityFilter, onlyFavorites, pageSize]);
+  }, [
+    entityFilter,
+    roleFilter,
+    sourceFilter,
+    lineFilter,
+    originFilter,
+    tagFilter,
+    countryFilter,
+    cityFilter,
+    onlyFavorites,
+    pageSize,
+  ]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -362,6 +546,9 @@ export default function ContactsPage() {
       if (entityFilter !== 'all') params.set('entity_type', entityFilter);
       if (roleFilter !== 'all') params.set('commercial_role', roleFilter);
       if (sourceFilter !== 'all') params.set('source', sourceFilter);
+      if (lineFilter !== 'all') params.set('line', lineFilter);
+      if (originFilter !== 'all') params.set('origin', originFilter);
+      if (tagFilter !== 'all') params.set('tag', tagFilter);
       if (countryFilter !== 'all') params.set('country_code', countryFilter);
       if (cityFilter !== 'all') params.set('city', cityFilter);
       if (onlyFavorites) params.set('favorite', 'true');
@@ -436,11 +623,21 @@ export default function ContactsPage() {
     }
   };
 
-  // شارات الدور التجاري
-  const getRoleBadge = (role: Contact['commercial_role']) => {
+  // شارات الدور التجاري (لا تظهر عميل B2C إطلاقاً إلا إذا تضمن الاسم صراحة: عميل أو زبون أو عميلة)
+  const getRoleBadge = (contact: Contact) => {
+    const role = contact.commercial_role;
+    if (!role) return null;
+
+    if (role === 'b2c') {
+      const name = (contact.display_name || '').toLowerCase();
+      const hasClientKeyword = /عميل|زبون|عميلة/.test(name);
+      if (!hasClientKeyword) {
+        return null;
+      }
+      return <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 font-medium">عميل B2C</span>;
+    }
+
     switch (role) {
-      case 'b2c':
-        return <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 font-medium">عميل B2C</span>;
       case 'b2b':
         return <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 font-medium">شركة B2B</span>;
       case 'vendor':
@@ -449,6 +646,8 @@ export default function ContactsPage() {
         return <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-500/30 font-medium">شريك أعمال</span>;
       case 'staff':
         return <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-950/60 text-violet-300 border border-violet-500/30 font-medium">فريق العمل</span>;
+      default:
+        return null;
     }
   };
 
@@ -485,43 +684,52 @@ export default function ContactsPage() {
     );
   };
 
-  // وسام المصدر
+  // وسام المصدر واسم الخط العربي في السيستم داخلياً
   const getSourceBadge = (source: Contact['source'], detail?: string) => {
+    const cleanDetail = (detail || '').trim();
+    const arabicLines: string[] = [];
+    if (/sells_2|المبيعات 2/i.test(cleanDetail)) arabicLines.push('المبيعات 2');
+    if (/master|الرئيسي/i.test(cleanDetail)) arabicLines.push('الرئيسي');
+    if (/sells_1|المبيعات 1/i.test(cleanDetail)) arabicLines.push('المبيعات 1');
+
+    if (source === 'evolution' || arabicLines.length > 0) {
+      const lineName = arabicLines.length > 0 ? arabicLines.join(' • ') : cleanDetail.replace(/evolution:/g, '').trim() || 'خط واتساب';
+      return (
+        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-sm" dir="rtl">
+          <Smartphone className="w-3 h-3 text-emerald-400 shrink-0" />
+          <span>{lineName}</span>
+        </span>
+      );
+    }
+
     switch (source) {
-      case 'evolution':
-        return (
-          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-sm" dir="rtl">
-            <Smartphone className="w-3 h-3 text-emerald-400" />
-            <span>{detail || 'خط واتساب'}</span>
-          </span>
-        );
       case 'excel_import':
         return (
           <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-600/40 shadow-sm" dir="rtl">
-            <FileSpreadsheet className="w-3 h-3 text-emerald-400" />
-            <span>{detail || 'استيراد إكسل'}</span>
+            <FileSpreadsheet className="w-3 h-3 text-emerald-400 shrink-0" />
+            <span>{cleanDetail || 'استيراد إكسل'}</span>
           </span>
         );
       case 'contacts_file':
         return (
           <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-900/40 text-sky-300 border border-sky-500/40 shadow-sm" dir="rtl">
-            <FileText className="w-3 h-3 text-sky-400" />
-            <span>{detail || 'ملف جهات (VCF)'}</span>
+            <FileText className="w-3 h-3 text-sky-400 shrink-0" />
+            <span>{cleanDetail || 'ملف جهات (VCF)'}</span>
           </span>
         );
       case 'system':
         return (
           <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-900/40 text-purple-300 border border-purple-500/40 shadow-sm" dir="rtl">
-            <Cpu className="w-3 h-3 text-purple-400" />
-            <span>{detail || 'النظام'}</span>
+            <Cpu className="w-3 h-3 text-purple-400 shrink-0" />
+            <span>{cleanDetail || 'النظام'}</span>
           </span>
         );
       case 'manual':
       default:
         return (
           <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 shadow-sm" dir="rtl">
-            <Edit2 className="w-3 h-3 text-slate-400" />
-            <span>{detail || 'يدوي'}</span>
+            <Edit2 className="w-3 h-3 text-slate-400 shrink-0" />
+            <span>{cleanDetail || 'يدوي'}</span>
           </span>
         );
     }
@@ -621,14 +829,30 @@ export default function ContactsPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="ابحث بالاسم، رقم الهاتف، المنشأة، معرف واتساب، أو الملاحظات..."
-                className="w-full bg-[var(--card-elevated)] text-xs text-[var(--text-main)] pr-10 pl-20 py-2.5 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)] text-right"
+                className="w-full bg-[var(--card-elevated)] text-xs text-[var(--text-main)] pr-10 pl-24 py-2.5 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)] text-right"
               />
-              <button
-                type="submit"
-                className="absolute left-2 top-1.5 px-3 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white text-[11px] font-medium transition-all"
-              >
-                بحث
-              </button>
+              <div className="absolute left-2 top-1.5 flex items-center gap-1">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setPage(1);
+                      fetchContacts(1, pageSize, '');
+                    }}
+                    className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-rose-400 transition-all"
+                    title="إلغاء البحث ومسح النص"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="px-3 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white text-[11px] font-medium transition-all"
+                >
+                  بحث
+                </button>
+              </div>
             </form>
 
             <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
@@ -663,21 +887,70 @@ export default function ContactsPage() {
           </div>
 
           {/* صف الفلاتر متعددة الأبعاد */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-[var(--border-subtle)]/50 text-xs">
-            {/* نوع الكيان والتصنيف الخاص */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 pt-2 border-t border-[var(--border-subtle)]/50 text-xs">
+            {/* خط الواتساب */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--text-muted)] font-medium">خط الواتساب:</span>
+              <select
+                value={lineFilter}
+                onChange={(e) => setLineFilter(e.target.value)}
+                className="bg-[var(--card-elevated)] text-emerald-400 border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-semibold text-right"
+              >
+                <option value="all">كل الخطوط</option>
+                <option value="Master">الرئيسي (Master)</option>
+                <option value="Sells_2">المبيعات 2 (Sells_2)</option>
+                <option value="Sells_1">المبيعات 1 (Sells_1)</option>
+                <option value="shared">خطوط مشتركة</option>
+              </select>
+            </div>
+
+            {/* أصل ومصدر جهة الاتصال */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--text-muted)] font-medium">أصل السجل:</span>
+              <select
+                value={originFilter}
+                onChange={(e) => setOriginFilter(e.target.value)}
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
+              >
+                <option value="all">كل الأصول</option>
+                <option value="saved_phone">📱 أرقام وأسماء محفوظة</option>
+                <option value="group_member">🔒 أعضاء مجموعات / مشفر</option>
+                <option value="groups">👥 مجموعات واتساب</option>
+                <option value="newsletters">📢 قنوات وبث</option>
+              </select>
+            </div>
+
+            {/* فلتر الوسوم */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--text-muted)] font-medium">الوسم:</span>
+              <select
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className="bg-[var(--card-elevated)] text-purple-300 border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
+              >
+                <option value="all">كل الوسوم</option>
+                {availableTags.map((t) => (
+                  <option key={t.id} value={t.name_ar || t.key}>
+                    🏷️ {t.name_ar || t.key}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* نوع الكيان */}
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-[var(--text-muted)] font-medium">نوع الكيان:</span>
               <select
                 value={entityFilter}
                 onChange={(e) => setEntityFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
-                <option value="all">كل الكيانات (الكل)</option>
-                <option value="individual">🧑 أفراد معلنون</option>
+                <option value="all">كل الكيانات</option>
+                <option value="individual">🧑 أفراد</option>
                 <option value="organization">🏢 منشآت وشركات</option>
-                <option value="group">👥 مجموعات واتساب</option>
-                <option value="lid">🔒 حسابات مشفرة (LID فقط)</option>
-                <option value="newsletter">📢 قنوات ونشرات إخبارية</option>
+                <option value="group">👥 مجموعات</option>
+                <option value="lid">🔒 مشفر (LID)</option>
+                <option value="newsletter">📢 قنوات</option>
               </select>
             </div>
 
@@ -687,7 +960,7 @@ export default function ContactsPage() {
               <select
                 value={countryFilter}
                 onChange={(e) => setCountryFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل الدول</option>
                 <option value="SA">🇸🇦 السعودية</option>
@@ -700,6 +973,7 @@ export default function ContactsPage() {
                 <option value="JO">🇯🇴 الأردن</option>
                 <option value="IQ">🇮🇶 العراق</option>
                 <option value="YE">🇾🇪 اليمن</option>
+                <option value="SY">🇸🇾 سوريا</option>
                 <option value="TR">🇹🇷 تركيا</option>
                 <option value="INTL">🌍 دولي / أخرى</option>
                 <option value="XX">غير محدد</option>
@@ -712,7 +986,7 @@ export default function ContactsPage() {
               <select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل الأدوار</option>
                 <option value="b2c">عميل مباشر (B2C)</option>
@@ -729,12 +1003,12 @@ export default function ContactsPage() {
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-emerald-400 text-right"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل المصادر</option>
                 <option value="evolution">📱 خطوط واتساب</option>
                 <option value="excel_import">📊 استيراد إكسل</option>
-                <option value="contacts_file">📁 ملف جهات اتصال (VCF)</option>
+                <option value="contacts_file">📁 ملف جهات (VCF)</option>
                 <option value="system">⚙️ النظام الداخلي</option>
                 <option value="manual">✍️ إدخال يدوي</option>
               </select>
@@ -746,7 +1020,7 @@ export default function ContactsPage() {
               <select
                 value={cityFilter}
                 onChange={(e) => setCityFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل المدن</option>
                 <option value="مكة المكرمة">مكة المكرمة</option>
@@ -832,7 +1106,7 @@ export default function ContactsPage() {
                   <div className="flex flex-wrap items-center gap-1.5 mb-3">
                     {getEntityBadge(contact)}
                     {getCountryBadge(contact.country_code)}
-                    {getRoleBadge(contact.commercial_role)}
+                    {getRoleBadge(contact)}
                     {getSourceBadge(contact.source, contact.source_detail)}
                   </div>
 
@@ -848,9 +1122,13 @@ export default function ContactsPage() {
                     )}
                     {contact.wa_jid && !contact.primary_phone_e164 && (
                       <div className="flex items-center gap-2">
-                        <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="font-mono text-[10px] text-slate-400 truncate">
-                          <bdi dir="ltr">{contact.wa_jid}</bdi>
+                        {contact.wa_jid.includes('@g.us') ? (
+                          <Users className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        ) : (
+                          <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        )}
+                        <span className="font-mono text-[11px] text-slate-300 truncate tracking-wide select-all">
+                          <bdi dir="ltr">{formatJidDisplay(contact.wa_jid)}</bdi>
                         </span>
                       </div>
                     )}
@@ -891,6 +1169,11 @@ export default function ContactsPage() {
                   </a>
 
                   <div className="flex items-center gap-1">
+                    {/* محرر الوسوم المدمج في البطاقة */}
+                    <ContactTagPicker
+                      contactId={contact.id}
+                      allTags={availableTags}
+                    />
                     <button
                       onClick={() => openEditModal(contact)}
                       className="p-1.5 rounded-xl hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
@@ -942,11 +1225,11 @@ export default function ContactsPage() {
                         </div>
                       </td>
                       <td className="p-3 font-mono text-[var(--text-secondary)]">
-                        <bdi dir="ltr">{contact.primary_phone_e164 || contact.primary_phone || contact.wa_jid || '—'}</bdi>
+                        <bdi dir="ltr">{contact.primary_phone_e164 || contact.primary_phone || (contact.wa_jid ? formatJidDisplay(contact.wa_jid) : '—')}</bdi>
                       </td>
                       <td className="p-3">{getCountryBadge(contact.country_code)}</td>
                       <td className="p-3">{getEntityBadge(contact)}</td>
-                      <td className="p-3">{getRoleBadge(contact.commercial_role)}</td>
+                      <td className="p-3">{getRoleBadge(contact)}</td>
                       <td className="p-3">{getSourceBadge(contact.source, contact.source_detail)}</td>
                       <td className="p-3 text-[var(--text-secondary)]">{contact.city || '—'}</td>
                       <td className="p-3 text-center">
