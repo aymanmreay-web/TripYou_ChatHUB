@@ -187,6 +187,16 @@ export async function PATCH(req: NextRequest) {
     if (rows.length === 0) {
       return NextResponse.json({ error: 'الحملة غير موجودة أو منتهية' }, { status: 404 });
     }
+
+    // تنظيف طابور المستلمين المعلق عند إلغاء الحملة فوراً
+    if (newStatus === 'cancelled') {
+      await q(
+        `delete from public.campaign_recipients
+         where campaign_id = $1 and status = 'pending'`,
+        [id]
+      ).catch((err: Error) => console.warn('[campaign cancel cleanup]', err.message));
+    }
+
     return NextResponse.json({ success: true, status: newStatus });
   } catch (err: any) {
     console.error('[campaigns PATCH]', err?.message);

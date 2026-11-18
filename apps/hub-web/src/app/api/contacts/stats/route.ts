@@ -1,34 +1,23 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '../../../../lib/supabase';
+import { q } from '../../../../lib/pg';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const DB_URL =
-  process.env.DATABASE_URL ||
-  'postgresql://postgres.aypnxljvudjtasofiuhp:gkaYY9j%2B2M%25Z%26BD@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true';
-
 /**
  * GET /api/contacts/stats
- * إحصائيات شاملة دقيقة 100% مستخرجة مباشرة من قاعدة البيانات بدون أي قص أو قيود
+ * إحصائيات شاملة دقيقة 100% مستخرجة مباشرة من hub.contacts عبر pool مشترك
  */
 export async function GET() {
-  let client: any = null;
   try {
-    // @ts-ignore
-    const { Client } = await import('pg');
-    client = new Client({
-      connectionString: DB_URL,
-      ssl: { rejectUnauthorized: false },
-    });
-    await client.connect();
-
-    const statsRes = await client.query(`
+    const statsRes = await q(`
       SELECT 
         count(*)::int as total,
-        count(*) FILTER (WHERE entity_type = 'individual')::int as individual,
+        count(*) FILTER (WHERE entity_type = 'individual' AND (wa_jid IS NULL OR wa_jid NOT LIKE '%@lid%'))::int as individual,
         count(*) FILTER (WHERE entity_type = 'organization')::int as organization,
-        count(*) FILTER (WHERE entity_type = 'group')::int as "group",
+        count(*) FILTER (WHERE entity_type = 'group' AND (wa_jid IS NULL OR (wa_jid NOT LIKE '%@newsletter%' AND wa_jid NOT LIKE '%@broadcast%')))::int as "group",
+        count(*) FILTER (WHERE wa_jid LIKE '%@lid%')::int as lids,
+        count(*) FILTER (WHERE wa_jid LIKE '%@newsletter%' OR wa_jid LIKE '%@broadcast%')::int as newsletters,
         count(*) FILTER (WHERE commercial_role = 'b2c')::int as b2c,
         count(*) FILTER (WHERE commercial_role = 'b2b')::int as b2b,
         count(*) FILTER (WHERE commercial_role = 'vendor')::int as vendor,
@@ -38,20 +27,32 @@ export async function GET() {
         count(*) FILTER (WHERE source = 'excel_import')::int as excel_import,
         count(*) FILTER (WHERE source = 'contacts_file')::int as contacts_file,
         count(*) FILTER (WHERE source = 'system')::int as system,
-        count(*) FILTER (WHERE source = 'manual')::int as manual
+        count(*) FILTER (WHERE source = 'manual')::int as manual,
+        count(*) FILTER (WHERE country_code = 'SA')::int as saudi,
+        count(*) FILTER (WHERE country_code IN ('AE', 'KW', 'QA', 'OM', 'BH'))::int as gulf,
+        count(*) FILTER (WHERE country_code IN ('EG', 'JO', 'IQ', 'YE', 'SY', 'LB', 'MA', 'DZ', 'TN', 'SD'))::int as arab
       FROM hub.contacts;
     `);
 
-    const evoLinesRes = await client.query(`
+    const evoLinesRes = await q(`
       SELECT source_detail, count(*)::int as cnt
       FROM hub.contacts
       WHERE source = 'evolution' AND source_detail IS NOT NULL
       GROUP BY source_detail;
     `);
 
-    const row = statsRes.rows[0] || {};
+    const countriesRes = await q(`
+      SELECT country_code, count(*)::int as cnt
+      FROM hub.contacts
+      WHERE country_code IS NOT NULL
+      GROUP BY country_code
+      ORDER BY cnt DESC
+      LIMIT 10;
+    `);
+
+    const row = statsRes[0] || {};
     const evolutionLinesBreakdown: Record<string, number> = {};
-    evoLinesRes.rows.forEach((r: any) => {
+    evoLinesRes.forEach((r: any) => {
       const lineName = (r.source_detail || '').replace('evolution:', '');
       evolutionLinesBreakdown[lineName] = r.cnt;
     });
@@ -63,6 +64,8 @@ export async function GET() {
           individual: row.individual || 0,
           organization: row.organization || 0,
           group: row.group || 0,
+          lids: row.lids || 0,
+          newsletters: row.newsletters || 0,
         },
         by_role: {
           b2c: row.b2c || 0,
@@ -78,6 +81,12 @@ export async function GET() {
           system: row.system || 0,
           manual: row.manual || 0,
         },
+        by_country: {
+          saudi: row.saudi || 0,
+          gulf: row.gulf || 0,
+          arab: row.arab || 0,
+          top_countries: countriesRes,
+        },
         evolution_lines: evolutionLinesBreakdown,
       },
       {
@@ -87,53 +96,7 @@ export async function GET() {
       }
     );
   } catch (err: any) {
-    console.warn('SQL stats fallback to Supabase counts:', err.message);
-
-    // احتياطي دقيق عبر Supabase count API إذا تعذر اتصال pg
-    try {
-      const supabase = getSupabaseAdmin();
-      const [allRes, indRes, orgRes, grpRes, evoRes] = await Promise.all([
-        supabase.from('contacts').select('*', { count: 'exact', head: true }),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('entity_type', 'individual'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('entity_type', 'organization'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('entity_type', 'group'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('source', 'evolution'),
-      ]);
-
-      const total = allRes.count || 0;
-      return NextResponse.json({
-        total,
-        by_entity_type: {
-          individual: indRes.count || 0,
-          organization: orgRes.count || 0,
-          group: grpRes.count || 0,
-        },
-        by_role: {
-          b2c: indRes.count || 0,
-          b2b: (orgRes.count || 0) + (grpRes.count || 0),
-          vendor: 0,
-          partner: 0,
-          staff: 0,
-        },
-        by_source: {
-          evolution: evoRes.count || 0,
-          excel_import: 0,
-          contacts_file: 0,
-          system: 0,
-          manual: 0,
-        },
-        evolution_lines: {},
-      }, {
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        },
-      });
-    } catch (fallbackErr: any) {
-      return NextResponse.json({ error: fallbackErr.message }, { status: 500 });
-    }
-  } finally {
-    if (client) {
-      await client.end().catch(() => {});
-    }
+    console.error('[API /api/contacts/stats Error]:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

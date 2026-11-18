@@ -5,17 +5,14 @@ import {
   Users,
   User,
   Building2,
-  UserCheck,
   Search,
   Plus,
-  Filter,
   Download,
   Upload,
   Phone,
   Mail,
   MapPin,
   Star,
-  ExternalLink,
   Edit2,
   Trash2,
   RefreshCw,
@@ -24,18 +21,22 @@ import {
   FileText,
   Smartphone,
   Cpu,
-  Shield,
   Layers,
-  SlidersHorizontal,
   X,
   MessageSquare,
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   GitMerge,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  Radio,
+  Globe2,
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
+import { ContactsStats } from '../../../components/contacts/ContactsStats';
+import { ImportModal } from '../../../components/contacts/ImportModal';
+import { MergePreviewModal } from '../../../components/contacts/MergePreviewModal';
 
 interface Contact {
   id: string;
@@ -46,6 +47,8 @@ interface Contact {
   source: 'evolution' | 'excel_import' | 'contacts_file' | 'system' | 'manual';
   source_detail?: string;
   primary_phone?: string;
+  primary_phone_e164?: string;
+  wa_jid?: string;
   email?: string;
   country_code?: string;
   city?: string;
@@ -66,14 +69,17 @@ export default function ContactsPage() {
   const [pageSize, setPageSize] = useState<number>(100);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // الفلاتر
   const [entityFilter, setEntityFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [countryFilter, setCountryFilter] = useState<string>('all');
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  // إحصائيات النظام الشاملة لكافة جهات الاتصال (1,672 سجل)
+  // إحصائيات النظام الشاملة
   const [globalStats, setGlobalStats] = useState({
     total: 0,
     individuals: 0,
@@ -81,18 +87,20 @@ export default function ContactsPage() {
     groups: 0,
     fromEvolution: 0,
     fromExcel: 0,
+    lids: 0,
+    newsletters: 0,
+    saudi: 0,
+    gulf: 0,
   });
 
   // نوافذ منبثقة
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // معالجة الدمج والمسح الشامل
-  const [isMerging, setIsMerging] = useState(false);
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionAlert, setActionAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // حقول نموذج الإضافة / التعديل
@@ -106,19 +114,14 @@ export default function ContactsPage() {
     commercial_role: 'b2c',
     source: 'manual',
     source_detail: '',
+    country_code: 'SA',
     city: 'مكة المكرمة',
     district: '',
     notes: '',
     tags: '',
   });
 
-  // نموذج الاستيراد
-  const [importSourceType, setImportSourceType] = useState<'excel_import' | 'contacts_file' | 'evolution'>('excel_import');
-  const [importSourceDetail, setImportSourceDetail] = useState('');
-  const [importRawText, setImportRawText] = useState('');
-  const [importStatus, setImportStatus] = useState<string | null>(null);
-
-  // جلب إحصائيات النظام الشاملة لجميع السجلات
+  // جلب إحصائيات النظام الشاملة
   const fetchGlobalStats = async () => {
     try {
       const res = await fetch('/api/contacts/stats');
@@ -131,6 +134,10 @@ export default function ContactsPage() {
           groups: data.by_entity_type?.group || 0,
           fromEvolution: data.by_source?.evolution || 0,
           fromExcel: data.by_source?.excel_import || 0,
+          lids: data.by_entity_type?.lids || 0,
+          newsletters: data.by_entity_type?.newsletters || 0,
+          saudi: data.by_country?.saudi || 0,
+          gulf: data.by_country?.gulf || 0,
         });
       }
     } catch (e) {
@@ -147,6 +154,7 @@ export default function ContactsPage() {
       if (entityFilter !== 'all') params.set('entity_type', entityFilter);
       if (roleFilter !== 'all') params.set('commercial_role', roleFilter);
       if (sourceFilter !== 'all') params.set('source', sourceFilter);
+      if (countryFilter !== 'all') params.set('country_code', countryFilter);
       if (cityFilter !== 'all') params.set('city', cityFilter);
       if (onlyFavorites) params.set('favorite', 'true');
       params.set('limit', String(targetPageSize));
@@ -165,16 +173,14 @@ export default function ContactsPage() {
     }
   };
 
-  // عند تحميل الصفحة وجلب الإحصائيات
   useEffect(() => {
     fetchGlobalStats();
   }, []);
 
-  // عند تغيير الفلاتر يعاد الضبط للصفحة 1
   useEffect(() => {
     setPage(1);
     fetchContacts(1, pageSize);
-  }, [entityFilter, roleFilter, sourceFilter, cityFilter, onlyFavorites, pageSize]);
+  }, [entityFilter, roleFilter, sourceFilter, countryFilter, cityFilter, onlyFavorites, pageSize]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,6 +210,7 @@ export default function ContactsPage() {
       commercial_role: 'b2c',
       source: 'manual',
       source_detail: 'إدخال يدوي مباشر',
+      country_code: 'SA',
       city: 'مكة المكرمة',
       district: '',
       notes: '',
@@ -217,7 +224,7 @@ export default function ContactsPage() {
     setEditContact(contact);
     setFormData({
       display_name: contact.display_name,
-      primary_phone: contact.primary_phone || '',
+      primary_phone: contact.primary_phone || contact.primary_phone_e164 || '',
       email: contact.email || '',
       company: contact.company || '',
       facility_name: contact.facility_name || '',
@@ -225,6 +232,7 @@ export default function ContactsPage() {
       commercial_role: contact.commercial_role,
       source: contact.source,
       source_detail: contact.source_detail || '',
+      country_code: contact.country_code || 'SA',
       city: contact.city || '',
       district: contact.district || '',
       notes: contact.notes || '',
@@ -233,7 +241,7 @@ export default function ContactsPage() {
     setAddModalOpen(true);
   };
 
-  // حفظ جهة الاتصال (إنشاء أو تحديث)
+  // حفظ جهة الاتصال
   const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.display_name && !formData.primary_phone) {
@@ -257,6 +265,7 @@ export default function ContactsPage() {
         if (res.ok) {
           setAddModalOpen(false);
           fetchContacts();
+          fetchGlobalStats();
         } else {
           const err = await res.json();
           alert(`فشل التعديل: ${err.error}`);
@@ -270,6 +279,7 @@ export default function ContactsPage() {
         if (res.ok) {
           setAddModalOpen(false);
           fetchContacts();
+          fetchGlobalStats();
         } else {
           const err = await res.json();
           alert(`فشل الإنشاء: ${err.error}`);
@@ -299,135 +309,20 @@ export default function ContactsPage() {
     }
   };
 
-  // حذف جهة اتصال
+  // حذف جهة اتصال مفردة
   const handleDeleteContact = async (id: string, name: string) => {
     if (!confirm(`هل أنت متأكد من حذف جهة الاتصال "${name}"؟`)) return;
     try {
       const res = await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setContacts((prev) => prev.filter((c) => c.id !== id));
+        setTotalCount((prev) => Math.max(0, prev - 1));
+        fetchGlobalStats();
       } else {
         alert('فشل الحذف');
       }
     } catch (err) {
       console.error(err);
-    }
-  };
-
-  // معالجة الاستيراد السريع
-  const handleRunImport = async () => {
-    // إذا اختار خط واتساب Evolution: استيراد حقيقي من كل الخطوط المتصلة (أو الخط المحدد)
-    if (importSourceType === 'evolution') {
-      setIsSubmitting(true);
-      setImportStatus('جاري الاستيراد الحقيقي من واتساب Evolution لكل الخطوط المتصلة — قد يستغرق دقيقة على الخطوط الكبيرة...');
-      try {
-        // م8: بلا معامل instance = كل الخطوط المتصلة دفعة واحدة
-        const suffix = importSourceDetail.trim() ? `?instance=${encodeURIComponent(importSourceDetail.trim())}` : '';
-        const res = await fetch(`/api/contacts/sync-evolution${suffix}`, { method: 'POST' });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          const perLine = (data.lines_processed || [])
-            .map((l: any) => `${l.instance}: ${l.individuals} فرد + ${l.groups} مجموعة`)
-            .join(' • ');
-          setImportStatus(
-            `✅ استيراد حقيقي مكتمل: ${data.total_individuals} فرد و ${data.total_groups} مجموعة (تخطي ${data.total_skipped} غير صالح)${perLine ? ' — ' + perLine : ''}` +
-            (data.errors?.length ? ` — تحذيرات: ${data.errors.join('؛ ')}` : '')
-          );
-          fetchContacts();
-          fetchGlobalStats();
-          setTimeout(() => {
-            setImportModalOpen(false);
-            setImportRawText('');
-            setImportStatus(null);
-          }, 4000);
-        } else {
-          setImportStatus(`❌ خطأ في الجلب: ${data.error || 'تعذر الاتصال بخطوط واتساب'}`);
-        }
-      } catch (err: any) {
-        setImportStatus(`❌ خطأ: ${err.message}`);
-      } finally {
-        setIsSubmitting(false);
-      }
-      return;
-    }
-
-    if (!importRawText.trim()) {
-      alert('يرجى لصق أرقام أو أسماء جهات الاتصال');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setImportStatus('جاري معالجة البيانات والاستيراد مع تتبع المصدر...');
-
-    try {
-      // تحليل النص سطر بسطر (الاسم, الرقم, المنشأة) أو مجرد أرقام
-      const lines = importRawText.split('\n').map((l) => l.trim()).filter(Boolean);
-      const parsedContacts = lines.map((line) => {
-        const parts = line.split(/[,\t]/);
-        if (parts.length >= 2) {
-          return {
-            name: parts[0].trim(),
-            phone: parts[1].trim(),
-            company: parts[2] ? parts[2].trim() : undefined,
-          };
-        }
-        return {
-          name: line,
-          phone: line,
-        };
-      });
-
-      const res = await fetch('/api/contacts/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contacts: parsedContacts,
-          source: importSourceType,
-          source_detail: importSourceDetail || (importSourceType === 'excel_import' ? 'استيراد ملف إكسل' : 'استيراد مجمّع'),
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setImportStatus(`✅ تم بنجاح: استيراد ${data.imported_count}، ودمج وتحديث ${data.merged_count}، وأخطاء ${data.failed_count}`);
-        fetchContacts();
-        setTimeout(() => {
-          setImportModalOpen(false);
-          setImportRawText('');
-          setImportStatus(null);
-        }, 2000);
-      } else {
-        const err = await res.json();
-        setImportStatus(`❌ خطأ: ${err.error}`);
-      }
-    } catch (err: any) {
-      setImportStatus(`❌ خطأ في الاتصال: ${err.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // معالجة ودمج كافة جهات الاتصال المشتركة عبر الخطوط
-  const handleMergeDuplicates = async () => {
-    try {
-      setIsMerging(true);
-      setActionAlert(null);
-      const res = await fetch('/api/contacts/merge', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setActionAlert({
-          type: 'success',
-          message: data.message || `تم بنجاح: دمج ${data.merged_count} جهة اتصال مكررة عبر الخطوط.`,
-        });
-        fetchContacts();
-        fetchGlobalStats();
-      } else {
-        setActionAlert({ type: 'error', message: data.error || 'تعذرت عملية معالجة ودمج جهات الاتصال' });
-      }
-    } catch (err: any) {
-      setActionAlert({ type: 'error', message: `خطأ أثناء الدمج: ${err.message}` });
-    } finally {
-      setIsMerging(false);
     }
   };
 
@@ -442,18 +337,10 @@ export default function ContactsPage() {
         setClearModalOpen(false);
         setActionAlert({
           type: 'success',
-          message: 'تم مسح كافة جهات الاتصال بنجاح. يمكنك الآن إعادة الاستيراد النظيف لكل خط على حدة.',
+          message: 'تم تصفير ومسح كافة جهات الاتصال بنجاح. الدليل نظيف وجاهز للاستيراد المنظم.',
         });
         setContacts([]);
         setTotalCount(0);
-        setGlobalStats({
-          total: 0,
-          individuals: 0,
-          orgs: 0,
-          groups: 0,
-          fromEvolution: 0,
-          fromExcel: 0,
-        });
         fetchGlobalStats();
       } else {
         setActionAlert({ type: 'error', message: data.error || 'تعذر مسح جهات الاتصال' });
@@ -471,10 +358,11 @@ export default function ContactsPage() {
       alert('لا توجد بيانات للتصدير');
       return;
     }
-    const headers = ['الاسم', 'الرقم', 'الكيان', 'الدور', 'المصدر', 'تفاصيل المصدر', 'الشركة', 'المدينة', 'الملاحظات'];
+    const headers = ['الاسم', 'الرقم', 'الدولة', 'الكيان', 'الدور', 'المصدر', 'تفاصيل المصدر', 'الشركة', 'المدينة', 'الملاحظات'];
     const rows = contacts.map((c) => [
       `"${c.display_name.replace(/"/g, '""')}"`,
-      `"${c.primary_phone || ''}"`,
+      `"${c.primary_phone || c.primary_phone_e164 || ''}"`,
+      `"${c.country_code || ''}"`,
       `"${c.entity_type}"`,
       `"${c.commercial_role}"`,
       `"${c.source}"`,
@@ -493,9 +381,30 @@ export default function ContactsPage() {
     URL.revokeObjectURL(url);
   };
 
-  // شارات الكيان ثلاثي الأبعاد
-  const getEntityBadge = (type: Contact['entity_type']) => {
-    switch (type) {
+  // شارات الكيان
+  const getEntityBadge = (contact: Contact) => {
+    const isLid = contact.wa_jid && contact.wa_jid.includes('@lid');
+    const isNewsletter = contact.wa_jid && (contact.wa_jid.includes('@newsletter') || contact.wa_jid.includes('@broadcast'));
+
+    if (isLid) {
+      return (
+        <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-300 border border-slate-500/30">
+          <Lock className="w-3 h-3 text-slate-400" />
+          <span>مشفر (LID)</span>
+        </span>
+      );
+    }
+
+    if (isNewsletter) {
+      return (
+        <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+          <Radio className="w-3 h-3 text-indigo-400" />
+          <span>قناة / نشرة</span>
+        </span>
+      );
+    }
+
+    switch (contact.entity_type) {
       case 'individual':
         return (
           <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
@@ -536,108 +445,108 @@ export default function ContactsPage() {
     }
   };
 
-  // 🌟 وسام المصدر (Source Badge) — المطلب الأساسي
+  // شارة الدولة
+  const getCountryBadge = (code?: string) => {
+    if (!code || code === 'XX') {
+      return <span className="text-[10px] text-slate-500 font-mono">غير محدد</span>;
+    }
+    const flags: Record<string, string> = {
+      SA: '🇸🇦 السعودية',
+      AE: '🇦🇪 الإمارات',
+      KW: '🇰🇼 الكويت',
+      QA: '🇶🇦 قطر',
+      OM: '🇴🇲 عمان',
+      BH: '🇧🇭 البحرين',
+      EG: '🇪🇬 مصر',
+      JO: '🇯🇴 الأردن',
+      IQ: '🇮🇶 العراق',
+      YE: '🇾🇪 اليمن',
+      SY: '🇸🇾 سوريا',
+      LB: '🇱🇧 لبنان',
+      MA: '🇲🇦 المغرب',
+      DZ: '🇩🇿 الجزائر',
+      TN: '🇹🇳 تونس',
+      SD: '🇸🇩 السودان',
+      TR: '🇹🇷 تركيا',
+      US: '🇺🇸 أمريكا',
+      GB: '🇬🇧 بريطانيا',
+    };
+    return (
+      <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold" dir="rtl">
+        <span>{flags[code] || `🌐 ${code}`}</span>
+      </span>
+    );
+  };
+
+  // وسام المصدر
   const getSourceBadge = (source: Contact['source'], detail?: string) => {
     switch (source) {
       case 'evolution':
         return (
-          <span
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-sm"
-            title={`وردت من رقم واتساب الرسمي: ${detail || 'Evolution Line'}`}
-          >
+          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-sm" dir="rtl">
             <Smartphone className="w-3 h-3 text-emerald-400" />
-            <span>{detail || 'خط واتساب (Evolution)'}</span>
+            <span>{detail || 'خط واتساب'}</span>
           </span>
         );
       case 'excel_import':
         return (
-          <span
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-600/40 shadow-sm"
-            title={`مستورد من ملف إكسل: ${detail || 'ملف بيانات'}`}
-          >
+          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-600/40 shadow-sm" dir="rtl">
             <FileSpreadsheet className="w-3 h-3 text-emerald-400" />
             <span>{detail || 'استيراد إكسل'}</span>
           </span>
         );
       case 'contacts_file':
         return (
-          <span
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-900/40 text-sky-300 border border-sky-500/40 shadow-sm"
-            title={`مستورد من ملف جهات اتصال: ${detail || 'VCF / Contacts'}`}
-          >
+          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-900/40 text-sky-300 border border-sky-500/40 shadow-sm" dir="rtl">
             <FileText className="w-3 h-3 text-sky-400" />
-            <span>{detail || 'ملف جهات اتصال'}</span>
+            <span>{detail || 'ملف جهات (VCF)'}</span>
           </span>
         );
       case 'system':
         return (
-          <span
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-900/40 text-purple-300 border border-purple-500/40 shadow-sm"
-            title={`أنشئت آلياً عبر محرك النظام: ${detail || 'حجوزات / تذاكر'}`}
-          >
+          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-900/40 text-purple-300 border border-purple-500/40 shadow-sm" dir="rtl">
             <Cpu className="w-3 h-3 text-purple-400" />
-            <span>{detail || 'محرك النظام الداخلي'}</span>
+            <span>{detail || 'النظام'}</span>
           </span>
         );
       case 'manual':
       default:
         return (
-          <span
-            className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 shadow-sm"
-            title={`إدخال يدوي مباشر: ${detail || 'الموظف'}`}
-          >
+          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 shadow-sm" dir="rtl">
             <Edit2 className="w-3 h-3 text-slate-400" />
-            <span>{detail || 'إدخال يدوي'}</span>
+            <span>{detail || 'يدوي'}</span>
           </span>
         );
     }
   };
 
-  // إحصائيات شاملة دقيقة: إذا لم يكن هناك بحث أو فلترة جزئية، نستخدم الإحصائيات الكاملة لقاعدة البيانات (1,672 سجل)
-  const isFiltered = Boolean(searchQuery || entityFilter !== 'all' || roleFilter !== 'all' || sourceFilter !== 'all' || cityFilter !== 'all' || onlyFavorites);
-
-  const displayStats = useMemo(() => {
-    if (!isFiltered && globalStats.total > 0) {
-      return globalStats;
-    }
-    return {
-      total: totalCount || contacts.length,
-      individuals: contacts.filter((c) => c.entity_type === 'individual').length,
-      orgs: contacts.filter((c) => c.entity_type === 'organization').length,
-      groups: contacts.filter((c) => c.entity_type === 'group').length,
-      fromEvolution: contacts.filter((c) => c.source === 'evolution').length,
-      fromExcel: contacts.filter((c) => c.source === 'excel_import').length,
-    };
-  }, [isFiltered, globalStats, totalCount, contacts]);
-
   return (
     <AppShell>
-      <div className="max-w-7xl mx-auto py-4 px-2 sm:px-4 space-y-4">
-        {/* Header */}
+      <div className="max-w-7xl mx-auto py-4 px-2 sm:px-4 space-y-4" dir="rtl">
+        {/* الرأس الرئيسي */}
         <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[var(--border-subtle)]">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-main)]">
               دليل جهات الاتصال
             </h1>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              إدارة وتصنيف بيانات العملاء والشركات والمجموعات
+              إدارة وتصنيف العملاء، المجموعات، الحسابات المشفرة، والقنوات مع كشف الدولة التلقائي
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={handleMergeDuplicates}
-              disabled={isMerging}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-200 border border-indigo-500/40 text-xs font-medium transition-all shadow-sm disabled:opacity-50"
-              title="دمج جهات الاتصال المكررة أو المشتركة في أكثر من خط تلقائياً"
+              onClick={() => setMergeModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-200 border border-indigo-500/40 text-xs font-medium transition-all shadow-sm"
+              title="معاينة ودمج جهات الاتصال المكررة"
             >
-              <GitMerge className={`w-4 h-4 text-indigo-400 ${isMerging ? 'animate-spin' : ''}`} />
-              <span>{isMerging ? 'جاري الدمج...' : 'معالجة ودمج الجهات'}</span>
+              <GitMerge className="w-4 h-4 text-indigo-400" />
+              <span>معاينة ودمج الجهات</span>
             </button>
             <button
               onClick={() => setClearModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/80 text-rose-200 border border-rose-500/40 text-xs font-medium transition-all shadow-sm"
-              title="مسح كافة جهات الاتصال لإعادة الاستيراد النظيف من كل خط على حدة"
+              title="مسح كافة جهات الاتصال لإعادة ضبط الدليل"
             >
               <Trash2 className="w-4 h-4 text-rose-400" />
               <span>مسح كل جهات الاتصال</span>
@@ -647,7 +556,7 @@ export default function ContactsPage() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-200 border border-purple-500/30 text-xs font-medium transition-all shadow-sm"
             >
               <Upload className="w-4 h-4 text-purple-400" />
-              <span>استيراد جماعي</span>
+              <span>استيراد ملفات / واتساب</span>
             </button>
             <button
               onClick={handleExportCSV}
@@ -691,64 +600,21 @@ export default function ContactsPage() {
             </button>
           </div>
         )}
-        {/* شريط الإحصائيات السريع الشامل لكافة جهات الاتصال */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
-            <span className="text-[11px] text-[var(--text-muted)] font-medium">إجمالي السجلات</span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-[var(--text-main)] font-mono">{displayStats.total}</span>
-              <Layers className="w-4 h-4 text-purple-400" />
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
-            <span className="text-[11px] text-[var(--text-muted)] font-medium">🧑 الأفراد (B2C)</span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-blue-400 font-mono">{displayStats.individuals}</span>
-              <User className="w-4 h-4 text-blue-400" />
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
-            <span className="text-[11px] text-[var(--text-muted)] font-medium">🏢 منشآت وشركات</span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-purple-400 font-mono">{displayStats.orgs}</span>
-              <Building2 className="w-4 h-4 text-purple-400" />
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
-            <span className="text-[11px] text-[var(--text-muted)] font-medium">👥 مجموعات</span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-amber-400 font-mono">{displayStats.groups}</span>
-              <Users className="w-4 h-4 text-amber-400" />
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
-            <span className="text-[11px] text-[var(--text-muted)] font-medium">📱 من خطوط واتساب</span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-emerald-400 font-mono">{displayStats.fromEvolution}</span>
-              <Smartphone className="w-4 h-4 text-emerald-400" />
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-col justify-between">
-            <span className="text-[11px] text-[var(--text-muted)] font-medium">📊 استيراد إكسل</span>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-xl font-bold text-emerald-500 font-mono">{displayStats.fromExcel}</span>
-              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-            </div>
-          </div>
-        </div>
 
-        {/* شريط الفلاتر والبحث */}
+        {/* إحصائيات الدليل المتطورة */}
+        <ContactsStats stats={globalStats} />
+
+        {/* شريط الفلاتر والبحث الشامل */}
         <div className="p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] space-y-3 shadow-md">
           <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
-            {/* مربع البحث */}
             <form onSubmit={handleSearchSubmit} className="relative flex-1 w-full">
               <Search className="w-4 h-4 absolute right-3.5 top-3 text-[var(--text-muted)]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث بالاسم، رقم الهاتف، المنشأة، المدينة، أو الملاحظات..."
-                className="w-full bg-[var(--card-elevated)] text-xs text-[var(--text-main)] pr-10 pl-20 py-2.5 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)]"
+                placeholder="ابحث بالاسم، رقم الهاتف، المنشأة، معرف واتساب، أو الملاحظات..."
+                className="w-full bg-[var(--card-elevated)] text-xs text-[var(--text-main)] pr-10 pl-20 py-2.5 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none placeholder:text-[var(--text-muted)] text-right"
               />
               <button
                 type="submit"
@@ -758,7 +624,6 @@ export default function ContactsPage() {
               </button>
             </form>
 
-            {/* أدوات التبديل السريع */}
             <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
               <button
                 onClick={() => setOnlyFavorites((prev) => !prev)}
@@ -781,7 +646,7 @@ export default function ContactsPage() {
               </button>
 
               <button
-                onClick={() => fetchContacts(page, pageSize)}
+                onClick={() => { fetchContacts(page, pageSize); fetchGlobalStats(); }}
                 className="p-2 rounded-xl bg-[var(--card-elevated)] hover:bg-white/5 border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-all"
                 title="تحديث البيانات"
               >
@@ -791,19 +656,46 @@ export default function ContactsPage() {
           </div>
 
           {/* صف الفلاتر متعددة الأبعاد */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-[var(--border-subtle)]/50 text-xs">
-            {/* نوع الكيان */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-[var(--border-subtle)]/50 text-xs">
+            {/* نوع الكيان والتصنيف الخاص */}
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-[var(--text-muted)] font-medium">نوع الكيان:</span>
               <select
                 value={entityFilter}
                 onChange={(e) => setEntityFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل الكيانات (الكل)</option>
-                <option value="individual">🧑 أفراد</option>
+                <option value="individual">🧑 أفراد معلنون</option>
                 <option value="organization">🏢 منشآت وشركات</option>
-                <option value="group">👥 مجموعات</option>
+                <option value="group">👥 مجموعات واتساب</option>
+                <option value="lid">🔒 حسابات مشفرة (LID فقط)</option>
+                <option value="newsletter">📢 قنوات ونشرات إخبارية</option>
+              </select>
+            </div>
+
+            {/* الدولة المكتشفة */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--text-muted)] font-medium">الدولة:</span>
+              <select
+                value={countryFilter}
+                onChange={(e) => setCountryFilter(e.target.value)}
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
+              >
+                <option value="all">كل الدول</option>
+                <option value="SA">🇸🇦 السعودية</option>
+                <option value="AE">🇦🇪 الإمارات</option>
+                <option value="KW">🇰🇼 الكويت</option>
+                <option value="QA">🇶🇦 قطر</option>
+                <option value="OM">🇴🇲 عمان</option>
+                <option value="BH">🇧🇭 البحرين</option>
+                <option value="EG">🇪🇬 مصر</option>
+                <option value="JO">🇯🇴 الأردن</option>
+                <option value="IQ">🇮🇶 العراق</option>
+                <option value="YE">🇾🇪 اليمن</option>
+                <option value="TR">🇹🇷 تركيا</option>
+                <option value="INTL">🌍 دولي / أخرى</option>
+                <option value="XX">غير محدد</option>
               </select>
             </div>
 
@@ -813,7 +705,7 @@ export default function ContactsPage() {
               <select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل الأدوار</option>
                 <option value="b2c">عميل مباشر (B2C)</option>
@@ -824,18 +716,18 @@ export default function ContactsPage() {
               </select>
             </div>
 
-            {/* مصدر جهة الاتصال (المطلب الأساسي) */}
+            {/* مصدر جهة الاتصال */}
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-[var(--text-muted)] font-medium">المصدر الأساسي:</span>
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-emerald-400"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-emerald-400 text-right"
               >
                 <option value="all">كل المصادر</option>
-                <option value="evolution">📱 خطوط واتساب (Evolution)</option>
+                <option value="evolution">📱 خطوط واتساب</option>
                 <option value="excel_import">📊 استيراد إكسل</option>
-                <option value="contacts_file">📁 ملف جهات اتصال</option>
+                <option value="contacts_file">📁 ملف جهات اتصال (VCF)</option>
                 <option value="system">⚙️ النظام الداخلي</option>
                 <option value="manual">✍️ إدخال يدوي</option>
               </select>
@@ -847,7 +739,7 @@ export default function ContactsPage() {
               <select
                 value={cityFilter}
                 onChange={(e) => setCityFilter(e.target.value)}
-                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium"
+                className="bg-[var(--card-elevated)] text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-500 font-medium text-right"
               >
                 <option value="all">كل المدن</option>
                 <option value="مكة المكرمة">مكة المكرمة</option>
@@ -864,7 +756,7 @@ export default function ContactsPage() {
         {loading ? (
           <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
             <RefreshCw className="w-8 h-8 text-purple-400 animate-spin" />
-            <span className="text-sm">جاري تحميل سجلات جهات الاتصال ثلاثية الأبعاد...</span>
+            <span className="text-sm">جاري تحميل سجلات جهات الاتصال...</span>
           </div>
         ) : contacts.length === 0 ? (
           <div className="p-16 text-center text-[var(--text-muted)] bg-[var(--card-bg)] rounded-3xl border border-[var(--border-subtle)] flex flex-col items-center justify-center gap-3">
@@ -878,7 +770,7 @@ export default function ContactsPage() {
             </button>
           </div>
         ) : viewMode === 'cards' ? (
-          /* عرض البطاقات الحديثة */
+          /* عرض البطاقات */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {contacts.map((contact) => (
               <div
@@ -886,7 +778,6 @@ export default function ContactsPage() {
                 className="p-4 rounded-3xl bg-[var(--card-bg)] border border-[var(--border-subtle)] hover:border-purple-500/40 transition-all shadow-lg flex flex-col justify-between group relative"
               >
                 <div>
-                  {/* الرأس: الصورة، الاسم، والمفضلة */}
                   <div className="flex items-start justify-between gap-3 mb-2.5">
                     <div className="flex items-center gap-3 min-w-0">
                       <div
@@ -910,11 +801,9 @@ export default function ContactsPage() {
                       </div>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="font-bold text-sm text-[var(--text-main)] truncate" title={contact.display_name}>
-                            {contact.display_name}
-                          </h3>
-                        </div>
+                        <h3 className="font-bold text-sm text-[var(--text-main)] truncate" title={contact.display_name}>
+                          {contact.display_name}
+                        </h3>
                         {contact.company && (
                           <p className="text-[11px] text-[var(--text-secondary)] truncate">
                             {contact.company}
@@ -932,25 +821,38 @@ export default function ContactsPage() {
                     </button>
                   </div>
 
-                  {/* الشارات الثلاثية: الكيان + الدور + وسم المصدر */}
+                  {/* الشارات: الكيان + الدور + الدولة + المصدر */}
                   <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                    {getEntityBadge(contact.entity_type)}
+                    {getEntityBadge(contact)}
+                    {getCountryBadge(contact.country_code)}
                     {getRoleBadge(contact.commercial_role)}
                     {getSourceBadge(contact.source, contact.source_detail)}
                   </div>
 
                   {/* معلومات الاتصال والموقع */}
                   <div className="space-y-1.5 text-xs text-[var(--text-secondary)] border-t border-[var(--border-subtle)]/40 pt-2.5">
-                    {contact.primary_phone && (
-                      <div className="flex items-center gap-2 font-mono dir-ltr text-right">
+                    {(contact.primary_phone || contact.primary_phone_e164) && (
+                      <div className="flex items-center gap-2">
                         <Phone className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                        <span className="truncate">{contact.primary_phone}</span>
+                        <span className="font-mono text-[11px] text-white">
+                          <bdi dir="ltr">{contact.primary_phone_e164 || contact.primary_phone}</bdi>
+                        </span>
+                      </div>
+                    )}
+                    {contact.wa_jid && !contact.primary_phone_e164 && (
+                      <div className="flex items-center gap-2">
+                        <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="font-mono text-[10px] text-slate-400 truncate">
+                          <bdi dir="ltr">{contact.wa_jid}</bdi>
+                        </span>
                       </div>
                     )}
                     {contact.email && (
-                      <div className="flex items-center gap-2 dir-ltr text-right">
+                      <div className="flex items-center gap-2">
                         <Mail className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                        <span className="truncate">{contact.email}</span>
+                        <span className="truncate">
+                          <bdi dir="ltr">{contact.email}</bdi>
+                        </span>
                       </div>
                     )}
                     {(contact.city || contact.district) && (
@@ -970,12 +872,12 @@ export default function ContactsPage() {
                   )}
                 </div>
 
-                {/* أزرار الإجراءات السريعة */}
+                {/* أزرار الإجراءات */}
                 <div className="flex items-center justify-between gap-2 mt-4 pt-2.5 border-t border-[var(--border-subtle)]">
                   <a
-                    href={`/inbox?phone=${encodeURIComponent(contact.primary_phone || '')}`}
+                    href={`/inbox?phone=${encodeURIComponent(contact.primary_phone_e164 || contact.primary_phone || contact.wa_jid || '')}`}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white text-xs font-semibold transition-all shadow-sm"
-                    title="فتح محادثة واتساب فورية"
+                    title="فتح محادثة واتساب"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     <span>محادثة</span>
@@ -1009,10 +911,11 @@ export default function ContactsPage() {
                 <thead className="bg-[var(--card-elevated)] text-[var(--text-muted)] border-b border-[var(--border-subtle)]">
                   <tr>
                     <th className="p-3 font-semibold">الجهة / الاسم</th>
-                    <th className="p-3 font-semibold">رقم الهاتف</th>
+                    <th className="p-3 font-semibold">رقم الهاتف / المعرف</th>
+                    <th className="p-3 font-semibold">الدولة</th>
                     <th className="p-3 font-semibold">نوع الكيان</th>
                     <th className="p-3 font-semibold">الدور</th>
-                    <th className="p-3 font-semibold">وسام المصدر والتتبع</th>
+                    <th className="p-3 font-semibold">المصدر</th>
                     <th className="p-3 font-semibold">المدينة</th>
                     <th className="p-3 font-semibold text-center">الإجراءات</th>
                   </tr>
@@ -1031,17 +934,18 @@ export default function ContactsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="p-3 font-mono text-[var(--text-secondary)] dir-ltr text-right">
-                        {contact.primary_phone || '—'}
+                      <td className="p-3 font-mono text-[var(--text-secondary)]">
+                        <bdi dir="ltr">{contact.primary_phone_e164 || contact.primary_phone || contact.wa_jid || '—'}</bdi>
                       </td>
-                      <td className="p-3">{getEntityBadge(contact.entity_type)}</td>
+                      <td className="p-3">{getCountryBadge(contact.country_code)}</td>
+                      <td className="p-3">{getEntityBadge(contact)}</td>
                       <td className="p-3">{getRoleBadge(contact.commercial_role)}</td>
                       <td className="p-3">{getSourceBadge(contact.source, contact.source_detail)}</td>
                       <td className="p-3 text-[var(--text-secondary)]">{contact.city || '—'}</td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <a
-                            href={`/inbox?phone=${encodeURIComponent(contact.primary_phone || '')}`}
+                            href={`/inbox?phone=${encodeURIComponent(contact.primary_phone_e164 || contact.primary_phone || contact.wa_jid || '')}`}
                             className="p-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white"
                             title="محادثة واتساب"
                           >
@@ -1071,22 +975,22 @@ export default function ContactsPage() {
           </div>
         )}
 
-        {/* شريط ترقيم وتصفح الصفحات الحديث (Pagination Bar) */}
+        {/* شريط ترقيم وتصفح الصفحات */}
         {!loading && totalCount > 0 && (
           <div className="p-4 rounded-2xl bg-[var(--card-bg)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-4 shadow-md text-xs">
-            {/* إحصائية العرض */}
             <div className="flex items-center gap-2 text-[var(--text-muted)]">
               <span>عرض</span>
               <span className="font-bold text-[var(--text-main)] font-mono">
-                {Math.min((page - 1) * pageSize + 1, totalCount)} - {Math.min(page * pageSize, totalCount)}
+                <bdi dir="ltr">{Math.min((page - 1) * pageSize + 1, totalCount)} - {Math.min(page * pageSize, totalCount)}</bdi>
               </span>
               <span>من أصل</span>
-              <span className="font-bold text-purple-400 font-mono text-sm">{totalCount}</span>
+              <span className="font-bold text-purple-400 font-mono text-sm">
+                <bdi dir="ltr">{totalCount}</bdi>
+              </span>
               <span>جهة اتصال</span>
             </div>
 
-            {/* أزرار الصفحات */}
-            <div className="flex items-center gap-1.5" dir="rtl">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => handlePageChange(page - 1)}
@@ -1097,7 +1001,6 @@ export default function ContactsPage() {
                 <span>السابق</span>
               </button>
 
-              {/* أرقام الصفحات */}
               <div className="flex items-center gap-1">
                 {Array.from({ length: Math.ceil(totalCount / pageSize) }, (_, i) => i + 1)
                   .filter((p) => p === 1 || p === Math.ceil(totalCount / pageSize) || Math.abs(p - page) <= 1)
@@ -1115,7 +1018,7 @@ export default function ContactsPage() {
                             : 'bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-white'
                         }`}
                       >
-                        {p}
+                        <bdi dir="ltr">{p}</bdi>
                       </button>
                     </React.Fragment>
                   ))}
@@ -1132,7 +1035,6 @@ export default function ContactsPage() {
               </button>
             </div>
 
-            {/* تحديد حجم الصفحة */}
             <div className="flex items-center gap-2">
               <span className="text-[var(--text-muted)]">لكل صفحة:</span>
               <select
@@ -1154,17 +1056,15 @@ export default function ContactsPage() {
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════
-            نافذة إضافة / تعديل جهة اتصال كاملة
-           ════════════════════════════════════════════════════════ */}
+        {/* نافذة إضافة / تعديل جهة اتصال */}
         {addModalOpen && (
           <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
-              <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
+            <div dir="rtl" className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
+              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
                 <h3 className="font-bold text-base text-[var(--text-main)]">
-                  {editContact ? '✏️ تعديل بيانات جهة الاتصال' : '➕ إضافة جهة اتصال جديدة ثلاثية الأبعاد'}
+                  {editContact ? '✏️ تعديل بيانات جهة الاتصال' : '➕ إضافة جهة اتصال جديدة'}
                 </h3>
-                <button onClick={() => setAddModalOpen(false)} className="text-slate-400 hover:text-[var(--text-main)]">
+                <button onClick={() => setAddModalOpen(false)} className="text-slate-400 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1179,7 +1079,7 @@ export default function ContactsPage() {
                       value={formData.display_name}
                       onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                       placeholder="مثال: فندق صفوة المدينة أو أ. عبدالله"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-right"
                     />
                   </div>
 
@@ -1191,18 +1091,39 @@ export default function ContactsPage() {
                       value={formData.primary_phone}
                       onChange={(e) => setFormData({ ...formData, primary_phone: e.target.value })}
                       placeholder="+9665xxxxxxxx أو 05xxxxxxxx"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left font-mono"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-left font-mono"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
+                    <label className="block text-[11px] text-slate-300 font-medium mb-1">الدولة</label>
+                    <select
+                      value={formData.country_code}
+                      onChange={(e) => setFormData({ ...formData, country_code: e.target.value })}
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-right"
+                    >
+                      <option value="SA">🇸🇦 السعودية</option>
+                      <option value="AE">🇦🇪 الإمارات</option>
+                      <option value="KW">🇰🇼 الكويت</option>
+                      <option value="QA">🇶🇦 قطر</option>
+                      <option value="OM">🇴🇲 عمان</option>
+                      <option value="BH">🇧🇭 البحرين</option>
+                      <option value="EG">🇪🇬 مصر</option>
+                      <option value="JO">🇯🇴 الأردن</option>
+                      <option value="IQ">🇮🇶 العراق</option>
+                      <option value="YE">🇾🇪 اليمن</option>
+                      <option value="INTL">🌍 أخرى / دولي</option>
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="block text-[11px] text-slate-300 font-medium mb-1">نوع الكيان</label>
                     <select
                       value={formData.entity_type}
                       onChange={(e) => setFormData({ ...formData, entity_type: e.target.value as any })}
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-right"
                     >
                       <option value="individual">🧑 فرد</option>
                       <option value="organization">🏢 منشأة / شركة</option>
@@ -1215,7 +1136,7 @@ export default function ContactsPage() {
                     <select
                       value={formData.commercial_role}
                       onChange={(e) => setFormData({ ...formData, commercial_role: e.target.value as any })}
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-right"
                     >
                       <option value="b2c">عميل مباشر (B2C)</option>
                       <option value="b2b">شركة (B2B)</option>
@@ -1224,56 +1145,17 @@ export default function ContactsPage() {
                       <option value="staff">فريق العمل</option>
                     </select>
                   </div>
-
-                  <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">مصدر جهة الاتصال</label>
-                    <select
-                      value={formData.source}
-                      onChange={(e) => setFormData({ ...formData, source: e.target.value as any })}
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-emerald-400 font-medium"
-                    >
-                      <option value="manual">✍️ إدخال يدوي</option>
-                      <option value="evolution">📱 خط واتساب (Evolution)</option>
-                      <option value="excel_import">📊 استيراد إكسل</option>
-                      <option value="contacts_file">📁 ملف جهات اتصال</option>
-                      <option value="system">⚙️ النظام الداخلي</option>
-                    </select>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">تفاصيل المصدر (اسم الخط أو اسم الملف)</label>
-                    <input
-                      type="text"
-                      value={formData.source_detail}
-                      onChange={(e) => setFormData({ ...formData, source_detail: e.target.value })}
-                      placeholder="مثال: evolution:Sells_2 أو حجاج_1446.xlsx"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">اسم المنشأة أو الفندق التابع له</label>
+                    <label className="block text-[11px] text-slate-300 font-medium mb-1">اسم المنشأة أو الفندق</label>
                     <input
                       type="text"
                       value={formData.company}
                       onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                      placeholder="مثال: شركة ريزف بار للسياحة"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">البريد الإلكتروني</label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="email@example.com"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-left"
+                      placeholder="مثال: شركة ريزف بار"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-right"
                     />
                   </div>
 
@@ -1284,18 +1166,7 @@ export default function ContactsPage() {
                       value={formData.city}
                       onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                       placeholder="مكة المكرمة"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">الحي / المنطقة</label>
-                    <input
-                      type="text"
-                      value={formData.district}
-                      onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                      placeholder="حي العزيزية"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
+                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none text-right"
                     />
                   </div>
                 </div>
@@ -1307,11 +1178,11 @@ export default function ContactsPage() {
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     placeholder="ملاحظات حول جهة الاتصال والاتفاقات..."
-                    className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none resize-none"
+                    className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-[var(--border-subtle)] focus:border-purple-500 outline-none resize-none text-right"
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-purple-900/40">
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
                   <button
                     type="button"
                     onClick={() => setAddModalOpen(false)}
@@ -1332,144 +1203,29 @@ export default function ContactsPage() {
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════
-            نافذة الاستيراد الجماعي الذكي
-           ════════════════════════════════════════════════════════ */}
-        {importModalOpen && (
-          <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[var(--card-bg)] border border-purple-500/40 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 text-right">
-              <div className="flex items-center justify-between border-b border-purple-900/40 pb-3">
-                <div className="flex items-center gap-2">
-                  <Upload className="w-5 h-5 text-purple-400" />
-                  <h3 className="font-bold text-base text-[var(--text-main)]">استيراد جماعي ذكي مع تتبع المصدر</h3>
-                </div>
-                <button onClick={() => setImportModalOpen(false)} className="text-slate-400 hover:text-[var(--text-main)]">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+        {/* نافذة الاستيراد الجماعي للملفات */}
+        <ImportModal
+          isOpen={importModalOpen}
+          onClose={() => setImportModalOpen(false)}
+          onSuccess={() => {
+            fetchContacts();
+            fetchGlobalStats();
+          }}
+        />
 
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-[11px] text-slate-300 font-medium mb-1">تحديد نوع المصدر:</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setImportSourceType('excel_import')}
-                      className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
-                        importSourceType === 'excel_import'
-                          ? 'bg-emerald-950/50 border-emerald-500/60 text-emerald-300 font-bold'
-                          : 'bg-[var(--card-elevated)] border-purple-900/40 text-slate-400'
-                      }`}
-                    >
-                      <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-                      <span>استيراد إكسل</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setImportSourceType('contacts_file')}
-                      className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
-                        importSourceType === 'contacts_file'
-                          ? 'bg-sky-950/50 border-sky-500/60 text-sky-300 font-bold'
-                          : 'bg-[var(--card-elevated)] border-purple-900/40 text-slate-400'
-                      }`}
-                    >
-                      <FileText className="w-5 h-5 text-sky-400" />
-                      <span>ملف جهات اتصال</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setImportSourceType('evolution')}
-                      className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
-                        importSourceType === 'evolution'
-                          ? 'bg-purple-950/50 border-purple-500/60 text-purple-300 font-bold'
-                          : 'bg-[var(--card-elevated)] border-purple-900/40 text-slate-400'
-                      }`}
-                    >
-                      <Smartphone className="w-5 h-5 text-purple-400" />
-                      <span>خط واتساب Evolution</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] text-slate-300 font-medium mb-1">
-                    {importSourceType === 'evolution' ? 'حدد اسم خط واتساب (Instance):' : 'اسم المصدر التفصيلي (ليظهر كوسام دائم):'}
-                  </label>
-                  {importSourceType === 'evolution' ? (
-                    <select
-                      value={importSourceDetail || ''}
-                      onChange={(e) => setImportSourceDetail(e.target.value)}
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none text-xs font-semibold"
-                    >
-                      <option value="">🌐 كل الخطوط المتصلة (استيراد شامل موصى به)</option>
-                      <option value="Master">الخط الرئيسي (Master) فقط</option>
-                      <option value="Sells_2">خط المبيعات 2 (Sells_2) فقط</option>
-                      <option value="Sells_1">خط المبيعات 1 (Sells_1) فقط</option>
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={importSourceDetail}
-                      onChange={(e) => setImportSourceDetail(e.target.value)}
-                      placeholder="مثال: ملف_حجاج_1446.xlsx أو قائمة_معرض_الرياض"
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none"
-                    />
-                  )}
-                </div>
-
-                {importSourceType !== 'evolution' ? (
-                  <div>
-                    <label className="block text-[11px] text-slate-300 font-medium mb-1">
-                      انسخ وألصق البيانات هنا (الاسم, الهاتف, المنشأة) أو قائمة أرقام:
-                    </label>
-                    <textarea
-                      rows={6}
-                      dir="ltr"
-                      value={importRawText}
-                      onChange={(e) => setImportRawText(e.target.value)}
-                      placeholder={"فندق الصفوة, +966500123456, شركة الحج والعمرة\nأحمد علي, 0551234567\n+966548540410"}
-                      className="w-full bg-[var(--card-elevated)] text-[var(--text-main)] px-3 py-2 rounded-xl border border-purple-900/50 focus:border-purple-500 outline-none font-mono text-left resize-none"
-                    />
-                  </div>
-                ) : (
-                  <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs text-purple-200 leading-relaxed">
-                    <p className="font-bold text-[var(--text-main)] flex items-center gap-1.5 mb-1">
-                      <Smartphone className="w-4 h-4 text-emerald-400" />
-                      استيراد وسحب جهات الاتصال الآلي من سيرفر واتساب
-                    </p>
-                    <p className="text-[11px] text-slate-300">
-                      سيقوم النظام بالاتصال بسيرفر <bdi dir="ltr">Evolution API</bdi> وسحب كافة جهات الاتصال المسجلة على الخط المحدد، واستخراج أرقام الهواتف وفك تشفير الـ <bdi dir="ltr">LID</bdi>، وإسناد وسوم المصدر والدولة تلقائياً مع دمج وتحديث المكرر في قاعدة البيانات.
-                    </p>
-                  </div>
-                )}
-
-                {importStatus && (
-                  <div className="p-3 rounded-xl bg-purple-950/50 border border-purple-500/30 text-purple-200 text-xs">
-                    {importStatus}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-purple-900/40">
-                  <button
-                    type="button"
-                    onClick={() => setImportModalOpen(false)}
-                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 font-semibold transition-all"
-                  >
-                    إغلاق
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={handleRunImport}
-                    className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold transition-all shadow-lg disabled:opacity-50"
-                  >
-                    {isSubmitting ? 'جاري الاستيراد...' : 'بدء الاستيراد وتتبع المصدر'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* نافذة معاينة الدمج */}
+        <MergePreviewModal
+          isOpen={mergeModalOpen}
+          onClose={() => setMergeModalOpen(false)}
+          onSuccess={() => {
+            fetchContacts();
+            fetchGlobalStats();
+            setActionAlert({
+              type: 'success',
+              message: 'تم دمج كافة جهات الاتصال المكررة بنجاح وربط سجلاتها بالسجل الرئيسي.',
+            });
+          }}
+        />
 
         {/* نافذة تأكيد مسح كافة جهات الاتصال */}
         {clearModalOpen && (
@@ -1487,7 +1243,7 @@ export default function ContactsPage() {
                     تأكيد مسح كافة جهات الاتصال
                   </h3>
                   <p className="text-xs text-rose-300/80">
-                    إجراء حاسم لتنظيف الدليل وإعادة الاستيراد
+                    تصفير الدليل بالكامل لإعادة الاستيراد النظيف
                   </p>
                 </div>
               </div>
@@ -1497,7 +1253,7 @@ export default function ContactsPage() {
                   هل أنت متأكد من رغبتك في حذف <bdi className="font-bold text-white">كافة جهات الاتصال المسجلة</bdi> نهائياً؟
                 </p>
                 <p className="text-[11px] text-rose-200/90 leading-relaxed">
-                  هذا الإجراء سيفرغ جدول جهات الاتصال بالكامل حتى تتمكن من سحب واستيراد جهات الاتصال من كل خط واتساب على حدة بشكل منظم ودقيق وبدون فوضى.
+                  سيتم تصفير الدليل مع الحفاظ الكامل على نصوص وسجلات المحادثات والشات في صندوق الوارد بأمان تام.
                 </p>
               </div>
 
@@ -1508,7 +1264,7 @@ export default function ContactsPage() {
                   onClick={() => setClearModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-semibold transition-all disabled:opacity-50"
                 >
-                  إلغاء التراجع
+                  إلغاء
                 </button>
                 <button
                   type="button"
@@ -1519,7 +1275,7 @@ export default function ContactsPage() {
                   {isClearing ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>جاري المسح والتنظيف...</span>
+                      <span>جاري المسح الفوري...</span>
                     </>
                   ) : (
                     <>
