@@ -701,6 +701,7 @@ html.theme-purple   { --g1: #7C3AED; --g2: #A855F7; --g3: #F59E0B; --g4: #C084FC
 html.theme-blue     { --g1: #0EA5E9; --g2: #06B6D4; --g3: #6366F1; --g4: #22D3EE; --accent-l: #0369A1; --accent-d: #7DD3FC; }
 html.theme-emerald  { --g1: #10B981; --g2: #34D399; --g3: #FBBF24; --g4: #059669; --accent-l: #047857; --accent-d: #6EE7B7; }
 html.theme-sunset   { --g1: #F97316; --g2: #EF4444; --g3: #FBBF24; --g4: #EC4899; --accent-l: #C2410C; --accent-d: #FDBA74; }
+html.theme-glow     { --g1: #4361EE; --g2: #E0AEFF; --g3: #F72585; --g4: #7DD3FC; --accent-l: #4361EE; --accent-d: #E0AEFF; }
 html.theme-graphite { --g1: #64748B; --g2: #94A3B8; --g3: #CBD5E1; --g4: #475569; --accent-l: #334155; --accent-d: #CBD5E1; }
 
 /* اللون الرئيسي v1 + حالات النجاح/التحذير/الخطر حسب الوضع */
@@ -963,3 +964,82 @@ html[data-bubble="soft"] .bubble-peer { border-radius: var(--r, 22px); }
 .rng::-moz-range-progress { height: 6px; border-radius: 9px; background: var(--primary); }
 .rng::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
 .rng:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ثيم «متوهج» (theme-glow) — بطاقات بحدود متدرجة وتوهج ملوّن
+   نفس بنية المتغيرات القائمة، فتتبعه كل المكونات؛ والسطوح الكبيرة تأخذ الحد المتدرج.
+   ═══════════════════════════════════════════════════════════════════════ */
+html.theme-glow {
+  --font-ui: 'IBM Plex Sans Arabic', 'Readex Pro Variable', system-ui, sans-serif;
+  --font-head: 'Readex Pro Variable', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --radius-ui: 28px;
+  --glass-blur: 14px;
+  --glow-grad: linear-gradient(137deg, #4361EE 0%, #E0AEFF 45%, #F72585 100%);
+  --glow-fill: linear-gradient(137deg, #4361EE 0%, #A855F7 55%, #F72585 100%);
+}
+html.theme-glow.dark {
+  --bg-main: #0A0A0B; --background: #0A0A0B;
+  --foreground: rgba(255, 255, 255, 0.92); --text-main: rgba(255, 255, 255, 0.92); --text-muted: #9CA3AF; --text-secondary: #E0AEFF;
+  --card-bg: #1A1A1C; --card-elevated: #212124; --card-surface: #2A2A2E;
+  --card-border: rgba(255, 255, 255, 0.08); --border-subtle: rgba(255, 255, 255, 0.08); --border-glow: rgba(224, 174, 255, 0.45);
+  --primary: #E0AEFF; --primary-glow: rgba(224, 174, 255, 0.30);
+  --brand-50: #EEF1FF; --brand-50-rgb: 238 241 255;
+  --brand-100: #DCE3FF; --brand-100-rgb: 220 227 255;
+  --brand-200: #BFCBFF; --brand-200-rgb: 191 203 255;
+  --brand-300: #97A9FB; --brand-300-rgb: 151 169 251;
+  --brand-400: #6B82F4; --brand-400-rgb: 107 130 244;
+  --brand-500: #4361EE; --brand-500-rgb: 67 97 238;
+  --brand-600: #3A52D6; --brand-600-rgb: 58 82 214;
+  --brand-700: #3042B0; --brand-700-rgb: 48 66 176;
+  --brand-800: #28368C; --brand-800-rgb: 40 54 140;
+  --brand-900: #232E70; --brand-900-rgb: 35 46 112;
+  --brand-950: #151B45; --brand-950-rgb: 21 27 69;
+  --bubble-user-bg: #E0AEFF; --bubble-user-text: #FFFFFF;
+  --bubble-peer-bg: #1A1A1C; --bubble-peer-border: rgba(255, 255, 255, 0.10); --bubble-peer-text: rgba(255, 255, 255, 0.92);
+}
+html.theme-glow.light {
+  --bg-main: #F5F5F8; --background: #F5F5F8;
+  --foreground: #16161A; --text-main: #16161A; --text-muted: #5E6472; --text-secondary: #4361EE;
+  --card-bg: #FFFFFF; --card-elevated: #F3F3F8; --card-surface: #E9E9F2;
+  --card-border: rgba(22, 22, 26, 0.10); --border-subtle: rgba(22, 22, 26, 0.10); --border-glow: rgba(67, 97, 238, 0.35);
+  --primary: #4361EE; --primary-glow: rgba(67, 97, 238, 0.20);
+  --brand-50: #EEF1FF; --brand-50-rgb: 238 241 255;
+  --brand-100: #DCE3FF; --brand-100-rgb: 220 227 255;
+  --brand-200: #BFCBFF; --brand-200-rgb: 191 203 255;
+  --brand-300: #97A9FB; --brand-300-rgb: 151 169 251;
+  --brand-400: #6B82F4; --brand-400-rgb: 107 130 244;
+  --brand-500: #4361EE; --brand-500-rgb: 67 97 238;
+  --brand-600: #3A52D6; --brand-600-rgb: 58 82 214;
+  --brand-700: #3042B0; --brand-700-rgb: 48 66 176;
+  --brand-800: #28368C; --brand-800-rgb: 40 54 140;
+  --brand-900: #232E70; --brand-900-rgb: 35 46 112;
+  --brand-950: #151B45; --brand-950-rgb: 21 27 69;
+  --bubble-user-bg: #4361EE; --bubble-user-text: #FFFFFF;
+  --bubble-peer-bg: #FFFFFF; --bubble-peer-border: rgba(22, 22, 26, 0.10); --bubble-peer-text: #16161A;
+}
+
+/* البطاقات الكبيرة: حد متدرج عبر background-clip + توهج ملوّن ناعم خلفها */
+html.theme-glow main .bg-\[var\(--card-bg\)\]:is([class*="rounded-2xl"], [class*="rounded-3xl"], .glass-panel),
+html.theme-glow main .glass-panel,
+html.theme-glow .glow-card {
+  border: 2px solid transparent !important;
+  background: linear-gradient(var(--card-bg), var(--card-bg)) padding-box, var(--glow-grad) border-box !important;
+  border-radius: max(var(--r, 22px), 28px);
+  box-shadow: 0 0 38px -14px color-mix(in srgb, var(--g2) 60%, transparent), 0 0 38px -18px color-mix(in srgb, var(--g3) 55%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* الأزرار الرئيسية وفقاعة الصادر: تدرج الهوية */
+html.theme-glow main .bg-\[var\(--primary\)\],
+html.theme-glow .bubble-user {
+  background: var(--glow-fill);
+  color: #FFFFFF;
+}
+html.theme-glow .bubble-user { box-shadow: 0 6px 22px -8px color-mix(in srgb, var(--g3) 60%, transparent); }
+html.theme-glow input:focus-visible,
+html.theme-glow textarea:focus-visible { outline: 2px solid var(--g2); outline-offset: 2px; }
+
+/* حركة دخول بطاقة الميزة (تحاكي fade + slide-up بمدة 0.8s و easeOut) */
+@keyframes feature-rise { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .feature-rise { animation: none !important; } }

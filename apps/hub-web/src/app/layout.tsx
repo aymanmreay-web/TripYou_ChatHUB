@@ -36,7 +36,7 @@ export default function RootLayout({
               (function() {
                 try {
                   var map = { 'theme-purple': 'theme-violet', 'theme-blue': 'theme-ocean' };
-                  var keys = ['theme-google','theme-violet','theme-ocean','theme-emerald','theme-sunset','theme-graphite'];
+                  var keys = ['theme-google','theme-violet','theme-ocean','theme-emerald','theme-sunset','theme-graphite','theme-glow'];
                   var saved = localStorage.getItem('tripyou_theme');
                   saved = saved ? (map[saved] || saved) : 'theme-google';
                   if (keys.indexOf(saved) === -1) saved = 'theme-google';

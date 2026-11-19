@@ -13,16 +13,18 @@ export type AppTheme =
   | 'theme-ocean'
   | 'theme-emerald'
   | 'theme-sunset'
-  | 'theme-graphite';
+  | 'theme-graphite'
+  | 'theme-glow';
 
 /** الثيمات الست المعتمدة من نظام v1 — ألوان الهوية الأربعة لكل ثيم تُستخدم في مبدّل الترويسة. */
-export const THEMES: { key: AppTheme; label: string; colors: [string, string, string, string] }[] = [
+export const THEMES: { key: AppTheme; label: string; colors: [string, string, string, string]; hint?: string }[] = [
   { key: 'theme-google', label: 'جوجل', colors: ['#4285F4', '#EA4335', '#FBBC04', '#34A853'] },
   { key: 'theme-violet', label: 'بنفسجي ملكي', colors: ['#7C3AED', '#A855F7', '#F59E0B', '#C084FC'] },
   { key: 'theme-ocean', label: 'محيط', colors: ['#0EA5E9', '#06B6D4', '#6366F1', '#22D3EE'] },
   { key: 'theme-emerald', label: 'زمرد', colors: ['#10B981', '#34D399', '#FBBF24', '#059669'] },
   { key: 'theme-sunset', label: 'غروب', colors: ['#F97316', '#EF4444', '#FBBF24', '#EC4899'] },
   { key: 'theme-graphite', label: 'جرافيت', colors: ['#64748B', '#94A3B8', '#CBD5E1', '#475569'] },
+  { key: 'theme-glow', label: 'متوهج', colors: ['#4361EE', '#E0AEFF', '#F72585', '#7DD3FC'], hint: 'بطاقات بحدود متدرجة وتوهج ملوّن' },
 ];
 
 const ALL_THEME_KEYS: AppTheme[] = THEMES.map((t) => t.key);

@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { AppShell } from '../../components/layout/AppShell';
-import { Avatar, NameCapsule, Segmented, Switch } from '../../components/ui';
+import { Monitor, Palette, Zap } from 'lucide-react';
+import { Avatar, NameCapsule, Segmented, Switch, FeatureCard } from '../../components/ui';
 import { FONT_OPTIONS } from '../../lib/fontOptions';
 import { useApp } from '../../context/AppContext';
 
@@ -74,6 +75,13 @@ export default function DesignKitPage() {
             <Switch checked={on} onChange={setOn} ariaLabel="ألوان جوجل المتحركة" />
           </label>
           <div className="gbar rounded-full" />
+        </section>
+        <section className="rounded-3xl bg-[#0A0A0B] px-4 py-10" aria-label="بطاقات الميزات المتوهجة">
+          <div className="grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-3 mx-auto w-full max-w-[936px]" dir="ltr">
+            <FeatureCard title="Hardware" description="My entire desktop setup is built for power. It is silent, durable, and holds my focus." icon={<Monitor size={32} strokeWidth={2.5} />} gradient="linear-gradient(137deg, #FF3D77 0%, #FFB1CE 45%, #FF9D3C 100%)" delay={0.1} />
+            <FeatureCard title="Studio" description="Studio is where I define every single pixel. It is the hub for each canvas I deliver." icon={<Palette size={32} strokeWidth={2.5} />} gradient="linear-gradient(137deg, #FFFFFF 0%, #7DD3FC 45%, #06B6D4 100%)" delay={0.2} />
+            <FeatureCard title="Motion" description="I use Motion to build lively prototypes, bridging the gap between views and code." icon={<Zap size={32} strokeWidth={2.5} />} gradient="linear-gradient(137deg, #4361EE 0%, #E0AEFF 45%, #F72585 100%)" delay={0.3} />
+          </div>
         </section>
       </div>
     </AppShell>

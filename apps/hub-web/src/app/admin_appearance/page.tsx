@@ -235,7 +235,7 @@ function AdminAppearanceContent() {
                     {t.colors.map((c, i) => <i key={i} className="flex-1" style={{ background: c }} />)}
                   </span>
                   <b className="text-[0.9em] font-bold flex items-center gap-1.5">{t.label}{active && <Check className="w-3.5 h-3.5 text-[var(--ok)]" />}</b>
-                  <small className="text-[0.75em] text-[var(--text-muted)] block mt-0.5">{t.key === 'theme-google' ? 'الافتراضي — هوية v1' : 'ثيم إضافي'}</small>
+                  <small className="text-[0.75em] text-[var(--text-muted)] block mt-0.5">{t.key === 'theme-google' ? 'الافتراضي — هوية v1' : (t.hint || 'ثيم إضافي')}</small>
                 </button>
               );
             })}
