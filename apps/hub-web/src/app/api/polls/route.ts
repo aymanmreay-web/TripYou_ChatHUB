@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
+import { requirePermission, denyUnless } from '../../../lib/serverAuth';
+import { denyLine } from '../../../lib/access';
 export const dynamic = 'force-dynamic';
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.sslip.io';
@@ -8,6 +10,8 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'bc6075e9f95967407faa
 
 // GET /api/polls?poll_id=<id>&chat_jid=<jid>
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission(req, 'inbox.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const pollId = searchParams.get('poll_id');
@@ -56,6 +60,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/polls - التصويت على خيار في الاستطلاع أو إنشاء استطلاع جديد
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'inbox.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { action } = body;
@@ -109,6 +115,11 @@ export async function POST(req: NextRequest) {
 
     // 2. إنشاء استطلاع وإرساله إلى واتساب عبر Evolution API
     if (action === 'create') {
+      { const d = denyUnless(auth, 'inbox.polls'); if (d) return d; }
+      {
+        const d = await denyLine(auth, String(body.instanceName || 'Sells_2'), 'send');
+        if (d) return d;
+      }
       const {
         instanceName = 'Sells_2',
         chat_jid,

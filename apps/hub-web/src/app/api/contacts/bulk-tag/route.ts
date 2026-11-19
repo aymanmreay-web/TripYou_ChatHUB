@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic';
  * Body: { contact_ids: string[], tag_id: string, action: 'add' | 'remove' }
  */
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const contactIds: string[] = Array.isArray(body.contact_ids)

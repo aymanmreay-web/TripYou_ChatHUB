@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -11,6 +12,8 @@ export const revalidate = 0;
  * GET /api/campaigns/lines     → الخطوط المتاحة للإرسال
  */
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission(req, 'campaigns.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const kind = searchParams.get('kind') || 'templates';

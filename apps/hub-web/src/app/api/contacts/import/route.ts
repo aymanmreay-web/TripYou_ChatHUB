@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 import * as XLSX from 'xlsx';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const maxDuration = 300;
@@ -213,6 +214,8 @@ function parseSpreadsheet(bytes: ArrayBuffer): {
 
 // ── Handler الرئيسي POST ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.import');
+  if (auth instanceof NextResponse) return auth;
   try {
     const contentType = req.headers.get('content-type') || '';
     let contactsToImport: {

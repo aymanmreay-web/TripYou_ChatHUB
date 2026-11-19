@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 import { evoFetch, digitsOnly, EvolutionError } from '../../../../lib/evolution';
+import { requirePermission } from '../../../../lib/serverAuth';
 import {
   upsertGroupMeta,
   rebuildGroupMembers,
@@ -41,6 +42,8 @@ type ManageBody = {
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'groups.manage');
+  if (auth instanceof NextResponse) return auth;
   let body: ManageBody;
   try {
     body = await req.json();

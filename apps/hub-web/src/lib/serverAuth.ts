@@ -14,11 +14,37 @@ export interface Caller {
   permissions: Set<string>;
 }
 
-export async function getCaller(req: NextRequest): Promise<Caller | null> {
+/** اسم كوكي رمز الجلسة (تكتبه الواجهة في lib/supabase.ts) — ليعمل fetch العادي وصور <img> دون Header */
+export const AUTH_COOKIE = 'sb-access-token';
+
+function readToken(req: Request): string {
   const header = req.headers.get('authorization') || '';
-  const token = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+  if (header.toLowerCase().startsWith('bearer ')) return header.slice(7).trim();
+  const cookie = req.headers.get('cookie') || '';
+  const m = cookie.match(new RegExp('(?:^|;\\s*)' + AUTH_COOKIE + '=([^;]+)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+// ذاكرة قصيرة (20 ثانية) لتخفيف الاستعلامات عند توالي الطلبات؛ تغيّر الصلاحيات يسري خلال 20 ثانية كحد أقصى
+const CACHE_MS = 20_000;
+const cache = new Map<string, { at: number; caller: Caller | null }>();
+
+export async function getCaller(req: Request): Promise<Caller | null> {
+  const token = readToken(req);
   if (!token) return null;
 
+  const hit = cache.get(token);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.caller;
+
+  const caller = await loadCaller(token);
+  cache.set(token, { at: Date.now(), caller });
+  if (cache.size > 500) {
+    Array.from(cache.entries()).forEach(([k, v]) => { if (Date.now() - v.at > CACHE_MS) cache.delete(k); });
+  }
+  return caller;
+}
+
+async function loadCaller(token: string): Promise<Caller | null> {
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return null;
 
@@ -33,6 +59,7 @@ export async function getCaller(req: NextRequest): Promise<Caller | null> {
   const me = rows[0];
   if (!me) return null;
 
+  // مدير النظام الأعلى يتجاوز الفحص دائماً (يشمل أي صلاحية تُضاف مستقبلاً)
   const isSuper = me.role_key === 'super_admin';
   const perms = new Set<string>();
 
@@ -59,23 +86,38 @@ export async function getCaller(req: NextRequest): Promise<Caller | null> {
   return { staffId: me.id, fullName: me.full_name, roleKey: me.role_key || '', isSuper, permissions: perms };
 }
 
+export const can = (c: Caller, permission: string) => c.isSuper || c.permissions.has(permission);
+
+const UNAUTH = () => NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+const FORBID = (msg = 'لا تملك صلاحية تنفيذ هذا الإجراء') => NextResponse.json({ error: msg }, { status: 403 });
+
+/** أي موظف نشط مسجَّل الدخول (للبيانات الشخصية: المفضلة، الإشعارات، التثبيت...) */
+export async function requireStaff(req: Request): Promise<Caller | NextResponse> {
+  const caller = await getCaller(req);
+  return caller || UNAUTH();
+}
+
 /**
  * يُستخدم في بداية كل مسار:
  *   const g = await requirePermission(req, 'roles.manage');
  *   if (g instanceof NextResponse) return g;
  */
-export async function requirePermission(
-  req: NextRequest,
-  permission: string
-): Promise<Caller | NextResponse> {
+export async function requirePermission(req: Request, permission: string): Promise<Caller | NextResponse> {
   const caller = await getCaller(req);
-  if (!caller) {
-    return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
-  }
-  if (!caller.permissions.has(permission)) {
-    return NextResponse.json({ error: 'لا تملك صلاحية تنفيذ هذا الإجراء' }, { status: 403 });
-  }
-  return caller;
+  if (!caller) return UNAUTH();
+  return can(caller, permission) ? caller : FORBID();
+}
+
+/** يكفي امتلاك واحدة من الصلاحيات */
+export async function requireAny(req: Request, permissions: string[]): Promise<Caller | NextResponse> {
+  const caller = await getCaller(req);
+  if (!caller) return UNAUTH();
+  return permissions.some((p) => can(caller, p)) ? caller : FORBID();
+}
+
+/** فحص صلاحية إضافية داخل المسار (حسب نوع الإجراء) — يعيد null إذا مسموح */
+export function denyUnless(caller: Caller, permission: string): NextResponse | null {
+  return can(caller, permission) ? null : FORBID();
 }
 
 /** تسجيل عملية في سجل التدقيق (لا يُفشل العملية الأصلية إذا تعذّر التسجيل) */

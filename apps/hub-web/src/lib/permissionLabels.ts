@@ -14,8 +14,10 @@ export const GROUP_AR: Record<string, string> = {
   "reports": "التقارير",
   "campaigns": "الحملات التسويقية",
   "audit": "سجل التدقيق",
-  "settings": "إعدادات النظام"
+  "settings": "إعدادات النظام",
+  "canned": "الردود الجاهزة",
+  "tags": "الوسوم"
 };
 
 /** صلاحيات حساسة: يُطلب تأكيد صريح قبل تفعيلها لأي دور */
-export const SENSITIVE_PERMISSIONS = new Set<string>(['contacts.export','campaigns.manage','staff.manage','roles.manage','inbox.view_all','inbox.send_as','audit.view','settings.manage','groups.manage','lines.manage']);
+export const SENSITIVE_PERMISSIONS = new Set<string>(['contacts.export','campaigns.manage','staff.manage','roles.manage','inbox.view_all','inbox.send_as','audit.view','settings.manage','groups.manage','lines.manage','inbox.revoke','inbox.approve_access','contacts.delete']);

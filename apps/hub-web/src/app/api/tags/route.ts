@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requirePermission, requireStaff } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -11,6 +12,8 @@ export const revalidate = 0;
  * ?kind=custom|system — فلترة حسب النوع
  */
 export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const scope = searchParams.get('scope') || '';
@@ -74,6 +77,8 @@ export async function GET(req: NextRequest) {
  * Body: { name, color, scope?, kind? }
  */
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'tags.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { name, color = '#8b5cf6', scope = 'both', kind = 'custom' } = body;

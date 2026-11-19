@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { requireAny } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -11,7 +12,9 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
  * جلب قائمة خطوط واتساب المتاحة من Evolution API مع حالة الاتصال
  * يُستخدم في ImportModal لملء dropdown الخطوط ديناميكياً
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireAny(req, ['lines.view', 'inbox.view']);
+  if (auth instanceof NextResponse) return auth;
   try {
     const res = await fetch(`${EVOLUTION_URL}/instance/fetchInstances`, {
       headers: { apikey: EVOLUTION_API_KEY },

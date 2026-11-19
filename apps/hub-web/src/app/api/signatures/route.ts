@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabase';
 
+import { requireStaff, can } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -8,7 +9,9 @@ export const revalidate = 0;
  * GET /api/signatures
  * استرجاع إعدادات التوقيع العامة وتواقيع الموظفين من قاعدة البيانات
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const supabase = getSupabaseAdmin();
 
@@ -77,10 +80,32 @@ export async function GET() {
  * حفظ إعدادات التوقيع العامة وتواقيع الموظفين في قاعدة البيانات
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const supabase = getSupabaseAdmin();
     const body = await req.json();
-    const { global, staff } = body;
+    const { global } = body;
+    let { staff } = body;
+
+    // بلا صلاحية إدارة التواقيع: لا إعدادات عامة، ويعدّل توقيعه الشخصي فقط (إن سُمح له) دون المساس بالأعلام
+    const isManager = can(auth, 'signature.manage');
+    if (!isManager) {
+      if (global) return NextResponse.json({ error: 'لا تملك صلاحية تعديل إعدادات التواقيع العامة' }, { status: 403 });
+      const mine = Array.isArray(staff) ? staff.find((s: any) => s?.id === auth.staffId) : null;
+      if (!mine) return NextResponse.json({ error: 'لا تملك صلاحية تعديل توقيع غيرك' }, { status: 403 });
+      const cur = await supabase.from('staff_signatures').select('allow_custom_edit').eq('staff_id', auth.staffId).maybeSingle();
+      if (cur.data && cur.data.allow_custom_edit === false) {
+        return NextResponse.json({ error: 'تعديل توقيعك الشخصي غير مسموح لك' }, { status: 403 });
+      }
+      await supabase
+        .from('staff_signatures')
+        .upsert(
+          { staff_id: auth.staffId, custom_part1: mine.custom_part1, custom_part2: mine.custom_part2, updated_at: new Date().toISOString() },
+          { onConflict: 'staff_id' }
+        );
+      return NextResponse.json({ success: true });
+    }
 
     // 1. حفظ الإعدادات العامة
     if (global) {

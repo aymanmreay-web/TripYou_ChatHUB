@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -9,6 +10,8 @@ export const revalidate = 0;
  * GET /api/campaigns/[id]?status=pending|sent|failed|skipped [&limit=200]
  */
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requirePermission(req, 'campaigns.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');

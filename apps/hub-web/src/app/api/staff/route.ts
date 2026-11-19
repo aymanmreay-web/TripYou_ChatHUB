@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requireAny } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -8,7 +9,9 @@ export const revalidate = 0;
  * م7 — الموظفون النشطون الحقيقيون من القاعدة (يستبدل AVAILABLE_STAFF الثابتة في الصندوق).
  * GET /api/staff → { data: [{ id, full_name, role_name, email }] }
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireAny(req, ['staff.view', 'inbox.assign']);
+  if (auth instanceof NextResponse) return auth;
   try {
     const rows = await q(
       `select s.id, s.full_name, s.email, coalesce(r.title_ar, r.key) as role_name, r.key as role_key

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requireStaff } from '../../../lib/serverAuth';
 /**
  * POST /api/avatars
  * جلب الصور الحقيقية (شخص/مجموعة) من واتساب عبر Evolution للجهات التي لا صورة لها
@@ -11,6 +12,8 @@ const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.ssl
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json().catch(() => ({}));
     const items: { jid: string; instance: string }[] = Array.isArray(body?.items) ? body.items : [];

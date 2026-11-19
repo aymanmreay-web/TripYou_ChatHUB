@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { q } from '../../../../lib/pg';
 
+import { requireStaff } from '../../../../lib/serverAuth';
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.sslip.io';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
@@ -47,6 +48,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { jid: string } }
 ) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   const jid = decodeURIComponent(params.jid || '');
   if (!jid) {
     return NextResponse.json({ error: 'JID required' }, { status: 400 });
