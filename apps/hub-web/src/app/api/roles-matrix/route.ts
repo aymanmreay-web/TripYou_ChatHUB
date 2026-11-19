@@ -1,21 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { q } from '../../../lib/pg';
+import { q, withClient } from '../../../lib/pg';
+import { requirePermission, writeAudit } from '../../../lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /**
- * B4 — قسم الأدوار والصلاحيات (موسع ومربوط بالقاعدة):
+ * قسم الأدوار والصلاحيات — كل المسارات محمية على الخادم:
  *
- * GET  /api/roles-matrix
- *   → { roles: [... مع عدد الموظفين], permissions: [... مصنفة بالمسارات],
- *       matrix: [{role_id, permission_key}], departments: [... مع عدد الموظفين] }
- *
- * POST { role_id, permission_key, on: boolean }
- *   → تشغيل/إيقاف صلاحية لدور (role_permissions) — دور المدير مقفل دائماً (يملك كل شيء)
+ * GET  /api/roles-matrix            (إدارة الأدوار أو إدارة الموظفين)
+ * POST { role_id, permission_key, on }   (roles.manage) — تفعيل/إيقاف صلاحية لدور
+ *   • دور مدير النظام الأعلى مقفل دائماً
+ *   • الصلاحيات المحصورة (super_only) لا يمنحها إلا مدير النظام الأعلى
+ *   • لا يمنح أحد صلاحية لا يملكها هو نفسه (منع تصعيد الصلاحيات)
+ *   • كل تغيير يُسجَّل في سجل التدقيق
+ * PUT  { action: dept_* }           (staff.manage) — إدارة الأقسام
  */
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // القراءة متاحة لمن يدير الأدوار أو يدير الموظفين (صفحة الموظفين تحتاج الأدوار والأقسام)
+  let g = await requirePermission(req, 'roles.manage');
+  if (g instanceof NextResponse && g.status === 403) g = await requirePermission(req, 'staff.manage');
+  if (g instanceof NextResponse) return g;
   try {
     const [roles, permissions, matrix, departments] = await Promise.all([
       q(
@@ -25,7 +31,7 @@ export async function GET() {
          order by case r.key when 'super_admin' then 1 when 'sales_lead' then 2 else 3 end, r.key`
       ),
       q(
-        `select p.key, p.grp, p.label_ar, p.super_only
+        `select p.key, p.grp, p.label_ar, coalesce(p.desc_ar, '') as desc_ar, p.super_only
          from hub.permissions p
          order by p.grp, p.key`
       ),
@@ -40,22 +46,44 @@ export async function GET() {
     return NextResponse.json({ roles, permissions, matrix, departments });
   } catch (err: any) {
     console.error('[roles-matrix GET]', err?.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: 'تعذر تحميل الأدوار والصلاحيات' }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const g = await requirePermission(req, 'roles.manage');
+  if (g instanceof NextResponse) return g;
   try {
     const body = await req.json();
     const { role_id, permission_key, on } = body;
     if (!role_id || !permission_key || typeof on !== 'boolean') {
-      return NextResponse.json({ error: 'role_id, permission_key, on required' }, { status: 400 });
+      return NextResponse.json({ error: 'بيانات ناقصة: الدور والصلاحية والحالة مطلوبة' }, { status: 400 });
     }
 
-    // دور المدير مقفل — يملك كل الصلاحيات بالبنية
-    const role = await q<{ key: string }>(`select key from hub.roles where id = $1`, [role_id]);
-    if (role[0]?.key === 'super_admin') {
-      return NextResponse.json({ error: 'صلاحيات المدير كاملة دائماً ولا تُعدل' }, { status: 400 });
+    const role = await q<{ key: string; title_ar: string }>(
+      `select key, coalesce(title_ar, key) as title_ar from hub.roles where id = $1`,
+      [role_id]
+    );
+    if (!role[0]) return NextResponse.json({ error: 'الدور غير موجود' }, { status: 404 });
+
+    // دور المدير الأعلى مقفل — يملك كل الصلاحيات بالبنية
+    if (role[0].key === 'super_admin') {
+      return NextResponse.json({ error: 'صلاحيات مدير النظام الأعلى كاملة دائماً ولا تُعدّل' }, { status: 400 });
+    }
+
+    const perm = await q<{ key: string; label_ar: string; super_only: boolean }>(
+      `select key, label_ar, super_only from hub.permissions where key = $1`,
+      [permission_key]
+    );
+    if (!perm[0]) return NextResponse.json({ error: 'الصلاحية غير موجودة' }, { status: 404 });
+
+    // الصلاحيات المحصورة لا يتحكم بها إلا مدير النظام الأعلى
+    if (perm[0].super_only && !g.isSuper) {
+      return NextResponse.json({ error: 'هذه الصلاحية محصورة بمدير النظام الأعلى' }, { status: 403 });
+    }
+    // منع تصعيد الصلاحيات: لا تمنح ما لا تملكه
+    if (on && !g.isSuper && !g.permissions.has(permission_key)) {
+      return NextResponse.json({ error: 'لا يمكنك منح صلاحية لا تملكها أنت' }, { status: 403 });
     }
 
     if (on) {
@@ -66,23 +94,29 @@ export async function POST(req: NextRequest) {
         [role_id, permission_key]
       );
     } else {
-      await q(
-        `delete from hub.role_permissions where role_id = $1 and permission_key = $2`,
-        [role_id, permission_key]
-      );
+      await q(`delete from hub.role_permissions where role_id = $1 and permission_key = $2`, [role_id, permission_key]);
     }
+
+    await writeAudit(g.staffId, on ? 'role_permission.grant' : 'role_permission.revoke', 'role', String(role_id), {
+      role_key: role[0].key,
+      role_title: role[0].title_ar,
+      permission_key,
+      permission_label: perm[0].label_ar,
+      by: g.fullName,
+    });
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error('[roles-matrix POST]', err?.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: 'تعذر حفظ التغيير' }, { status: 500 });
   }
 }
 
 /**
- * إدارة الأقسام — تبويب «إدارة الشركة» (ربط الأقسام بالموظفين):
- * POST   { action: 'dept_create' | 'dept_rename' | 'dept_delete' | 'dept_assign' | 'dept_unassign', ... }
+ * إدارة الأقسام — تبويب «إدارة الشركة» (ربط الأقسام بالموظفين)
  */
 export async function PUT(req: NextRequest) {
+  const g = await requirePermission(req, 'staff.manage');
+  if (g instanceof NextResponse) return g;
   try {
     const body = await req.json();
     const action = body.action;
@@ -97,41 +131,55 @@ export async function PUT(req: NextRequest) {
          returning id`,
         [`dept_${Date.now().toString(36)}`, title]
       );
+      await writeAudit(g.staffId, 'department.create', 'department', rows[0]?.id || '', { title_ar: title, by: g.fullName });
       return NextResponse.json({ success: true, id: rows[0]?.id });
     }
 
     if (action === 'dept_rename') {
-      const rows = await q(
-        `update hub.departments set title_ar = $2 where id = $1 returning id`,
-        [body.id, String(body.title_ar || '').trim()]
-      );
+      const title = String(body.title_ar || '').trim();
+      if (!title) return NextResponse.json({ error: 'اسم القسم مطلوب' }, { status: 400 });
+      const rows = await q(`update hub.departments set title_ar = $2 where id = $1 returning id`, [body.id, title]);
       if (!rows.length) return NextResponse.json({ error: 'القسم غير موجود' }, { status: 404 });
+      await writeAudit(g.staffId, 'department.rename', 'department', String(body.id), { title_ar: title, by: g.fullName });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'dept_delete') {
-      // فك ارتباط الموظفين أولاً ثم الحذف
-      await q(`update hub.staff set department_id = null where department_id = $1`, [body.id]);
-      await q(`delete from hub.departments where id = $1`, [body.id]);
+      // فك ارتباط الموظفين ثم الحذف داخل معاملة واحدة (إما الكل أو لا شيء)
+      await withClient(async (client: any) => {
+        await client.query('begin');
+        try {
+          await client.query(`update hub.staff set department_id = null where department_id = $1`, [body.id]);
+          await client.query(`delete from hub.departments where id = $1`, [body.id]);
+          await client.query('commit');
+        } catch (e) {
+          await client.query('rollback');
+          throw e;
+        }
+      });
+      await writeAudit(g.staffId, 'department.delete', 'department', String(body.id), { by: g.fullName });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'dept_assign') {
-      await q(
-        `update hub.staff set department_id = $2 where id = any($1::uuid[])`,
-        [body.staff_ids || [], body.department_id]
-      );
+      const ids: string[] = Array.isArray(body.staff_ids) ? body.staff_ids : [];
+      if (!ids.length || !body.department_id) {
+        return NextResponse.json({ error: 'اختر القسم والموظفين' }, { status: 400 });
+      }
+      await q(`update hub.staff set department_id = $2 where id = any($1::uuid[])`, [ids, body.department_id]);
+      await writeAudit(g.staffId, 'department.assign', 'department', String(body.department_id), { staff_ids: ids, by: g.fullName });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'dept_unassign') {
       await q(`update hub.staff set department_id = null where id = $1`, [body.staff_id]);
+      await writeAudit(g.staffId, 'department.unassign', 'staff', String(body.staff_id), { by: g.fullName });
       return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ error: 'action غير معروف' }, { status: 400 });
+    return NextResponse.json({ error: 'إجراء غير معروف' }, { status: 400 });
   } catch (err: any) {
     console.error('[roles-matrix PUT]', err?.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: 'تعذر تنفيذ العملية' }, { status: 500 });
   }
 }

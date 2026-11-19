@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '../../../lib/apiFetch';
 import React, { useState, useEffect } from 'react';
 import {
   UserCheck,
@@ -49,7 +50,7 @@ export default function StaffManagementPage() {
   // تبويب إدارة الشركة: staff = الموظفون / departments = الأقسام وربطهم
   const [companyTab, setCompanyTab] = useState<'staff' | 'departments'>('staff');
   useEffect(() => {
-    fetch('/api/roles-matrix')
+    apiFetch('/api/roles-matrix')
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => setDepartmentsList((j.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar }))))
       .catch(() => {});
@@ -126,7 +127,7 @@ export default function StaffManagementPage() {
   const deptCall = async (payload: Record<string, unknown>) => {
     setDeptBusy(true);
     try {
-      const res = await fetch('/api/roles-matrix', {
+      const res = await apiFetch('/api/roles-matrix', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -134,7 +135,7 @@ export default function StaffManagementPage() {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'فشل التنفيذ');
       showNotification('تم الحفظ');
-      const fresh = await fetch('/api/roles-matrix').then((r) => r.json());
+      const fresh = await apiFetch('/api/roles-matrix').then((r) => r.json());
       setDepartmentsList((fresh.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar, staff_count: d.staff_count })));
       await reload();
     } catch (e: any) {
@@ -349,7 +350,7 @@ export default function StaffManagementPage() {
                 onClick={async () => {
                   setCompanyTab('departments');
                   try {
-                    const fresh = await fetch('/api/roles-matrix').then((r) => r.json());
+                    const fresh = await apiFetch('/api/roles-matrix').then((r) => r.json());
                     setDepartmentsList((fresh.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar, staff_count: d.staff_count })));
                   } catch { /* صامت */ }
                 }}
