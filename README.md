@@ -1,8 +1,21 @@
-# TripYou_ChatHUB
-منصة إدارة ومحادثات واتساب موحدة لعدة خطوط وأرقام متصلة مباشرة بـ Evolution API لشركة TripYou (بإشراف م. أيمن مريعي — بدون Chatwoot نهائياً وبدون أي وسيط ثقيل).
+# Enhanced Vite React TypeScript Template
 
-ابدأ من: `docs/00-PLAN.md` ثم `coordination/README.md`.
+Vite + React + TypeScript + Tailwind CSS template with Shadcn/ui pre-configured.
 
-Layout: docs/ · coordination/ · db/ (migrations+seed, PostgreSQL 16) · packages/contracts · apps/hub-web · ops/ · tools/gen_seed.py
-Seed: `python tools/gen_seed.py` → `db/seed/0001_catalog.sql`
-Never commit secrets. Mask phones/emails in docs.
+## Features
+
+- **Linting**: TypeScript (`tsc --noEmit`), ESLint, and Stylelint
+- **Shadcn/ui**: Pre-configured with all Shadcn components
+- **Modern Stack**: Vite + React + TypeScript + Tailwind CSS
+
+## Available Scripts
+
+```bash
+# Run all linting (types + JS + CSS)
+npm run lint
+
+# Individual linting
+npm run lint:types # TypeScript (tsc --noEmit)
+npm run lint:js    # ESLint
+npm run lint:css   # Stylelint
+```
