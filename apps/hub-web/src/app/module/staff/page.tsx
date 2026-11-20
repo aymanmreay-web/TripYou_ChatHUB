@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '../../../lib/apiFetch';
 import React, { useState, useEffect } from 'react';
 import {
   UserCheck,
@@ -49,13 +50,83 @@ export default function StaffManagementPage() {
   // تبويب إدارة الشركة: staff = الموظفون / departments = الأقسام وربطهم
   const [companyTab, setCompanyTab] = useState<'staff' | 'departments'>('staff');
   useEffect(() => {
-    fetch('/api/roles-matrix')
+    apiFetch('/api/roles-matrix')
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => setDepartmentsList((j.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar }))))
       .catch(() => {});
   }, []);
   const [isNewModal, setIsNewModal] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  // استثناءات الصلاحيات الفردية للموظف (سماح / منع)
+  const [overridesStaff, setOverridesStaff] = useState<StaffMember | null>(null);
+  const [overridesData, setOverridesData] = useState<{
+    rolePermissions: string[];
+    allPermissions: Array<{ key: string; grp: string; label_ar: string; desc_ar: string | null; super_only: boolean }>;
+    overridesMap: Record<string, 'allow' | 'deny'>;
+    originalKeys: string[];
+  } | null>(null);
+  const [overridesLoading, setOverridesLoading] = useState(false);
+  const [overridesSaving, setOverridesSaving] = useState(false);
+  const [overridesSearch, setOverridesSearch] = useState('');
+
+  const openOverridesModal = async (st: StaffMember) => {
+    setOverridesStaff(st);
+    setOverridesLoading(true);
+    setOverridesSearch('');
+    try {
+      const res = await apiFetch(`/api/staff/${st.id}/overrides`);
+      if (!res.ok) throw new Error('تعذر تحميل استثناءات الموظف');
+      const json = await res.json();
+      const map: Record<string, 'allow' | 'deny'> = {};
+      const origKeys: string[] = [];
+      (json.overrides || []).forEach((o: any) => {
+        map[o.permission_key] = o.effect;
+        origKeys.push(o.permission_key);
+      });
+      setOverridesData({
+        rolePermissions: json.role_permissions || [],
+        allPermissions: json.all_permissions || [],
+        overridesMap: map,
+        originalKeys: origKeys,
+      });
+    } catch (err: any) {
+      showNotification(err.message);
+    } finally {
+      setOverridesLoading(false);
+    }
+  };
+
+  const handleSaveOverrides = async () => {
+    if (!overridesStaff || !overridesData) return;
+    setOverridesSaving(true);
+    try {
+      // جمع كل التغييرات بما فيها التي حُذفت للعودة للوضع الافتراضي
+      const items: Array<{ permission_key: string; effect: 'allow' | 'deny' | 'default' }> = [];
+      for (const [k, effect] of Object.entries(overridesData.overridesMap)) {
+        items.push({ permission_key: k, effect });
+      }
+      for (const k of overridesData.originalKeys) {
+        if (!overridesData.overridesMap[k]) {
+          items.push({ permission_key: k, effect: 'default' });
+        }
+      }
+      const res = await apiFetch(`/api/staff/${overridesStaff.id}/overrides`, {
+        method: 'POST',
+        body: JSON.stringify({ overrides: items }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'تعذر حفظ الاستثناءات');
+      }
+      showNotification(`تم حفظ استثناءات الصلاحيات لـ ${overridesStaff.name}`);
+      setOverridesStaff(null);
+    } catch (err: any) {
+      showNotification(err.message);
+    } finally {
+      setOverridesSaving(false);
+    }
+  };
 
   const reload = async () => {
     try {
@@ -126,7 +197,7 @@ export default function StaffManagementPage() {
   const deptCall = async (payload: Record<string, unknown>) => {
     setDeptBusy(true);
     try {
-      const res = await fetch('/api/roles-matrix', {
+      const res = await apiFetch('/api/roles-matrix', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -134,7 +205,7 @@ export default function StaffManagementPage() {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'فشل التنفيذ');
       showNotification('تم الحفظ');
-      const fresh = await fetch('/api/roles-matrix').then((r) => r.json());
+      const fresh = await apiFetch('/api/roles-matrix').then((r) => r.json());
       setDepartmentsList((fresh.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar, staff_count: d.staff_count })));
       await reload();
     } catch (e: any) {
@@ -349,7 +420,7 @@ export default function StaffManagementPage() {
                 onClick={async () => {
                   setCompanyTab('departments');
                   try {
-                    const fresh = await fetch('/api/roles-matrix').then((r) => r.json());
+                    const fresh = await apiFetch('/api/roles-matrix').then((r) => r.json());
                     setDepartmentsList((fresh.departments || []).map((d: any) => ({ id: d.id, title_ar: d.title_ar, staff_count: d.staff_count })));
                   } catch { /* صامت */ }
                 }}
@@ -593,6 +664,14 @@ export default function StaffManagementPage() {
                   <td className="p-4 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
+                        onClick={() => openOverridesModal(st)}
+                        className="p-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-600 text-amber-300 hover:text-white transition-all border border-amber-500/30"
+                        title="استثناءات الصلاحيات الفردية (سماح / منع خاص)"
+                      >
+                        <Sliders className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
                         onClick={() => {
                           setEditingStaff(st);
                           setIsNewModal(false);
@@ -811,6 +890,197 @@ export default function StaffManagementPage() {
                   <span>{saving ? '...جارٍ الحفظ' : 'اعتماد الترخيص وحفظ الصلاحيات'}</span>
                 </button>
               </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ═════════════════════════════════════════════════════════
+            Modal استثناءات الصلاحيات الفردية للموظف (سماح / منع)
+           ═════════════════════════════════════════════════════════ */}
+        {overridesStaff && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4" dir="rtl">
+            <div className="bg-[var(--card-bg)] border border-amber-500/50 rounded-3xl max-w-2xl w-full p-6 space-y-5 text-right shadow-2xl max-h-[90vh] overflow-y-auto">
+              
+              <div className="flex items-center justify-between border-b border-amber-900/40 pb-3" dir="rtl">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h3 className="font-extrabold text-base text-[var(--text-main)]">
+                      <span>استثناءات الصلاحيات الفردية: </span>
+                      <span>{overridesStaff.name}</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      <span>الدور الأساسي: </span>
+                      <span className="text-purple-300 font-bold">{overridesStaff.role_title_ar}</span>
+                      <span> — تتيح لك هذه الشاشة منح صلاحية غير موجودة بدوره أو حجب صلاحية يملكها دوره.</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setOverridesStaff(null)}
+                  className="p-1.5 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {overridesLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin text-amber-400" />
+                  <span className="text-xs">جارٍ تحميل بيانات الصلاحيات...</span>
+                </div>
+              ) : overridesData ? (
+                <div className="space-y-4">
+                  {/* شريط البحث في الصلاحيات */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      dir="rtl"
+                      value={overridesSearch}
+                      onChange={(e) => setOverridesSearch(e.target.value)}
+                      placeholder="ابحث بالاسم العربي أو الرمز..."
+                      className="w-full bg-slate-900/80 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-xs text-right text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
+                    />
+                  </div>
+
+                  {/* قائمة الصلاحيات */}
+                  <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+                    {overridesData.allPermissions
+                      .filter((p) => {
+                        if (!overridesSearch.trim()) return true;
+                        const term = overridesSearch.toLowerCase();
+                        return (
+                          p.label_ar.toLowerCase().includes(term) ||
+                          p.key.toLowerCase().includes(term) ||
+                          (p.desc_ar && p.desc_ar.toLowerCase().includes(term))
+                        );
+                      })
+                      .map((p) => {
+                        const inRole = overridesData.rolePermissions.includes(p.key);
+                        const effect = overridesData.overridesMap[p.key]; // 'allow' | 'deny' | undefined
+
+                        return (
+                          <div
+                            key={p.key}
+                            className={`p-3 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                              effect === 'allow'
+                                ? 'bg-emerald-950/20 border-emerald-500/50'
+                                : effect === 'deny'
+                                ? 'bg-rose-950/20 border-rose-500/50'
+                                : inRole
+                                ? 'bg-slate-900/60 border-purple-500/30'
+                                : 'bg-slate-900/30 border-slate-800'
+                            }`}
+                          >
+                            <div className="space-y-0.5 text-right flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-[var(--text-main)]">{p.label_ar}</span>
+                                <bdi dir="ltr" className="font-mono text-[10px] text-slate-400">
+                                  {p.key}
+                                </bdi>
+                                {p.super_only && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                                    مدير أعلى
+                                  </span>
+                                )}
+                              </div>
+                              {p.desc_ar && <p className="text-[11px] text-slate-400 leading-relaxed">{p.desc_ar}</p>}
+                              <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-1">
+                                <span>الوضع بالدور: </span>
+                                <span className={inRole ? 'text-purple-300 font-semibold' : 'text-slate-400'}>
+                                  {inRole ? 'مسموح افتراضياً للدور' : 'غير ممنوح للدور'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* أزرار التحكم بالاستثناء */}
+                            <div className="flex items-center gap-1 self-end sm:self-center shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = { ...overridesData.overridesMap };
+                                  delete next[p.key];
+                                  setOverridesData({ ...overridesData, overridesMap: next });
+                                }}
+                                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
+                                  effect === undefined
+                                    ? 'bg-slate-700 text-white border-slate-500 shadow'
+                                    : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:bg-slate-800'
+                                }`}
+                                title="الاعتماد على الدور دون استثناء"
+                              >
+                                افتراضي الدور
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOverridesData({
+                                    ...overridesData,
+                                    overridesMap: { ...overridesData.overridesMap, [p.key]: 'allow' },
+                                  });
+                                }}
+                                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
+                                  effect === 'allow'
+                                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-950/40'
+                                    : 'bg-emerald-950/20 text-emerald-400 border-emerald-900/40 hover:bg-emerald-900/30'
+                                }`}
+                                title="منح صلاحية فردية (سماح خاص)"
+                              >
+                                سماح
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOverridesData({
+                                    ...overridesData,
+                                    overridesMap: { ...overridesData.overridesMap, [p.key]: 'deny' },
+                                  });
+                                }}
+                                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all ${
+                                  effect === 'deny'
+                                    ? 'bg-rose-600 text-white border-rose-400 shadow-md shadow-rose-950/40'
+                                    : 'bg-rose-950/20 text-rose-400 border-rose-900/40 hover:bg-rose-900/30'
+                                }`}
+                                title="حجب صلاحية فردية (منع خاص)"
+                              >
+                                منع
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* أزرار الحفظ والإلغاء */}
+                  <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-amber-900/30">
+                    <button
+                      type="button"
+                      onClick={() => setOverridesStaff(null)}
+                      className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:bg-white/5"
+                    >
+                      إلغاء
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveOverrides}
+                      disabled={overridesSaving}
+                      className={`px-6 py-2.5 rounded-2xl text-white text-xs sm:text-sm font-bold shadow-lg shadow-amber-950/40 flex items-center gap-2 transition-opacity ${
+                        overridesSaving
+                          ? 'bg-slate-600 cursor-not-allowed opacity-60'
+                          : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500'
+                      }`}
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{overridesSaving ? '...جارٍ الحفظ' : 'حفظ الاستثناءات الفردية'}</span>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
             </div>
           </div>

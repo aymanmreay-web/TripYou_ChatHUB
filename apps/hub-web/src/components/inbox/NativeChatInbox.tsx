@@ -1058,6 +1058,9 @@ export function NativeChatInbox() {
     );
   }, [user]);
 
+  // الواجهة تُخفي ما لا يملك الموظف صلاحيته؛ الخادم يرفضه على أي حال (lib/serverAuth.ts)
+  const can = (perm: string) => isSuperAdmin || (user?.permissions || []).includes(perm);
+
   // isManager = تُستخدَم للتحقق من صلاحيات الإدارة العامة (مثل رؤية قائمة كل الموظفين)
   const isManager = useMemo(() => {
     return (
@@ -2913,6 +2916,7 @@ export function NativeChatInbox() {
                   <select
                     value={activeConversation.status || 'open'}
                     onChange={(e) => handleUpdateStatus(e.target.value as ConversationStatus)}
+                    disabled={!can('inbox.change_status') && activeConversation.assigned_staff_id !== user?.id}
                     className="bg-[var(--card-elevated)] text-xs text-[var(--text-main)] border border-[var(--border-subtle)] rounded-xl px-3 py-1.5 outline-none font-medium cursor-pointer"
                   >
                     <option value="open">🔵 مفتوحة (Open)</option>
@@ -3846,18 +3850,22 @@ export function NativeChatInbox() {
                           تحويل ({selectedMessages.length})
                         </button>
                       )}
-                      <button
+                      {can('inbox.forward') && (
+<button
                         onClick={handleBulkShare}
                         className="px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] border border-[var(--border-subtle)] text-[var(--text-main)] text-[11px] font-bold hover:border-[var(--border-glow)]"
                       >
                         مشاركة
                       </button>
-                      <button
+)}
+                      {can('inbox.revoke') && (
+<button
                         onClick={handleBulkDelete}
                         className="px-3 py-1.5 rounded-xl bg-rose-600/20 border border-rose-500/40 text-rose-300 text-[11px] font-bold hover:bg-rose-600/30"
                       >
                         حذف للجميع
                       </button>
+)}
                       <button
                         onClick={() => { setMsgSelectionMode(false); setSelectedMsgIds(new Set()); }}
                         className="px-3 py-1.5 rounded-xl text-[var(--text-muted)] text-[11px] font-bold hover:text-[var(--text-main)]"
@@ -4110,7 +4118,8 @@ export function NativeChatInbox() {
                     </div>
 
                     {/* زر المرفقات */}
-                    <Button
+                    {can('inbox.send_media') && (
+<Button
                       type="button"
                       variant="ghost"
                       size="sm"
@@ -4120,6 +4129,7 @@ export function NativeChatInbox() {
                     >
                       <Paperclip className="w-5 h-5" />
                     </Button>
+)}
 
                     {/* زر الإيموجي */}
                     <div className="relative shrink-0">

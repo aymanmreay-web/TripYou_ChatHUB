@@ -3,6 +3,7 @@ import { q } from '../../../../lib/pg';
 import { evoFetch, EvolutionError } from '../../../../lib/evolution';
 import { upsertGroupMeta, rebuildGroupMembers, extractParticipants } from '../../../../lib/groupsSync';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const maxDuration = 300;
@@ -12,7 +13,9 @@ export const maxDuration = 300;
  * fetchAllGroups?getParticipants=true — metadata كاملة + المشاركون بأدوار الأدمن مباشرة
  * → upsert hub.whatsapp_groups + إعادة بناء hub.whatsapp_group_members لكل (مجموعة، خط).
  */
-export async function POST() {
+export async function POST(req: Request) {
+  const auth = await requirePermission(req, 'groups.sync');
+  if (auth instanceof NextResponse) return auth;
   try {
     const instances = await evoFetch<any[]>('/instance/fetchInstances');
     const open = (Array.isArray(instances) ? instances : []).filter(

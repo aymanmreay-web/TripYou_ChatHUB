@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 import { insertNotification } from '../../../lib/webhookHandlers/notify';
 
+import { requireStaff, can, denyUnless } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -19,12 +20,16 @@ export const revalidate = 0;
  */
 
 export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
-    const staffId = searchParams.get('staff_id');
     const pending = searchParams.get('pending');
+    const isApprover = can(auth, 'inbox.approve_access');
+    const staffId = isApprover ? searchParams.get('staff_id') : auth.staffId;
 
     if (pending === '1') {
+      { const d = denyUnless(auth, 'inbox.approve_access'); if (d) return d; }
       const rows = await q(
         `select r.id, r.chat_jid, r.reason, r.status, r.created_at,
                 s.full_name as staff_name, l.title_ar as line_title, l.instance_name,
@@ -58,12 +63,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
 
     // ─── طلب إذن من موظف ───
     if (body.action === 'request') {
-      const { staff_id, line_id, chat_jid, reason } = body;
+      { const d = denyUnless(auth, 'inbox.request_access'); if (d) return d; }
+      const { line_id, chat_jid, reason } = body;
+      const staff_id = auth.staffId;
       if (!staff_id || !line_id || !chat_jid) {
         return NextResponse.json({ error: 'staff_id, line_id, chat_jid required' }, { status: 400 });
       }
@@ -111,7 +120,9 @@ export async function POST(req: NextRequest) {
 
     // ─── قرار المدير ───
     if (body.action === 'decide') {
-      const { request_id, decision, decided_by } = body;
+      { const d = denyUnless(auth, 'inbox.approve_access'); if (d) return d; }
+      const { request_id, decision } = body;
+      const decided_by = auth.staffId;
       if (!request_id || !['approved', 'rejected'].includes(decision)) {
         return NextResponse.json({ error: 'request_id and decision(approved|rejected) required' }, { status: 400 });
       }

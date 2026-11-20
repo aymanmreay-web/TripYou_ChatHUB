@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requireStaff, can } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -11,45 +12,12 @@ export const revalidate = 0;
  * لأن مفتاح الخدمة (getSupabaseAdmin) كان ميتاً ويُفشل الطلب بصمت فلا يرى الموظف صناديقه.
  */
 export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
-    const { searchParams } = new URL(req.url);
-    const staffIdParam = searchParams.get('staff_id');
-    const emailParam = searchParams.get('email');
-
-    // 1. تحديد الموظف إما بالمعرف الصريح أو البريد
-    let currentStaff: {
-      id: string;
-      email: string | null;
-      full_name: string;
-      status: string;
-      role_key: string | null;
-    } | null = null;
-    if (staffIdParam) {
-      const rows = await q<any>(
-        `select s.id, s.email, s.full_name, s.status, r.key as role_key
-         from hub.staff s
-         left join hub.roles r on r.id = s.role_id
-         where s.id = $1::uuid limit 1`,
-        [staffIdParam]
-      );
-      currentStaff = rows[0] || null;
-    } else if (emailParam) {
-      const rows = await q<any>(
-        `select s.id, s.email, s.full_name, s.status, r.key as role_key
-         from hub.staff s
-         left join hub.roles r on r.id = s.role_id
-         where lower(s.email) = lower($1) limit 1`,
-        [emailParam.trim()]
-      );
-      currentStaff = rows[0] || null;
-    }
-
-    // 2. التحقق من دور المدير / مسؤول النظام
-    const isSuperAdmin =
-      currentStaff?.role_key === 'super_admin' ||
-      currentStaff?.role_key === 'admin' ||
-      currentStaff?.role_key === 'manager' ||
-      !!currentStaff?.email?.toLowerCase().includes('ayman');
+    // الهوية من الجلسة (لا من وسائط الطلب) — ولا استثناء لأي بريد بعينه
+    const currentStaff = { id: auth.staffId, full_name: auth.fullName };
+    const isSuperAdmin = auth.isSuper || can(auth, 'inboxes.manage') || can(auth, 'inbox.view_all');
 
     // 3. جلب جميع الصناديق النشطة وربط خطوطها (أسماء النسخ كما في الواجهة)
     const allRows = await q<any>(

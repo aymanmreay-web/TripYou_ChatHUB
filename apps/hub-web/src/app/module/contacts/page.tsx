@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { ContactsStats } from '../../../components/contacts/ContactsStats';
+import { useApp } from '../../../context/AppContext';
 import { ImportModal } from '../../../components/contacts/ImportModal';
 import { MergePreviewModal } from '../../../components/contacts/MergePreviewModal';
 
@@ -583,6 +584,9 @@ export default function ContactsPage() {
   // نوافذ منبثقة
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
+  // الواجهة تُخفي ما لا يملك الموظف صلاحيته (والخادم يرفضه على أي حال)
+  const { user: authUser } = useApp();
+  const can = (perm: string) => authUser.role === 'super_admin' || authUser.permissions.includes(perm);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
@@ -1144,6 +1148,7 @@ export default function ContactsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {can('contacts.merge') && (
             <button
               onClick={() => setMergeModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-200 border border-indigo-500/40 text-xs font-medium transition-all shadow-sm"
@@ -1152,6 +1157,8 @@ export default function ContactsPage() {
               <GitMerge className="w-4 h-4 text-indigo-400" />
               <span>معاينة ودمج الجهات</span>
             </button>
+            )}
+            {can('contacts.delete') && (
             <button
               onClick={() => setClearModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/80 text-rose-200 border border-rose-500/40 text-xs font-medium transition-all shadow-sm"
@@ -1160,6 +1167,8 @@ export default function ContactsPage() {
               <Trash2 className="w-4 h-4 text-rose-400" />
               <span>مسح كل جهات الاتصال</span>
             </button>
+            )}
+            {can('contacts.import') && (
             <button
               onClick={() => setImportModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-200 border border-purple-500/30 text-xs font-medium transition-all shadow-sm"
@@ -1167,6 +1176,8 @@ export default function ContactsPage() {
               <Upload className="w-4 h-4 text-purple-400" />
               <span>استيراد ملفات / واتساب</span>
             </button>
+            )}
+            {can('contacts.export') && (
             <button
               onClick={handleExportCSV}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--card-elevated)] hover:bg-white/5 text-[var(--text-secondary)] border border-[var(--border-subtle)] text-xs font-medium transition-all shadow-sm"
@@ -1174,6 +1185,7 @@ export default function ContactsPage() {
               <Download className="w-4 h-4 text-slate-400" />
               <span>تصدير CSV</span>
             </button>
+            )}
             <button
               onClick={openAddModal}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-lg"
@@ -1710,13 +1722,15 @@ export default function ContactsPage() {
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button
+                    {can('contacts.delete') && (
+<button
                       onClick={() => handleDeleteContact(contact.id, contact.display_name)}
                       className="p-1.5 rounded-xl hover:bg-rose-500/20 text-[var(--text-muted)] hover:text-rose-400 transition-colors"
                       title="حذف"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
+)}
                   </div>
                 </div>
               </div>
@@ -1799,13 +1813,15 @@ export default function ContactsPage() {
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
+                          {can('contacts.delete') && (
+<button
                             onClick={() => handleDeleteContact(contact.id, contact.display_name)}
                             className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400"
                             title="حذف"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+)}
                         </div>
                       </td>
                     </tr>

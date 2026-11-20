@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -8,7 +9,9 @@ export const revalidate = 0;
  * GET /api/contacts/stats
  * إحصائيات شاملة دقيقة 100% مستخرجة مباشرة من hub.contacts عبر pool مشترك
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requirePermission(req, 'contacts.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const statsRes = await q(`
       SELECT 

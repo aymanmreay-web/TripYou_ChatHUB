@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const maxDuration = 300;
@@ -57,6 +58,8 @@ function mergeSourceDetails(detailA: string | null, detailB: string | null): str
  * 2. دمج الحسابات المشفرة (LID) مع جهات الاتصال الحقيقية التي تحمل نفس صورة الملف الشخصي أو نفس الاسم
  */
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.merge');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = req.headers.get('content-type')?.includes('application/json')
       ? await req.json().catch(() => ({}))

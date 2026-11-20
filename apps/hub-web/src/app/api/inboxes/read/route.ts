@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requireStaff } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -10,10 +11,12 @@ export const revalidate = 0;
  * تستخدم اتصال Postgres المباشر (q) بدل مفتاح الخدمة الميت.
  */
 export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const inboxId = searchParams.get('inbox_id') || 'all';
-    const userId = searchParams.get('user_id');
+    const userId = auth.staffId; // من الجلسة: لا يقرأ موظف إيصالات غيره
 
     if (!userId) {
       return NextResponse.json({ reads: [] });
@@ -48,9 +51,12 @@ export async function GET(req: NextRequest) {
  * تسجيل محادثة كمقروءة للمستخدم داخل الصندوق الحالي
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
-    const { user_id, inbox_id, chat_jid } = body;
+    const { inbox_id, chat_jid } = body;
+    const user_id = auth.staffId;
 
     if (!user_id || !chat_jid) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });

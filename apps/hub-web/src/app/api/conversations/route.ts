@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
+import { requirePermission, denyUnless, can } from '../../../lib/serverAuth';
 import { insertNotification } from '../../../lib/webhookHandlers/notify';
 
+import { denyConversation, readableInstances } from '../../../lib/access';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -45,16 +47,26 @@ async function ensureConversation(chatJid: string, instance: string, title?: str
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission(req, 'inbox.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const chatJid = searchParams.get('chat_jid') || '';
     const instance = searchParams.get('instance') || '';
+    // قراءة محادثة واحدة: تصريح الخط + ملكية المحادثة
+    if (chatJid && instance && !searchParams.get('jids')) {
+      const d = await denyConversation(auth, chatJid, instance, 'read');
+      if (d) return d;
+    }
 
     // وضع دفعات: ?jids=a,b,c&instances=Master,Sells_2 → وسوم وحالات عدة محادثات للقائمة
     const jidsParam = searchParams.get('jids');
     if (jidsParam) {
       const jids = jidsParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 300);
-      const instances = (searchParams.get('instances') || '').split(',').map((s) => s.trim()).filter(Boolean);
+      let instances = (searchParams.get('instances') || '').split(',').map((s) => s.trim()).filter(Boolean);
+      // لا تُكشف وسوم وحالات خطوط غير مصرّح بها
+      const allowed = await readableInstances(auth);
+      if (allowed !== 'all') instances = instances.filter((i) => allowed.includes(i));
       if (jids.length === 0 || instances.length === 0) {
         return NextResponse.json({ items: [] });
       }
@@ -128,9 +140,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'inbox.reply');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { chat_jid, instance, tag_id, action } = body;
+    if (chat_jid && instance) {
+      const d = await denyConversation(auth, chat_jid, instance, 'send');
+      if (d) return d;
+    }
     if (!chat_jid || !instance || !tag_id || !['add', 'remove'].includes(action)) {
       return NextResponse.json({ error: 'chat_jid, instance, tag_id, action(add|remove) required' }, { status: 400 });
     }
@@ -176,11 +194,37 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requirePermission(req, 'inbox.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { chat_jid, instance } = body;
     if (!chat_jid || !instance) {
       return NextResponse.json({ error: 'chat_jid and instance required' }, { status: 400 });
+    }
+
+    // تصريح الخط + ملكية المحادثة، ثم صلاحية كل نوع تعديل على حدة
+    {
+      const d = await denyConversation(auth, chat_jid, instance, 'read');
+      if (d) return d;
+      const cur = await q<{ assigned_staff_id: string | null }>(
+        `select c.assigned_staff_id from hub.conversations c join hub.lines l on l.id = c.line_id
+          where c.chat_jid = $1 and l.instance_name = $2 limit 1`,
+        [chat_jid, instance]
+      );
+      const owner = cur[0]?.assigned_staff_id ?? null;
+      const isMine = owner === auth.staffId;
+      if (body.pin || body.unpin_message_id) {
+        const e = denyUnless(auth, 'inbox.reply'); if (e) return e;
+      }
+      if ('staff_id' in body) {
+        // اقتناص محادثة غير مسندة لنفسه يكفيه الرد؛ غير ذلك يحتاج صلاحية الإسناد
+        const claimOwn = body.staff_id === auth.staffId && !owner && can(auth, 'inbox.reply');
+        if (!claimOwn) { const e = denyUnless(auth, 'inbox.assign'); if (e) return e; }
+      }
+      if (body.status && !(isMine && can(auth, 'inbox.reply'))) {
+        const e = denyUnless(auth, 'inbox.change_status'); if (e) return e;
+      }
     }
 
     const convId = await ensureConversation(chat_jid, instance);

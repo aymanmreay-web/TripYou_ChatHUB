@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q, withClient } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const maxDuration = 300;
@@ -63,6 +64,8 @@ async function ensureTagId(key: string, name: string, color: string): Promise<st
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const onlyInstance = searchParams.get('instance');

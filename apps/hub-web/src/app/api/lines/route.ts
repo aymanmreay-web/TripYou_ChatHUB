@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requireAny, requirePermission } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -9,7 +10,9 @@ export const revalidate = 0;
  * جلب كافة خطوط النظام مع أسمائها المعربة والمخصصة داخلياً (title_ar).
  * تستخدم اتصال Postgres المباشر (q) بدل مفتاح الخدمة الميت.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireAny(req, ['lines.view', 'inbox.view']);
+  if (auth instanceof NextResponse) return auth;
   try {
     const rows = await q<any>(
       `select id, instance_name, title_ar, phone_e164, kind, status, daily_cap, is_locked
@@ -37,6 +40,8 @@ export async function GET() {
  * Body: { id?: string, instance_name?: string, title_ar?: string, daily_cap?: number }
  */
 export async function PATCH(req: NextRequest) {
+  const auth = await requirePermission(req, 'lines.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { id, instance_name, title_ar, daily_cap } = body;

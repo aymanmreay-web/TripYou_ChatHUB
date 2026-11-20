@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requireAny } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -12,7 +13,9 @@ export const revalidate = 0;
  *   totals, staff_perf[], abandoned[], sla_breaches[], daily[14], lines[]
  * }
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireAny(req, ['reports.view_all', 'reports.view_team', 'system.health']);
+  if (auth instanceof NextResponse) return auth;
   try {
     // ─── 1) إجماليات عامة ───
     const [totals] = await q<any>(

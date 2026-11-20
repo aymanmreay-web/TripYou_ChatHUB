@@ -8,6 +8,10 @@
   "scripts": {
     "dev": "npm --workspace=apps/hub-web run dev",
     "build": "npm --workspace=apps/hub-web run build",
-    "start": "npm --workspace=apps/hub-web run start"
+    "start": "npm --workspace=apps/hub-web run start",
+    "test:permissions": "node tests/permissions/build.mjs && node tests/permissions/test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 import { insertNotification } from '../../../lib/webhookHandlers/notify';
 
+import { requirePermission } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -17,6 +18,8 @@ export const revalidate = 0;
  */
 
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission(req, 'campaigns.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const rows = await q(
       `select c.id, c.title, c.description, c.status, c.line_instance, c.audience,
@@ -35,6 +38,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'campaigns.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { title, line_instance, text, audience, extra_texts, send_window, auto_tag_id } = body;
@@ -158,6 +163,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requirePermission(req, 'campaigns.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const { id, action } = body;

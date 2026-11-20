@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requirePermission } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -53,6 +54,8 @@ function detectCountry(phone: string | null | undefined): { code: string; name: 
  * جلب قائمة جهات الاتصال مباشرة من hub.contacts مع دعم تصفية الدولة، الكيانات، والبحث الشامل
  */
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('q') || searchParams.get('search') || '';
@@ -270,6 +273,8 @@ export async function GET(req: NextRequest) {
  * إنشاء أو تحديث جهة اتصال مع فحص عدم التكرار وضبط الدولة والـ E.164
  */
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const {
@@ -413,6 +418,8 @@ export async function POST(req: NextRequest) {
  * مسح شامل فوري وذري لكافة جهات الاتصال المسجلة مع فك الارتباط التلقائي
  */
 export async function DELETE(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.delete');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const deleteAll = searchParams.get('all') === 'true';

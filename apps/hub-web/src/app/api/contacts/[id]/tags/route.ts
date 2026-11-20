@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../../lib/pg';
 
+import { requirePermission } from '../../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -12,6 +13,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requirePermission(req, 'contacts.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const contactId = params.id;
 
@@ -57,6 +60,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requirePermission(req, 'contacts.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const contactId = params.id;
     const body = await req.json();

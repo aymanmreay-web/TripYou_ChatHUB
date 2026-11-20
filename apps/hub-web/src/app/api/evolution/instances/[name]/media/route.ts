@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 
+import { requirePermission } from '../../../../../../lib/serverAuth';
+import { denyLine } from '../../../../../../lib/access';
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://evo.69.62.122.89.sslip.io';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'bc6075e9f95967407faae5d0fa9ac875a8d88a94782172db';
 
 // POST: Send media (image, document, audio, video) via Evolution API
 export async function POST(req: Request, { params }: { params: { name: string } }) {
+  const auth = await requirePermission(req, 'inbox.send_media');
+  if (auth instanceof NextResponse) return auth;
+  { const d = await denyLine(auth, params.name, 'send'); if (d) return d; }
   try {
     const { name } = params;
     const body = await req.json();

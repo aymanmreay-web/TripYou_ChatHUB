@@ -3,6 +3,7 @@ import { q } from '../../../../lib/pg';
 import { evoFetch } from '../../../../lib/evolution';
 import { rebuildGroupMembers, extractParticipants } from '../../../../lib/groupsSync';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -13,6 +14,8 @@ export const revalidate = 0;
  * وشارات خطوطنا (مطابقة بأرقام الهواتف فقط). عند تعذر الجلب يرجع السجل المحلي.
  */
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission(req, 'groups.view');
+  if (auth instanceof NextResponse) return auth;
   const jid = new URL(req.url).searchParams.get('group_jid') || '';
   if (!jid) return NextResponse.json({ error: 'group_jid مطلوب' }, { status: 400 });
 

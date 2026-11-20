@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Shield, Loader2, Building2, Users, Lock, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { Shield, Loader2, Building2, Users, Lock, CheckCircle2, XCircle, Search, ShieldX } from 'lucide-react';
 import { AppShell } from '../../../components/layout/AppShell';
 import { toast } from '../../../components/common/Toaster';
+import { useApp } from '../../../context/AppContext';
+import { apiFetch } from '../../../lib/apiFetch';
+import { GROUP_AR, SENSITIVE_PERMISSIONS } from '../../../lib/permissionLabels';
 
 /**
  * B4 — قسم الأدوار والصلاحيات (موسع، مفصل، مربوط بالقاعدة):
@@ -13,37 +16,24 @@ import { toast } from '../../../components/common/Toaster';
  */
 
 interface RoleRow { id: string; key: string; title_ar: string; staff_count: number }
-interface PermRow { key: string; grp: string; label_ar: string; super_only: boolean }
+interface PermRow { key: string; grp: string; label_ar: string; desc_ar: string; super_only: boolean }
 interface MatrixRow { role_id: string; permission_key: string }
 interface DeptRow { id: string; key: string; title_ar: string; staff_count: number }
 
+const SLATE = 'bg-slate-500/15 text-slate-300 border-slate-500/40';
 const ROLE_TAG: Record<string, { label: string; cls: string }> = {
-  super_admin: { label: 'مدير', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/40' },
-  sales_lead: { label: 'مشرف', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
-  support_agent: { label: 'موظف', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-  observer: { label: 'مراقب', cls: 'bg-sky-500/15 text-sky-300 border-sky-500/40' },
-  trainee: { label: 'متدرب', cls: 'bg-slate-500/15 text-slate-300 border-slate-500/40' },
-};
-
-// أسماء عربية لمجموعات الصلاحيات (grp keys في القاعدة)
-const GRP_AR: Record<string, string> = {
-  inbox: 'المحادثات',
-  groups: 'المجموعات',
-  contacts: 'جهات الاتصال',
-  lines: 'الخطوط',
-  inboxes: 'الصناديق',
-  staff: 'الموظفون',
-  roles: 'الأدوار',
-  signature: 'التواقيع',
-  campaigns: 'الحملات',
-  reports: 'التقارير',
-  tasks: 'المهام',
-  meetings: 'الاجتماعات',
-  settings: 'الإعدادات',
-  system: 'النظام',
-  channels: 'القنوات',
-  audit: 'التدقيق',
-  appearance: 'المظهر',
+  super_admin: { label: 'مدير النظام', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/40' },
+  admin: { label: 'مدير', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/40' },
+  sales_lead: { label: 'مشرف مبيعات', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
+  dept_manager: { label: 'مدير قسم', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
+  main_operator: { label: 'مشغل الرقم الرئيسي', cls: 'bg-violet-500/15 text-violet-300 border-violet-500/40' },
+  sales_agent: { label: 'موظف مبيعات', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
+  support_agent: { label: 'موظف دعم', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
+  promo_agent: { label: 'موظف ترويج', cls: 'bg-teal-500/15 text-teal-300 border-teal-500/40' },
+  finance: { label: 'مالية', cls: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/40' },
+  observer: { label: 'مراقب جودة', cls: 'bg-sky-500/15 text-sky-300 border-sky-500/40' },
+  viewer: { label: 'مشاهد', cls: SLATE },
+  trainee: { label: 'متدرب', cls: SLATE },
 };
 
 function RolesPageContent() {
@@ -55,12 +45,16 @@ function RolesPageContent() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [permSearch, setPermSearch] = useState('');
+  const { user } = useApp();
+  const canManage = user.role === 'super_admin' || user.permissions.includes('roles.manage');
+  const isSuperUser = user.role === 'super_admin';
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/roles-matrix', { cache: 'no-store' });
+      const res = await apiFetch('/api/roles-matrix');
       const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'تعذر تحميل الصلاحيات');
       setRoles(json.roles || []);
       setPermissions(json.permissions || []);
       setMatrix(json.matrix || []);
@@ -69,15 +63,15 @@ function RolesPageContent() {
         const first = (json.roles as RoleRow[]).find((r) => r.key !== 'super_admin') || json.roles[0];
         setActiveRoleId(first.id);
       }
-    } catch {
-      toast({ title: 'تعذر تحميل الصلاحيات', kind: 'error' });
+    } catch (e: any) {
+      toast({ title: e?.message || 'تعذر تحميل الصلاحيات', kind: 'error' });
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (canManage) load(); else setLoading(false); }, [load, canManage]);
 
   const activeRole = roles.find((r) => r.id === activeRoleId);
   const isSuperAdminRole = activeRole?.key === 'super_admin';
@@ -91,8 +85,8 @@ function RolesPageContent() {
   const groupedPerms = useMemo(() => {
     const groups = new Map<string, PermRow[]>();
     for (const p of permissions) {
-      if (permSearch && !(p.label_ar || '').includes(permSearch)) continue; // بحث بالاسم العربي فقط (قرار المالك)
-      const g = p.grp || 'عام';
+      if (permSearch && !`${p.label_ar} ${p.desc_ar}`.includes(permSearch)) continue; // بحث بالعربية فقط (قرار المالك)
+      const g = p.grp || 'other';
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g)!.push(p);
     }
@@ -101,6 +95,13 @@ function RolesPageContent() {
 
   const togglePerm = async (permKey: string, on: boolean) => {
     if (!activeRole || isSuperAdminRole) return;
+    const perm = permissions.find((p) => p.key === permKey);
+    if (on && SENSITIVE_PERMISSIONS.has(permKey)) {
+      const ok = window.confirm(
+        `تفعيل «${perm?.label_ar || ''}» لدور «${activeRole.title_ar}» صلاحية حساسة.\nهل أنت متأكد؟`
+      );
+      if (!ok) return;
+    }
     const k = `${activeRole.id}:${permKey}`;
     setSavingKey(k);
     // تحديث متفائل
@@ -110,7 +111,7 @@ function RolesPageContent() {
         : prev.filter((m) => !(m.role_id === activeRole.id && m.permission_key === permKey))
     );
     try {
-      const res = await fetch('/api/roles-matrix', {
+      const res = await apiFetch('/api/roles-matrix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role_id: activeRole.id, permission_key: permKey, on }),
@@ -125,6 +126,20 @@ function RolesPageContent() {
     }
   };
 
+  if (!canManage) {
+    return (
+      <div className="max-w-xl mx-auto py-16 px-4 text-center" dir="rtl">
+        <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 mx-auto flex items-center justify-center mb-4">
+          <ShieldX className="w-8 h-8" />
+        </div>
+        <h1 className="text-xl font-bold text-[var(--text-main)] mb-2">لا تملك صلاحية إدارة الأدوار</h1>
+        <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+          هذه الصفحة متاحة لمن يملك صلاحية «إدارة الأدوار ومصفوفة الصلاحيات والأقسام». تواصل مع مدير النظام لطلبها.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 max-w-6xl mx-auto" dir="rtl">
       {/* الرأس */}
@@ -135,20 +150,20 @@ function RolesPageContent() {
         <div>
           <h1 className="text-xl font-black text-[var(--text-main)]">الأدوار والصلاحيات</h1>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            بنية الأدوار الثلاثة: <b className="text-rose-300">مدير</b> يملك كل شيء • <b className="text-amber-300">مشرف</b> يدير الفريق والإسناد • <b className="text-emerald-300">موظف</b> يعمل على محادثاته المسندة — كلها مربوطة بالقاعدة وتُطبق فوراً على الرؤية والوصول
+            <b className="text-rose-300">مدير النظام</b> يملك كل شيء • <b className="text-amber-300">المشرف</b> يدير الفريق والإسناد • <b className="text-emerald-300">الموظف</b> يعمل على محادثاته المسندة — كل تغيير هنا يُحفظ في القاعدة ويُسجَّل في سجل التدقيق ويُطبَّق فوراً
           </p>
         </div>
       </div>
 
       {/* بطاقات الأدوار */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {loading && roles.length === 0 ? (
           <div className="col-span-full p-8 text-center text-xs text-[var(--text-muted)] flex items-center justify-center gap-2">
             <Loader2 className="w-5 h-5 animate-spin text-purple-400" /> جاري التحميل...
           </div>
         ) : (
           roles.map((r) => {
-            const tag = ROLE_TAG[r.key] || { label: r.title_ar, cls: 'bg-slate-500/15 text-slate-300 border-slate-500/40' };
+            const tag = ROLE_TAG[r.key] || { label: r.title_ar, cls: SLATE };
             const count = matrix.filter((m) => m.role_id === r.id).length;
             return (
               <button
@@ -195,8 +210,8 @@ function RolesPageContent() {
                 type="text"
                 value={permSearch}
                 onChange={(e) => setPermSearch(e.target.value)}
-                placeholder="بحث في الصلاحيات..."
-                className="bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl pr-9 pl-3 py-2 text-xs text-[var(--text-main)] focus:outline-none focus:border-purple-500 w-56"
+                placeholder="ابحث باسم الصلاحية أو وصفها..."
+                className="bg-[var(--card-elevated)] border border-[var(--border-subtle)] rounded-xl pr-9 pl-3 py-2 text-xs text-[var(--text-main)] focus:outline-none focus:border-purple-500 w-64"
               />
             </div>
           </div>
@@ -206,12 +221,15 @@ function RolesPageContent() {
               <div key={grp}>
                 <div className="text-[11px] font-bold text-purple-300 mb-2 flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5" />
-                  {GRP_AR[grp] || grp}
+                  {GROUP_AR[grp] || 'صلاحيات أخرى'}
+                  <span className="text-[10px] text-[var(--text-muted)] font-normal">
+                    ({perms.filter((p) => isSuperAdminRole || rolePerms.has(p.key)).length} من {perms.length})
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {perms.map((p) => {
                     const on = isSuperAdminRole ? true : rolePerms.has(p.key);
-                    const locked = isSuperAdminRole || p.super_only;
+                    const locked = isSuperAdminRole || (p.super_only && !isSuperUser);
                     const k = `${activeRole.id}:${p.key}`;
                     return (
                       <button
@@ -219,15 +237,34 @@ function RolesPageContent() {
                         type="button"
                         disabled={locked || savingKey === k}
                         onClick={() => togglePerm(p.key, !on)}
-                        className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all text-right ${
+                        className={`flex items-start justify-between gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all text-right ${
                           on
                             ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200'
                             : 'bg-[var(--card-elevated)] border-[var(--border-subtle)] text-[var(--text-muted)]'
                         } ${locked ? 'opacity-70 cursor-not-allowed' : 'hover:border-purple-500/40'}`}
-                        title={p.label_ar || p.key}
+                        title={p.desc_ar || p.label_ar}
                       >
-                        <span className="truncate">{p.label_ar || p.key}</span>
-                        {on ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <XCircle className="w-4 h-4 shrink-0 text-slate-500" />}
+                        <span className="min-w-0">
+                          <span className="block leading-snug">
+                            {p.label_ar}
+                            {p.super_only && (
+                              <span className="mr-1.5 text-[9px] px-1.5 py-0.5 rounded-md border border-rose-500/40 bg-rose-500/10 text-rose-300 font-bold">
+                                لمدير النظام فقط
+                              </span>
+                            )}
+                            {SENSITIVE_PERMISSIONS.has(p.key) && !p.super_only && (
+                              <span className="mr-1.5 text-[9px] px-1.5 py-0.5 rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-300 font-bold">
+                                حساسة
+                              </span>
+                            )}
+                          </span>
+                          {p.desc_ar && (
+                            <span className="block mt-1 text-[10px] font-normal leading-relaxed text-[var(--text-muted)]">
+                              {p.desc_ar}
+                            </span>
+                          )}
+                        </span>
+                        {on ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" /> : <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />}
                       </button>
                     );
                   })}

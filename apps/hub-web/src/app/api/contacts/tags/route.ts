@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -8,7 +9,9 @@ export const revalidate = 0;
  * GET /api/contacts/tags
  * إرجاع قائمة الوسوم المتاحة لجهات الاتصال مع إحصاءات الاستخدام
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requirePermission(req, 'contacts.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     // وسوم قاعدة البيانات (scope: contact | both | all) مع عداد الاستخدام
     const tags = await q<{

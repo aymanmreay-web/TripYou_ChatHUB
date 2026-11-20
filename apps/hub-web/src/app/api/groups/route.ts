@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requirePermission } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -10,7 +11,9 @@ export const revalidate = 0;
  * (مطابقة أعضاء whatsapp_group_members بأرقام الهواتف فقط — آمن ضد معرفات @lid)
  * + fallback عضوية من المحادثات إن غاب الرقم + عدد طلبات الانضمام المعلقة لكل مجموعة.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requirePermission(req, 'groups.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const groups = await q<any>(
       `select g.group_jid, g.subject, g.picture_url, g.description, g.announcement, g.restricted,

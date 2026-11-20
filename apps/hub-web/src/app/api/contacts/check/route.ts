@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -10,6 +11,8 @@ export const revalidate = 0;
  * → { saved: boolean, contact?: { id, display_name, entity_type } }
  */
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.view');
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const jid = (searchParams.get('jid') || '').trim();

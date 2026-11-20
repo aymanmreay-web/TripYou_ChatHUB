@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -10,6 +11,8 @@ export const revalidate = 0;
  * Body: { title: string, description?: string, contact_ids: string[] }
  */
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'contacts.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const title = (body.title || '').trim();

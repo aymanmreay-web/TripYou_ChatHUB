@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { requirePermission } from '../../../../../../lib/serverAuth';
+import { denyLine } from '../../../../../../lib/access';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -11,6 +13,9 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
  * GET /api/evolution/instances/[name]/group-members?jid=<group_jid>
  */
 export async function GET(req: NextRequest, { params }: { params: { name: string } }) {
+  const auth = await requirePermission(req, 'groups.view');
+  if (auth instanceof NextResponse) return auth;
+  { const d = await denyLine(auth, params.name, 'read'); if (d) return d; }
   try {
     const instanceName: string = params.name;
     const { searchParams } = new URL(req.url);

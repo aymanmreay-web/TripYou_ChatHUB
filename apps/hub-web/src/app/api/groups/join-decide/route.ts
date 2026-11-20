@@ -4,6 +4,7 @@ import { evoFetch, digitsOnly, EvolutionError } from '../../../../lib/evolution'
 import { rebuildGroupMembers, extractParticipants, auditGroup } from '../../../../lib/groupsSync';
 import { insertNotification } from '../../../../lib/webhookHandlers/notify';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -19,6 +20,8 @@ export const revalidate = 0;
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'groups.approve_join');
+  if (auth instanceof NextResponse) return auth;
   let body: { request_id?: string; decision?: string; decided_by?: string; line_id?: string };
   try {
     body = await req.json();
@@ -26,7 +29,8 @@ export async function POST(req: NextRequest) {
     return bad('جسم الطلب غير صالح');
   }
 
-  const { request_id, decision, decided_by, line_id } = body;
+  const { request_id, decision, line_id } = body;
+  const decided_by = auth.staffId;
   if (!request_id || !['approved', 'rejected'].includes(decision || '')) {
     return bad('request_id و decision (approved|rejected) مطلوبان');
   }

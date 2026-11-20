@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { requirePermission } from '../../../../../../lib/serverAuth';
+import { denyLine } from '../../../../../../lib/access';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -13,6 +15,9 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
  * ⚠️ يجب التنفيذ على خط المصدر نفسه (النسخة الأصلية في ذاكرته) — الاسم في المسار.
  */
 export async function POST(req: Request, { params }: { params: { name: string } }) {
+  const auth = await requirePermission(req, 'inbox.forward');
+  if (auth instanceof NextResponse) return auth;
+  { const d = await denyLine(auth, params.name, 'send'); if (d) return d; }
   try {
     const instanceName: string = params.name;
     const body = await req.json();

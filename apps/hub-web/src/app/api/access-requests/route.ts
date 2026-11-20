@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 
+import { requirePermission } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -17,9 +18,12 @@ const TITLES: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission(req, 'inbox.request_access');
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
-    const { staff_id, chat_jid, instance, request_type, reason } = body;
+    const { chat_jid, instance, request_type, reason } = body;
+    const staff_id = auth.staffId; // الطالب = صاحب الجلسة (لا يُطلب باسم غيره)
 
     if (!staff_id || !chat_jid || !TITLES[request_type]) {
       return NextResponse.json(

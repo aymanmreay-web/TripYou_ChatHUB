@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../../lib/pg';
 
+import { requirePermission } from '../../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -13,6 +14,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requirePermission(req, 'tags.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const tagId = params.id;
     const body = await req.json();
@@ -67,6 +70,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requirePermission(req, 'tags.manage');
+  if (auth instanceof NextResponse) return auth;
   try {
     const tagId = params.id;
 

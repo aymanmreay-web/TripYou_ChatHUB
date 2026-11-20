@@ -45,6 +45,11 @@ export async function loadAuthState(): Promise<AuthState> {
       roleTitle = role.data.title_ar;
     }
     permissions = (perms.data ?? []).map((p: any) => p.permission_key);
+    // مدير النظام الأعلى يملك كل صلاحيات الكتالوج دائماً (حتى الجديدة منها)
+    if (roleKey === 'super_admin') {
+      const all = await supabase.from('permissions').select('key');
+      if (all.data) permissions = all.data.map((p: any) => p.key);
+    }
   }
 
   const status: AuthStatus =

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
+import { requireStaff } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_STAFF_ID = '51afa607-9cca-4fe0-98f8-76dd0217b137';
 
 // GET /api/pins?chat_jid=<jid>
 export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const chatJid = searchParams.get('chat_jid');
@@ -34,6 +36,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/pins - تثبيت رسالة
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
     const {
@@ -44,8 +48,8 @@ export async function POST(req: NextRequest) {
       media_url = null,
       sender_name = '',
       duration_type = '7d', // '24h' | '7d' | '30d'
-      pinned_by = DEFAULT_STAFF_ID,
     } = body;
+    const pinned_by = auth.staffId;
 
     if (!chat_jid || !message_id) {
       return NextResponse.json({ error: 'chat_jid and message_id are required' }, { status: 400 });
@@ -111,6 +115,8 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/pins?chat_jid=<jid>&message_id=<msgId>
 export async function DELETE(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
     const chatJid = searchParams.get('chat_jid');

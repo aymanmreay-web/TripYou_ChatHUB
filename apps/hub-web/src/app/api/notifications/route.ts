@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { q } from '../../../lib/pg';
 import { notifyStaffIds, notifyRole, notifyAllActive } from '../../../lib/webhookHandlers/notify';
 
+import { requireStaff, denyUnless } from '../../../lib/serverAuth';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -38,16 +39,14 @@ async function resolveStaffId(body: { staff_id?: string; email?: string }): Prom
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const { searchParams } = new URL(req.url);
-    const staffIdParam = searchParams.get('staff_id');
-    const email = searchParams.get('email');
     const limit = Math.min(parseInt(searchParams.get('limit') || '30', 10) || 30, 200);
 
-    const staffId = await resolveStaffId({ staff_id: staffIdParam || undefined, email: email || undefined });
-    if (!staffId) {
-      return NextResponse.json({ notifications: [], unread: 0 });
-    }
+    // الهوية من الجلسة: لا يقرأ موظف إشعارات غيره
+    const staffId = auth.staffId;
 
     const [list, unread] = await Promise.all([
       q(
@@ -72,14 +71,19 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireStaff(req);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = await req.json();
 
     // ─── الإنشاء (بنية عامة لأي مستقبل) ───
     if (body.action === 'create') {
+      // الإنشاء العام: سر الويب هوك (n8n/خدمات خارجية) أو من يملك صلاحية إرسال الإشعارات
       const secret = process.env.WEBHOOK_SECRET;
-      if (secret && body.secret !== secret) {
-        return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+      const viaSecret = !!secret && body.secret === secret;
+      if (!viaSecret) {
+        const d = denyUnless(auth, 'notifications.send');
+        if (d) return d;
       }
       if (!body.title || !body.kind) {
         return NextResponse.json({ error: 'kind and title are required' }, { status: 400 });
@@ -134,10 +138,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── التعليم كمقروء ───
-    const staffId = await resolveStaffId(body);
-    if (!staffId) {
-      return NextResponse.json({ error: 'staff_id or email required' }, { status: 400 });
-    }
+    const staffId = auth.staffId; // التعليم كمقروء لإشعارات صاحب الجلسة فقط
 
     if (body.id && !body.all) {
       await q(`update public.notifications set read_at = now() where staff_id = $1 and id = $2 and read_at is null`, [staffId, body.id]);
