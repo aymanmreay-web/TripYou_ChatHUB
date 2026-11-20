@@ -30,7 +30,7 @@ const plugin = {
   },
 };
 await build({
-  entryPoints: Object.fromEntries(routes.map((r) => [path.relative(path.join(SRC, 'app/api'), r).replace(/\/route\.ts$/, '').replace(/[\/\[\]]/g, '_'), r])),
+  entryPoints: Object.fromEntries(routes.map((r) => [path.relative(path.join(SRC, 'app/api'), r).replace(/\\/g, '/').replace(/\/route\.ts$/, '').replace(/[\/\[\]]/g, '_'), r])),
   outdir: OUT, bundle: true, format: 'esm', platform: 'node', plugins: [plugin], logLevel: 'error', outExtension: { '.js': '.mjs' },
 });
 console.log('built', routes.length);

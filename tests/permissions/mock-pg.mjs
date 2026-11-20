@@ -7,6 +7,12 @@ export async function q(sql, p = []) {
   if (s.startsWith('select id, full_name from hub.staff where id = $1::uuid')) {
     const st = D.staff.find((x) => x.id === p[0] && x.status === 'active'); return st ? [{ id: st.id, full_name: st.full_name }] : [];
   }
+  if (s.includes('from hub.staff s') && s.includes('where s.id = $1') && !s.includes('role_permissions')) {
+    const st = D.staff.find((x) => x.id === p[0]); return st ? [{ id: st.id, full_name: st.full_name, email: st.full_name + '@x.com', role_id: 'r_' + st.role, role_key: st.role, role_title: st.role }] : [];
+  }
+  if (s.startsWith('select key, grp, label_ar') || s.startsWith('select key from hub.permissions where super_only = true')) {
+    return [];
+  }
   if (s.startsWith('select key from hub.permissions')) return D.allKeys.map((key) => ({ key }));
   if (s.includes('join hub.role_permissions rp on rp.role_id = s.role_id') && s.includes('select rp.permission_key')) {
     const st = D.staff.find((x) => x.id === p[0]); return (D.rolePerms[st?.role] || []).map((permission_key) => ({ permission_key }));

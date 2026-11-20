@@ -12,6 +12,65 @@
    "all_except_super_only": true
   },
   {
+   "key": "sales_lead",
+   "title_ar": "مدير المبيعات",
+   "perms": [
+    "inbox.view",
+    "inbox.reply",
+    "inbox.assign",
+    "inbox.view_all",
+    "inbox.send_as",
+    "groups.view",
+    "groups.send",
+    "groups.manage",
+    "contacts.view",
+    "contacts.manage",
+    "contacts.import",
+    "lines.view",
+    "tasks.view",
+    "tasks.create",
+    "tasks.assign",
+    "meetings.view",
+    "meetings.create",
+    "reports.view_own",
+    "reports.view_team",
+    "campaigns.view",
+    "campaigns.create",
+    "inbox.send_media",
+    "inbox.forward",
+    "inbox.change_status",
+    "inbox.polls",
+    "inbox.request_access",
+    "inbox.approve_access",
+    "contacts.merge",
+    "canned.view",
+    "canned.manage",
+    "tags.manage",
+    "groups.approve_join",
+    "groups.sync"
+   ]
+  },
+  {
+   "key": "observer",
+   "title_ar": "مراقب جودة",
+   "perms": [
+    "inbox.view",
+    "contacts.view",
+    "reports.view_own",
+    "reports.view_team",
+    "audit.view"
+   ]
+  },
+  {
+   "key": "trainee",
+   "title_ar": "متدرب",
+   "perms": [
+    "inbox.view",
+    "contacts.view",
+    "reports.view_own"
+   ]
+  },
+  {
    "key": "dept_manager",
    "title_ar": "مدير قسم",
    "perms": [

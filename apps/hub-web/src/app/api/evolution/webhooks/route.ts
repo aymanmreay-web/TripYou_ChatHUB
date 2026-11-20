@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requirePermission } from '../../../../lib/serverAuth';
 import {
   normalizeEvolutionMessage,
   storeMessageRecord,
@@ -24,6 +25,20 @@ const webhookEvents: any[] = [];
  *   3) الرد الآلي خارج الدوام + تمرير n8n
  */
 export async function POST(req: Request) {
+  // فحص سر الويب هوك إن كان معيناً في البيئة
+  const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const incomingSecret =
+      req.headers.get('apikey') ||
+      req.headers.get('x-api-key') ||
+      req.headers.get('x-webhook-secret') ||
+      new URL(req.url).searchParams.get('secret') ||
+      new URL(req.url).searchParams.get('token');
+    if (incomingSecret !== webhookSecret) {
+      return NextResponse.json({ ok: false, error: 'unauthorized webhook secret' }, { status: 401 });
+    }
+  }
+
   let event: any = null;
   try {
     event = await req.json();
@@ -191,6 +206,8 @@ async function processOneInbound(instance: string, msg: InboundMessage, original
   );
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const caller = await requirePermission(req, 'system.health');
+  if (caller instanceof NextResponse) return caller;
   return NextResponse.json({ events: webhookEvents.slice(-50) });
 }

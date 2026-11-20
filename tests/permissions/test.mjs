@@ -72,6 +72,13 @@ for (const w of ['lead', 'agent', 'obs', 'trainee']) {
   await C(w, 'PUT', 'roles-matrix', 403, { body: { action: 'dept_delete' } });
 }
 await C('lead', 'GET', 'staff', 'ALLOW'); await C('agent', 'GET', 'staff', 403); await C('obs', 'GET', 'staff', 403);
+await C(null, 'GET', 'staff/[id]/overrides', 401, { params: { id: 'agent' } });
+await C('agent', 'GET', 'staff/[id]/overrides', 403, { params: { id: 'agent' } });
+await C('super', 'GET', 'staff/[id]/overrides', 'ALLOW', { params: { id: 'agent' } });
+await C('agent', 'POST', 'staff/[id]/overrides', 403, { params: { id: 'agent' }, body: { permission_key: 'inbox.reply', effect: 'allow' } });
+await C('super', 'POST', 'staff/[id]/overrides', 'ALLOW', { params: { id: 'agent' }, body: { permission_key: 'inbox.reply', effect: 'allow' } });
+await C(null, 'GET', 'evolution/webhooks', 401);
+await C('super', 'GET', 'evolution/webhooks', 'ALLOW');
 await C('lead', 'GET', 'admin/kpis', 'ALLOW'); await C('agent', 'GET', 'admin/kpis', 403); await C('obs', 'GET', 'admin/kpis', 403);
 await C('lead', 'PATCH', 'lines', 403, { body: { id: '1', title_ar: 'x' } }); await C('super', 'PATCH', 'lines', 'ALLOW', { body: { id: '1', title_ar: 'x' } });
 await C('agent', 'GET', 'lines', 'ALLOW'); await C('trainee', 'GET', 'lines', 'ALLOW');

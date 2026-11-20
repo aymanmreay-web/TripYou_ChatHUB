@@ -1,6 +1,16 @@
 -- 0015: أمان الأدوار والصلاحيات + تعريب أسماء الصلاحيات ووصفها بالتفصيل
 -- 1) عمود الوصف  2) أسماء عربية خالصة  3) تجاوز مدير النظام  4) حماية آخر مدير نشط
 
+create table if not exists hub.staff_permission_overrides(
+  staff_id uuid references hub.staff(id) on delete cascade,
+  permission_key text references hub.permissions(key) on delete cascade,
+  effect text not null check (effect in ('allow','deny')),
+  reason text,
+  set_by uuid references hub.staff(id),
+  created_at timestamptz not null default now(),
+  primary key(staff_id, permission_key)
+);
+
 alter table hub.permissions add column if not exists desc_ar text;
 
 update hub.permissions set grp='inbox', label_ar='عرض المحادثات المسندة إليه', desc_ar='يرى الموظف المحادثات المسندة إليه أو الواردة على الخطوط المصرّح له بها، دون القدرة على الرد.', super_only=false where key='inbox.view';
@@ -47,14 +57,14 @@ update hub.permissions set grp='settings', label_ar='إظهار الأقسام �
 update hub.permissions set grp='settings', label_ar='تعديل قوالب الإشعارات', desc_ar='يعدّل نصوص الإشعارات وأحداثها.', super_only=false where key='notifications.manage_templates';
 
 -- مدير النظام الأعلى يملك كل الصلاحيات دائماً (حتى الجديدة) دون الحاجة لزرعها يدوياً
-create or replace function hub.has_permission(p text) returns boolean language sql stable as $$
+create or replace function hub.has_permission(p_key text) returns boolean language sql stable as $$
   select case
     when exists (select 1 from hub.staff s join hub.roles r on r.id = s.role_id where s.id = hub.current_staff_id() and s.status = 'active' and r.key = 'super_admin') then true
-    when exists (select 1 from hub.staff_permission_overrides o where o.staff_id = hub.current_staff_id() and o.permission_key = p and o.effect='deny') then false
-    when exists (select 1 from hub.staff_permission_overrides o where o.staff_id = hub.current_staff_id() and o.permission_key = p and o.effect='allow') then true
+    when exists (select 1 from hub.staff_permission_overrides o where o.staff_id = hub.current_staff_id() and o.permission_key = p_key and o.effect='deny') then false
+    when exists (select 1 from hub.staff_permission_overrides o where o.staff_id = hub.current_staff_id() and o.permission_key = p_key and o.effect='allow') then true
     else exists (
       select 1 from hub.staff s join hub.role_permissions rp on rp.role_id = s.role_id
-      where s.id = hub.current_staff_id() and rp.permission_key = p and s.status='active')
+      where s.id = hub.current_staff_id() and rp.permission_key = p_key and s.status='active')
   end
 $$;
 

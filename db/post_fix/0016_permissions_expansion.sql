@@ -41,6 +41,12 @@ join (values
 ) as m(parent_key, new_key) on m.parent_key = rp.permission_key
 on conflict do nothing;
 
+-- تحديث الأوصاف الناقصة للأذونات القديمة
+update hub.permissions set label_ar='عرض الأدوار والصلاحيات', desc_ar='يرى مصفوفة الأدوار والصلاحيات دون تعديلها.' where key='roles.view' and desc_ar is null;
+update hub.permissions set label_ar='إدارة المهام', desc_ar='يعدّل المهام ويحذفها ويعيد تعيينها.' where key='tasks.manage' and desc_ar is null;
+update hub.permissions set label_ar='إنشاء حملات الإرسال', desc_ar='ينشئ حملات إرسال رسائل جماعية جديدة.' where key='campaigns.create' and desc_ar is null;
+update hub.permissions set label_ar='اعتماد الحملات وإطلاقها', desc_ar='يراجع الحملات التسويقية ويعتمد إطلاقها.' where key='campaigns.approve' and desc_ar is null;
+
 -- دور «مدير» (إن وُجد) يملك كل الصلاحيات غير المحصورة بالمدير الأعلى
 insert into hub.role_permissions (role_id, permission_key)
 select r.id, p.key from hub.roles r cross join hub.permissions p
